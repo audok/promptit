@@ -9,6 +9,7 @@ export type PopupRenderItem = PromptItem & {
 
 type PopupOptions = {
   onSelect: (item: PopupRenderItem) => void;
+  onCopy: (item: PopupRenderItem) => void;
   onExit: () => void;
   onOpenOptions: () => void;
   onActiveIndexChange: (index: number) => void;
@@ -133,6 +134,11 @@ export class PromptPopup {
       const selectedItem = this.state.items[Number(row.dataset.index)];
 
       if (!selectedItem) {
+        return;
+      }
+
+      if (action === 'copy') {
+        this.options.onCopy(selectedItem);
         return;
       }
 
@@ -292,8 +298,13 @@ function createPromptRow(
   copyButton.className = 'promptit-row-copy-button';
   copyButton.tabIndex = -1;
 
-  copyButton.disabled = true;
-  copyButton.setAttribute('aria-hidden', 'true');
+  if (item.action === 'open-options') {
+    copyButton.disabled = true;
+    copyButton.setAttribute('aria-hidden', 'true');
+  } else {
+    copyButton.dataset.action = 'copy';
+    copyButton.ariaLabel = `Copy prompt: ${item.title}`;
+  }
 
   copyButton.innerHTML = renderCopyIcon();
 

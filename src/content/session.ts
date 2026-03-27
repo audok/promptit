@@ -12,6 +12,7 @@ export type CloseReason =
   | 'resize'
   | 'dom-removed'
   | 'typing'
+  | 'copy'
   | 'insert'
   | 'open-options';
 

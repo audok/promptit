@@ -11,6 +11,7 @@ import {
   type CloseReason,
   type PopupSessionState,
 } from './session';
+import { showCopyToast } from './toast';
 import { armTrigger, clearTriggerArm } from './trigger';
 
 declare global {
@@ -32,6 +33,9 @@ function bootstrapPromptit(): void {
   const popup = new PromptPopup({
     onSelect: (item) => {
       void handleSelection(item, session, popup);
+    },
+    onCopy: (item) => {
+      void handleCopy(item, session, popup);
     },
     onExit: () => {
       void closePopup(session, popup, 'escape', true);
@@ -324,6 +328,29 @@ async function handleSelection(
       session.isInternalChange = false;
     });
     resetSessionState(session);
+  }
+}
+
+async function handleCopy(
+  item: PopupRenderItem,
+  session: PopupSessionState,
+  popup: PromptPopup,
+): Promise<void> {
+  if (item.action === 'open-options') {
+    return;
+  }
+
+  try {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error('Clipboard API is not available.');
+    }
+
+    await navigator.clipboard.writeText(item.content);
+    showCopyToast('프롬프트를 복사했습니다.');
+    await closePopup(session, popup, 'copy', false);
+  } catch (error) {
+    console.error('[promptit] Failed to copy prompt content.', error);
+    showCopyToast('프롬프트 복사에 실패했습니다.', 'error');
   }
 }
 
