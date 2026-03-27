@@ -1,7 +1,7 @@
 {
   "name": "promptit",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.0.1",
+  "description": "Slash-command prompt launcher for ChatGPT",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.33.0",
-  "private": "true",
+  "private": true,
   "type": "module",
   "dependencies": {
     "react": "^19.2.4",
