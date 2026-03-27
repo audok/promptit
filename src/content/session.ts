@@ -27,6 +27,7 @@ export type PopupSessionState = {
   triggerRequestId: number;
   isComposing: boolean;
   isInternalChange: boolean;
+  isBusy: boolean;
   disconnectInputObserver: (() => void) | null;
 };
 
@@ -42,6 +43,7 @@ export function createSessionState(): PopupSessionState {
     triggerRequestId: 0,
     isComposing: false,
     isInternalChange: false,
+    isBusy: false,
     disconnectInputObserver: null,
   };
 }
@@ -66,5 +68,6 @@ export function resetSessionState(session: PopupSessionState): void {
   session.activeIndex = 0;
   session.closeReason = null;
   session.armedTimer = null;
+  session.isBusy = false;
   session.disconnectInputObserver = null;
 }

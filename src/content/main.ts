@@ -116,6 +116,11 @@ function bootstrapPromptit(): void {
         return;
       }
 
+      if (session.isBusy) {
+        event.preventDefault();
+        return;
+      }
+
       const action = getPopupKeyAction(event);
 
       if (action.preventDefault) {
@@ -143,7 +148,7 @@ function bootstrapPromptit(): void {
   document.addEventListener(
     'pointerdown',
     (event) => {
-      if (session.status !== 'open') {
+      if (session.status !== 'open' || session.isBusy) {
         return;
       }
 
@@ -159,7 +164,7 @@ function bootstrapPromptit(): void {
   document.addEventListener(
     'focusin',
     (event) => {
-      if (session.status !== 'open') {
+      if (session.status !== 'open' || session.isBusy) {
         return;
       }
 
@@ -179,7 +184,7 @@ function bootstrapPromptit(): void {
   window.addEventListener(
     'blur',
     () => {
-      if (session.status === 'open') {
+      if (session.status === 'open' && !session.isBusy) {
         void closePopup(session, popup, 'blur', true);
       }
     },
@@ -189,7 +194,7 @@ function bootstrapPromptit(): void {
   document.addEventListener(
     'visibilitychange',
     () => {
-      if (document.hidden && session.status === 'open') {
+      if (document.hidden && session.status === 'open' && !session.isBusy) {
         void closePopup(session, popup, 'blur', true);
       }
     },
@@ -199,7 +204,7 @@ function bootstrapPromptit(): void {
   window.addEventListener(
     'scroll',
     () => {
-      if (session.status === 'open') {
+      if (session.status === 'open' && !session.isBusy) {
         void closePopup(session, popup, 'scroll', true);
       }
     },
@@ -209,7 +214,7 @@ function bootstrapPromptit(): void {
   window.addEventListener(
     'resize',
     () => {
-      if (session.status === 'open') {
+      if (session.status === 'open' && !session.isBusy) {
         void closePopup(session, popup, 'resize', true);
       }
     },
@@ -295,6 +300,9 @@ async function handleSelection(
   session: PopupSessionState,
   popup: PromptPopup,
 ): Promise<void> {
+  if (session.isBusy) {
+    return;
+  }
 
   const activeInput = session.activeInput;
   const triggerContext = session.triggerContext
@@ -340,9 +348,12 @@ async function handleCopy(
   session: PopupSessionState,
   popup: PromptPopup,
 ): Promise<void> {
-  if (item.action === 'open-options') {
+  if (item.action === 'open-options' || session.isBusy) {
     return;
   }
+
+  session.isBusy = true;
+  popup.setBusy(true);
 
   try {
     if (!navigator.clipboard?.writeText) {
@@ -354,6 +365,8 @@ async function handleCopy(
     await closePopup(session, popup, 'copy', false);
   } catch (error) {
     console.error('[promptit] Failed to copy prompt content.', error);
+    session.isBusy = false;
+    popup.setBusy(false);
     showCopyToast('프롬프트 복사에 실패했습니다.', 'error');
   }
 }
@@ -362,6 +375,9 @@ async function openOptionsFromPopup(
   session: PopupSessionState,
   popup: PromptPopup,
 ): Promise<void> {
+  if (session.isBusy) {
+    return;
+  }
 
   await closePopup(session, popup, 'open-options', true);
   await requestOpenOptionsPage();

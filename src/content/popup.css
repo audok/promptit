@@ -31,6 +31,15 @@
   -webkit-backdrop-filter: blur(40px) saturate(180%);
 }
 
+.promptit-card.is-busy {
+  cursor: progress;
+}
+
+.promptit-card.is-busy .promptit-row,
+.promptit-card.is-busy .promptit-header,
+.promptit-card.is-busy .promptit-footer {
+  opacity: 0.78;
+}
 
 .promptit-card::before {
   content: '';

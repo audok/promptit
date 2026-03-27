@@ -18,6 +18,7 @@ type PopupOptions = {
 type RenderState = {
   items: PopupRenderItem[];
   activeIndex: number;
+  isBusy: boolean;
 };
 
 const VIEWPORT_MARGIN_PX = 12;
@@ -33,6 +34,7 @@ export class PromptPopup {
   private state: RenderState = {
     items: [],
     activeIndex: 0,
+    isBusy: false,
   };
 
   constructor(private readonly options: PopupOptions) {}
@@ -44,7 +46,8 @@ export class PromptPopup {
         action: isStarterPrompt(item) ? 'open-options' : 'insert',
       })),
       activeIndex,
-      };
+      isBusy: false,
+    };
 
     if (!this.host) {
       this.mount();
@@ -61,7 +64,8 @@ export class PromptPopup {
     this.state = {
       items: [],
       activeIndex: 0,
-      };
+      isBusy: false,
+    };
   }
 
   setActiveIndex(activeIndex: number): void {
@@ -82,6 +86,17 @@ export class PromptPopup {
     return this.host ? event.composedPath().includes(this.host) : false;
   }
 
+  setBusy(isBusy: boolean): void {
+    this.state.isBusy = isBusy;
+    const card = this.shadowRoot?.querySelector<HTMLElement>('.promptit-card');
+    card?.classList.toggle('is-busy', isBusy);
+
+    const buttons = this.shadowRoot?.querySelectorAll<HTMLButtonElement>('button[data-action]');
+
+    buttons?.forEach((button) => {
+      button.disabled = isBusy;
+    });
+  }
 
   private mount(): void {
     this.host = document.createElement('div');
@@ -159,7 +174,7 @@ export class PromptPopup {
     this.shadowRoot.innerHTML = `
       <style>${popupStyles}</style>
       <div class="promptit-root">
-        <section class="promptit-card" aria-label="Promptit prompt picker">
+        <section class="promptit-card${this.state.isBusy ? ' is-busy' : ''}" aria-label="Promptit prompt picker">
           <header class="promptit-header">
             <div class="promptit-header-label">
               <span class="promptit-header-slash">/</span>
@@ -204,6 +219,7 @@ export class PromptPopup {
 
     if (this.state.items.length === 0) {
       list.replaceChildren(createEmptyState());
+      this.setBusy(this.state.isBusy);
       return;
     }
 
@@ -214,6 +230,7 @@ export class PromptPopup {
     });
 
     list.replaceChildren(fragment);
+    this.setBusy(this.state.isBusy);
   }
 
   private position(anchorRect: DOMRect): void {
