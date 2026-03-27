@@ -11,7 +11,7 @@ export default defineManifest({
     default_title: 'Promptit',
   },
   background: {
-    service_worker: 'src/background/main.ts',
+    service_worker: 'src/background/service-worker.ts',
     type: 'module',
   },
   options_ui: {
@@ -21,7 +21,7 @@ export default defineManifest({
   content_scripts: [
     {
       matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
-      js: ['src/content/main.ts'],
+      js: ['src/content/content-script.ts'],
       run_at: 'document_idle',
     },
   ],

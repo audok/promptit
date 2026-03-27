@@ -1,6 +1,7 @@
 import { ChatGPTAdapter } from '../adapters/chatgpt';
 import { cloneTriggerContext } from '../adapters/base';
 import { isStarterPrompt, type PromptItem } from '../prompt/schema';
+import { OPEN_OPTIONS_PAGE_MESSAGE } from '../runtime/messages';
 import { getPrompts } from '../prompt/storage';
 import { getPopupKeyAction } from './keyboard';
 import { PromptPopup, type PopupRenderItem } from './popup';
@@ -27,6 +28,9 @@ if (adapter.canHandle(window.location.href) && !window.__promptitContentInitiali
   bootstrapPromptit();
 }
 
+async function requestOpenOptionsPage(): Promise<void> {
+  await chrome.runtime.sendMessage({ type: OPEN_OPTIONS_PAGE_MESSAGE });
+}
 
 function bootstrapPromptit(): void {
   const session = createSessionState();
@@ -313,7 +317,7 @@ async function handleSelection(
         adapter.removeTriggerText(activeInput, triggerContext),
         'remove trigger before opening options',
       );
-      await chrome.runtime.openOptionsPage();
+      await requestOpenOptionsPage();
     } else {
       adapter.focusInput(activeInput);
       ensureAdapterMutation(
@@ -360,7 +364,7 @@ async function openOptionsFromPopup(
 ): Promise<void> {
 
   await closePopup(session, popup, 'open-options', true);
-  await chrome.runtime.openOptionsPage();
+  await requestOpenOptionsPage();
 }
 
 async function closePopup(
