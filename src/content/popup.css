@@ -1,0 +1,342 @@
+:host {
+  all: initial;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.promptit-root {
+  color: #1b1b1b;
+  font-family:
+    Inter,
+    'SF Pro Text',
+    'Segoe UI',
+    sans-serif;
+  line-height: 1.2;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.promptit-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 32px 64px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+
+
+.promptit-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.55), transparent 30%),
+    radial-gradient(circle at 85% 82%, rgba(0, 0, 0, 0.035), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
+  opacity: 0.8;
+}
+
+.promptit-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.promptit-header,
+.promptit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+}
+
+.promptit-header {
+  background: rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.promptit-footer {
+  background: rgba(0, 0, 0, 0.05);
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.promptit-header-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.4;
+  color: #000;
+}
+
+.promptit-header-slash {
+  font-size: 12px;
+}
+
+.promptit-header-text,
+.promptit-header-action,
+.promptit-footer-label {
+  color: #000;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.promptit-header-text {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.promptit-header-action,
+.promptit-settings-button,
+.promptit-footer-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.promptit-header-action {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.promptit-header-action:hover,
+.promptit-settings-button:hover,
+.promptit-footer-button:hover {
+  color: #000;
+}
+
+.promptit-list {
+  max-height: calc(5 * 56px + 16px);
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.promptit-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.promptit-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.promptit-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.promptit-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.promptit-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  align-items: center;
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.promptit-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: transparent;
+}
+
+.promptit-row:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.promptit-row.is-active {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.promptit-row.is-active::before {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.promptit-row-leading-button,
+.promptit-row-title-button,
+.promptit-row-copy-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.promptit-row-leading-button,
+.promptit-row-copy-button {
+  justify-content: center;
+}
+
+.promptit-row-title-button {
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.promptit-row-leading-button:disabled,
+.promptit-row-copy-button:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.promptit-row-leading-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: rgba(0, 0, 0, 0.2);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.promptit-row.is-active .promptit-row-leading-badge {
+  background: rgba(0, 0, 0, 0.05);
+  color: #000;
+}
+
+.promptit-row-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 120ms ease;
+}
+
+.promptit-row:hover .promptit-row-title {
+  color: #000;
+}
+
+.promptit-row.is-active .promptit-row-title {
+  color: #000;
+  font-weight: 500;
+}
+
+.promptit-row-copy-button {
+  color: rgba(0, 0, 0, 0.3);
+}
+
+.promptit-row-copy-button:not(:disabled) {
+  cursor: pointer;
+}
+
+.promptit-row:hover .promptit-row-copy-button:not(:disabled) {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.promptit-row-copy-button:disabled {
+  color: rgba(0, 0, 0, 0.2);
+}
+
+.promptit-row.is-active .promptit-row-copy-button:not(:disabled) {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.promptit-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: none;
+  pointer-events: none;
+  fill: currentColor;
+}
+
+.promptit-row-leading-badge .promptit-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.promptit-footer-icon .promptit-icon,
+.promptit-footer-button .promptit-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.promptit-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+}
+
+.promptit-empty-title {
+  margin: 0;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+
+.promptit-settings-button {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.promptit-footer-label {
+  color: rgba(0, 0, 0, 0.3);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.promptit-footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.promptit-footer-icon,
+.promptit-footer-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.3);
+}
+
+.promptit-footer-button {
+  width: 18px;
+  height: 18px;
+}

@@ -1,0 +1,413 @@
+import { ChatGPTAdapter } from '../adapters/chatgpt';
+import { cloneTriggerContext } from '../adapters/base';
+import { isStarterPrompt, type PromptItem } from '../prompt/schema';
+import { getPrompts } from '../prompt/storage';
+import { getPopupKeyAction } from './keyboard';
+import { PromptPopup, type PopupRenderItem } from './popup';
+import {
+  createSessionState,
+  resetSessionState,
+  setActiveIndex,
+  type CloseReason,
+  type PopupSessionState,
+} from './session';
+import { armTrigger, clearTriggerArm } from './trigger';
+
+declare global {
+  interface Window {
+    __promptitContentInitialized__?: boolean;
+  }
+}
+
+const adapter = new ChatGPTAdapter();
+
+if (adapter.canHandle(window.location.href) && !window.__promptitContentInitialized__) {
+  window.__promptitContentInitialized__ = true;
+  bootstrapPromptit();
+}
+
+
+function bootstrapPromptit(): void {
+  const session = createSessionState();
+  const popup = new PromptPopup({
+    onSelect: (item) => {
+      void handleSelection(item, session, popup);
+    },
+    onExit: () => {
+      void closePopup(session, popup, 'escape', true);
+    },
+    onOpenOptions: () => {
+      void openOptionsFromPopup(session, popup);
+    },
+    onActiveIndexChange: (nextIndex) => {
+      setActiveIndex(session, nextIndex);
+    },
+  });
+
+  document.addEventListener(
+    'compositionstart',
+    (event) => {
+      const input = adapter.resolveTargetInput(event.target);
+
+      if (!input) {
+        return;
+      }
+
+      session.activeInput = input;
+      session.isComposing = true;
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'compositionend',
+    (event) => {
+      const input = adapter.resolveTargetInput(event.target);
+
+      if (!input) {
+        return;
+      }
+
+      session.isComposing = false;
+      scheduleTriggerCheck(input, session, popup);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'input',
+    (event) => {
+      const input = adapter.resolveTargetInput(event.target);
+
+      if (!input) {
+        return;
+      }
+
+      if (session.isInternalChange || session.status === 'closing') {
+        return;
+      }
+
+      if (session.status === 'open') {
+        void closePopup(session, popup, 'typing', false);
+        return;
+      }
+
+      if (session.isComposing) {
+        return;
+      }
+
+      scheduleTriggerCheck(input, session, popup);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (session.status !== 'open') {
+        return;
+      }
+
+      const action = getPopupKeyAction(event);
+
+      if (action.preventDefault) {
+        event.preventDefault();
+      }
+
+      if (action.type === 'close') {
+        void closePopup(session, popup, action.reason, action.cleanupTrigger);
+        return;
+      }
+
+      if (action.type === 'select-active') {
+        const selectedItem = session.items[session.activeIndex];
+
+        if (!selectedItem) {
+          return;
+        }
+
+        void handleSelection(toPopupRenderItem(selectedItem), session, popup);
+      }
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (session.status !== 'open') {
+        return;
+      }
+
+      if (popup.containsEvent(event)) {
+        return;
+      }
+
+      void closePopup(session, popup, 'outside-click', true);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'focusin',
+    (event) => {
+      if (session.status !== 'open') {
+        return;
+      }
+
+      if (popup.containsEvent(event)) {
+        return;
+      }
+
+      if (event.target === session.activeInput) {
+        return;
+      }
+
+      void closePopup(session, popup, 'blur', true);
+    },
+    true,
+  );
+
+  window.addEventListener(
+    'blur',
+    () => {
+      if (session.status === 'open') {
+        void closePopup(session, popup, 'blur', true);
+      }
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'visibilitychange',
+    () => {
+      if (document.hidden && session.status === 'open') {
+        void closePopup(session, popup, 'blur', true);
+      }
+    },
+    true,
+  );
+
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (session.status === 'open') {
+        void closePopup(session, popup, 'scroll', true);
+      }
+    },
+    true,
+  );
+
+  window.addEventListener(
+    'resize',
+    () => {
+      if (session.status === 'open') {
+        void closePopup(session, popup, 'resize', true);
+      }
+    },
+    true,
+  );
+}
+
+function scheduleTriggerCheck(
+  input: HTMLElement,
+  session: PopupSessionState,
+  popup: PromptPopup,
+): void {
+  session.activeInput = input;
+  armTrigger(session, (requestId) => {
+    void resolveTriggerCheck(input, requestId, session, popup);
+  });
+}
+
+async function resolveTriggerCheck(
+  input: HTMLElement,
+  requestId: number,
+  session: PopupSessionState,
+  popup: PromptPopup,
+): Promise<void> {
+  if (
+    session.isComposing ||
+    session.status === 'closing' ||
+    requestId !== session.triggerRequestId
+  ) {
+    return;
+  }
+
+  if (!input.isConnected || !isFocusedInput(input)) {
+    clearTriggerArm(session);
+    if (session.activeInput === input) {
+      session.activeInput = null;
+    }
+    return;
+  }
+
+  const triggerContext = adapter.createTriggerContext(input);
+
+  if (!triggerContext) {
+    clearTriggerArm(session);
+    if (session.activeInput === input) {
+      session.activeInput = null;
+    }
+    return;
+  }
+
+  const items = await getPrompts();
+
+  if (requestId !== session.triggerRequestId || isSessionClosing(session)) {
+    return;
+  }
+
+  clearTriggerArm(session);
+  session.status = 'open';
+  session.activeInput = input;
+  session.triggerContext = cloneTriggerContext(triggerContext);
+  session.items = items;
+  session.activeIndex = 0;
+
+  popup.show(items, session.activeIndex, adapter.getPopupAnchorRect(input));
+
+  const observer = new MutationObserver(() => {
+    if (session.status === 'open' && session.activeInput && !session.activeInput.isConnected) {
+      void closePopup(session, popup, 'dom-removed', true);
+    }
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  session.disconnectInputObserver?.();
+  session.disconnectInputObserver = () => observer.disconnect();
+}
+
+async function handleSelection(
+  item: PopupRenderItem,
+  session: PopupSessionState,
+  popup: PromptPopup,
+): Promise<void> {
+
+  const activeInput = session.activeInput;
+  const triggerContext = session.triggerContext
+    ? cloneTriggerContext(session.triggerContext)
+    : null;
+
+  if (!activeInput || !triggerContext) {
+    await closePopup(session, popup, 'insert', false);
+    return;
+  }
+
+  session.status = 'closing';
+  session.isInternalChange = true;
+  popup.destroy();
+  session.disconnectInputObserver?.();
+
+  try {
+    if (item.action === 'open-options') {
+      ensureAdapterMutation(
+        adapter.removeTriggerText(activeInput, triggerContext),
+        'remove trigger before opening options',
+      );
+      await chrome.runtime.openOptionsPage();
+    } else {
+      adapter.focusInput(activeInput);
+      ensureAdapterMutation(
+        adapter.insertPrompt(activeInput, item.content, triggerContext),
+        'insert prompt content',
+      );
+    }
+  } catch (error) {
+    console.error('[promptit] Failed to handle popup selection.', error);
+  } finally {
+    queueMicrotask(() => {
+      session.isInternalChange = false;
+    });
+    resetSessionState(session);
+  }
+}
+
+async function openOptionsFromPopup(
+  session: PopupSessionState,
+  popup: PromptPopup,
+): Promise<void> {
+
+  await closePopup(session, popup, 'open-options', true);
+  await chrome.runtime.openOptionsPage();
+}
+
+async function closePopup(
+  session: PopupSessionState,
+  popup: PromptPopup,
+  reason: CloseReason,
+  cleanupTrigger: boolean,
+): Promise<void> {
+  if (session.status === 'idle') {
+    return;
+  }
+
+  clearTriggerArm(session);
+  session.status = 'closing';
+  session.closeReason = reason;
+
+  const activeInput = session.activeInput;
+  const triggerContext = session.triggerContext
+    ? cloneTriggerContext(session.triggerContext)
+    : null;
+
+  popup.destroy();
+  session.disconnectInputObserver?.();
+
+  if (cleanupTrigger && activeInput && triggerContext) {
+    session.isInternalChange = true;
+
+    try {
+      ensureAdapterMutation(
+        adapter.removeTriggerText(activeInput, triggerContext),
+        `clean up trigger text after ${reason}`,
+      );
+    } catch (error) {
+      console.error('[promptit] Failed to clean up trigger text.', error);
+    } finally {
+      queueMicrotask(() => {
+        session.isInternalChange = false;
+      });
+    }
+  }
+
+  resetSessionState(session);
+}
+
+function toPopupRenderItem(item: PromptItem): PopupRenderItem {
+  return {
+    ...item,
+    action: isStarterPrompt(item) ? 'open-options' : 'insert',
+  };
+}
+
+function isSessionClosing(session: PopupSessionState): boolean {
+  return session.status === 'closing';
+}
+
+function isFocusedInput(input: HTMLElement): boolean {
+  if (document.activeElement === input) {
+    return true;
+  }
+
+  if (
+    document.activeElement instanceof HTMLElement &&
+    input.contains(document.activeElement)
+  ) {
+    return true;
+  }
+
+  const selection = window.getSelection();
+
+  return Boolean(selection?.anchorNode && input.contains(selection.anchorNode));
+}
+
+function ensureAdapterMutation(result: boolean, action: string): void {
+  if (!result) {
+    throw new Error(`[promptit] Adapter failed to ${action}.`);
+  }
+}
