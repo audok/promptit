@@ -130,7 +130,7 @@
 }
 
 .promptit-list {
-  max-height: calc(5 * 56px + 16px);
+  max-height: var(--promptit-list-max-height, calc(5 * 56px + 16px));
   padding: 8px 0;
   overflow-y: auto;
 }
@@ -217,6 +217,13 @@
   cursor: pointer;
 }
 
+.promptit-row-title-button.is-empty-state {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+}
+
 .promptit-row-leading-button:disabled,
 .promptit-row-copy-button:disabled {
   opacity: 1;
@@ -238,6 +245,10 @@
 
 .promptit-row.is-active-row .promptit-row-leading-badge {
   color: rgba(0, 0, 0, 0.42);
+}
+
+.promptit-row.is-empty-state .promptit-row-leading-badge {
+  color: rgba(0, 0, 0, 0.34);
 }
 
 .promptit-row-title {
@@ -265,6 +276,20 @@
 .promptit-row-title-button.is-active-cell .promptit-row-title {
   color: #000;
   font-weight: 500;
+}
+
+.promptit-row.is-empty-state .promptit-row-title {
+  color: #000;
+  font-weight: 500;
+}
+
+.promptit-row-description {
+  display: block;
+  color: rgba(0, 0, 0, 0.48);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 .promptit-row-copy-button {
@@ -300,6 +325,10 @@
   color: rgba(0, 0, 0, 0.2);
 }
 
+.promptit-row-copy-button.is-empty-state {
+  visibility: hidden;
+}
+
 .promptit-row.is-active-row .promptit-row-copy-button:not(:disabled) {
   color: rgba(0, 0, 0, 0.5);
 }
@@ -327,25 +356,13 @@
   height: 18px;
 }
 
-.promptit-footer-icon .promptit-icon,
 .promptit-footer-button .promptit-icon {
   width: 18px;
   height: 18px;
 }
 
 .promptit-empty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 24px;
-}
-
-.promptit-empty-title {
-  margin: 0;
-  color: rgba(0, 0, 0, 0.6);
-  font-size: 14px;
-  letter-spacing: -0.02em;
+  display: none;
 }
 
 .promptit-settings-button {
@@ -362,13 +379,6 @@
   font-weight: 500;
 }
 
-.promptit-footer-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.promptit-footer-icon,
 .promptit-footer-button {
   display: inline-flex;
   align-items: center;

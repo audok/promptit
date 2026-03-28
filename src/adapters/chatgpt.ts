@@ -48,18 +48,28 @@ function getRectForPopupAnchor(input: HTMLElement): DOMRect {
   const candidates = [
     input.closest('form'),
     input.parentElement,
+    input.parentElement?.parentElement,
   ].filter((candidate): candidate is HTMLElement => candidate instanceof HTMLElement);
 
   let bestRect = inputRect;
+  let bestArea = Number.POSITIVE_INFINITY;
 
   for (const candidate of candidates) {
     const rect = candidate.getBoundingClientRect();
 
     if (
-      rect.width >= bestRect.width &&
-      rect.left <= inputRect.left + 1 &&
-      rect.right >= inputRect.right - 1
+      rect.width < inputRect.width ||
+      rect.height < inputRect.height ||
+      rect.left > inputRect.left + 2 ||
+      rect.right < inputRect.right - 2
     ) {
+      continue;
+    }
+
+    const area = rect.width * rect.height;
+
+    if (area < bestArea) {
+      bestArea = area;
       bestRect = rect;
     }
   }

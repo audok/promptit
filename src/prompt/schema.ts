@@ -19,22 +19,6 @@ export type PromptDraftErrors = Partial<
 
 export const PROMPTS_STORAGE_KEY = 'prompts';
 export const STARTER_PROMPT_ID = '__promptit_starter_prompt__';
-export const STARTER_PROMPT_TITLE = '설정에서 프롬프트를 저장해보세요!';
-export const STARTER_PROMPT_CONTENT =
-  'Promptit 설정에서 첫 프롬프트를 저장해보세요.';
-
-export function createStarterPrompt(now = new Date()): PromptItem {
-  const timestamp = now.toISOString();
-
-  return {
-    id: STARTER_PROMPT_ID,
-    title: STARTER_PROMPT_TITLE,
-    content: STARTER_PROMPT_CONTENT,
-    sortOrder: 0,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
 
 export function normalizePromptDraft(draft: PromptDraft): PromptDraft {
   return {

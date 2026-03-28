@@ -1,5 +1,4 @@
 import {
-  createStarterPrompt,
   hasPromptDraftErrors,
   isPromptItem,
   isStarterPrompt,
@@ -91,10 +90,6 @@ async function readUserPrompts(): Promise<PromptItem[]> {
   }
 }
 
-function toLauncherPrompts(userPrompts: PromptItem[]): PromptItem[] {
-  return userPrompts.length > 0 ? userPrompts : [createStarterPrompt()];
-}
-
 function getValidatedDraft(draft: PromptDraft): PromptDraft {
   const normalizedDraft = normalizePromptDraft(draft);
   const errors = validatePromptDraft(normalizedDraft);
@@ -111,8 +106,7 @@ function getValidatedDraft(draft: PromptDraft): PromptDraft {
 }
 
 export async function getPrompts(): Promise<PromptItem[]> {
-  const userPrompts = await readUserPrompts();
-  return toLauncherPrompts(userPrompts);
+  return readUserPrompts();
 }
 
 export async function getUserPrompts(): Promise<PromptItem[]> {
@@ -193,7 +187,7 @@ export function subscribeToPrompts(
 
     void normalizeUserPrompts(changes[PROMPTS_STORAGE_KEY]?.newValue)
       .then((userPrompts) => {
-        listener(toLauncherPrompts(userPrompts));
+        listener(userPrompts);
       })
       .catch((error) => {
         console.error('[promptit] Failed to react to prompt storage changes.', error);

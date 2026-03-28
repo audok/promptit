@@ -1,10 +1,14 @@
 import { ChatGPTAdapter } from '../adapters/chatgpt';
 import { cloneTriggerContext } from '../adapters/base';
-import { isStarterPrompt, type PromptItem } from '../prompt/schema';
+import { type PromptItem } from '../prompt/schema';
 import { getPrompts, subscribeToPrompts } from '../prompt/storage';
 import { OPEN_OPTIONS_PAGE_MESSAGE } from '../runtime/messages';
+import {
+  buildLauncherItems,
+  type LauncherItem,
+} from './launcher-items';
 import { getPopupKeyAction } from './keyboard';
-import { PromptPopup, type PopupRenderItem } from './popup';
+import { PromptPopup } from './popup';
 import {
   clampActiveCell,
   createSessionState,
@@ -17,7 +21,7 @@ import {
   type PopupActiveCell,
   type PopupSessionState,
 } from './session';
-import { showCopyToast } from './toast';
+import { showToast } from './toast';
 import { armTrigger, clearTriggerArm } from './trigger';
 
 declare global {
@@ -164,14 +168,12 @@ function bootstrapPromptit(): void {
           return;
         }
 
-        const popupItem = toPopupRenderItem(selectedItem);
-
         if (session.activeCell?.column === 'copy') {
-          void handleCopy(popupItem, session, popup);
+          void handleCopy(selectedItem, session, popup);
           return;
         }
 
-        void handleSelection(popupItem, session, popup);
+        void handleSelection(selectedItem, session, popup);
       }
     },
     true,
@@ -288,7 +290,8 @@ async function resolveTriggerCheck(
     return;
   }
 
-  const items = await getPrompts();
+  const userPrompts = await getPrompts();
+  const items = buildLauncherItems(userPrompts);
 
   if (requestId !== session.triggerRequestId || isSessionClosing(session)) {
     return;
@@ -319,7 +322,7 @@ async function resolveTriggerCheck(
 }
 
 async function handleSelection(
-  item: PopupRenderItem,
+  item: LauncherItem,
   session: PopupSessionState,
   popup: PromptPopup,
 ): Promise<void> {
@@ -337,37 +340,45 @@ async function handleSelection(
     return;
   }
 
-  session.status = 'closing';
-  session.isInternalChange = true;
-  popup.destroy();
-  session.disconnectInputObserver?.();
+  session.isBusy = true;
+  popup.setBusy(true);
 
   try {
     if (item.action === 'open-options') {
-      ensureAdapterMutation(
-        adapter.removeTriggerText(activeInput, triggerContext),
-        'remove trigger before opening options',
-      );
-      await requestOpenOptionsPage();
-    } else {
-      adapter.focusInput(activeInput);
-      ensureAdapterMutation(
-        adapter.insertPrompt(activeInput, item.content, triggerContext),
-        'insert prompt content',
-      );
+      await performOpenOptionsAction(session, popup);
+      return;
     }
+
+    adapter.focusInput(activeInput);
+    session.isInternalChange = true;
+    ensureAdapterMutation(
+      adapter.insertPrompt(activeInput, item.content, triggerContext),
+      'insert prompt content',
+    );
+
+    await closePopup(session, popup, 'insert', false);
   } catch (error) {
     console.error('[promptit] Failed to handle popup selection.', error);
+    session.isBusy = false;
+    popup.setBusy(false);
+    if (activeInput.isConnected) {
+      adapter.focusInput(activeInput);
+    }
+    showToast(
+      error instanceof Error
+        ? error.message
+        : '프롬프트 처리 중 오류가 발생했습니다.',
+      'error',
+    );
   } finally {
     queueMicrotask(() => {
       session.isInternalChange = false;
     });
-    resetSessionState(session);
   }
 }
 
 async function handleCopy(
-  item: PopupRenderItem,
+  item: LauncherItem,
   session: PopupSessionState,
   popup: PromptPopup,
 ): Promise<void> {
@@ -384,13 +395,21 @@ async function handleCopy(
     }
 
     await navigator.clipboard.writeText(item.content);
-    showCopyToast('프롬프트를 복사했습니다.');
-    await closePopup(session, popup, 'copy', true);
+    const didClose = await closePopup(session, popup, 'copy', true);
+
+    if (!didClose) {
+      return;
+    }
+
+    showToast('프롬프트를 복사했습니다.');
   } catch (error) {
     console.error('[promptit] Failed to copy prompt content.', error);
     session.isBusy = false;
     popup.setBusy(false);
-    showCopyToast('프롬프트 복사에 실패했습니다.', 'error');
+    if (session.activeInput?.isConnected) {
+      adapter.focusInput(session.activeInput);
+    }
+    showToast('프롬프트 복사에 실패했습니다.', 'error');
   }
 }
 
@@ -402,8 +421,7 @@ async function openOptionsFromPopup(
     return;
   }
 
-  await closePopup(session, popup, 'open-options', true);
-  await requestOpenOptionsPage();
+  await performOpenOptionsAction(session, popup);
 }
 
 async function closePopup(
@@ -411,9 +429,9 @@ async function closePopup(
   popup: PromptPopup,
   reason: CloseReason,
   cleanupTrigger: boolean,
-): Promise<void> {
+): Promise<boolean> {
   if (session.status === 'idle') {
-    return;
+    return false;
   }
 
   clearTriggerArm(session);
@@ -425,10 +443,9 @@ async function closePopup(
     ? cloneTriggerContext(session.triggerContext)
     : null;
 
-  popup.destroy();
-  session.disconnectInputObserver?.();
-
   if (cleanupTrigger && activeInput && triggerContext) {
+    session.isBusy = true;
+    popup.setBusy(true);
     session.isInternalChange = true;
 
     try {
@@ -438,6 +455,15 @@ async function closePopup(
       );
     } catch (error) {
       console.error('[promptit] Failed to clean up trigger text.', error);
+      showToast('입력창 정리에 실패했습니다.', 'error');
+      if (activeInput && activeInput.isConnected) {
+        adapter.focusInput(activeInput);
+      }
+      session.isBusy = false;
+      popup.setBusy(false);
+      session.status = 'open';
+      session.closeReason = null;
+      return false;
     } finally {
       queueMicrotask(() => {
         session.isInternalChange = false;
@@ -445,17 +471,45 @@ async function closePopup(
     }
   }
 
+  popup.destroy();
+  session.disconnectInputObserver?.();
   resetSessionState(session);
+  return true;
 }
 
-function toPopupRenderItem(item: PromptItem): PopupRenderItem {
-  return {
-    ...item,
-    action: isStarterPrompt(item) ? 'open-options' : 'insert',
-  };
+async function performOpenOptionsAction(
+  session: PopupSessionState,
+  popup: PromptPopup,
+): Promise<boolean> {
+  const activeInput = session.activeInput;
+  const triggerContext = session.triggerContext
+    ? cloneTriggerContext(session.triggerContext)
+    : null;
+
+  session.isBusy = true;
+  popup.setBusy(true);
+
+  try {
+    await requestOpenOptionsPage();
+    return await closePopup(
+      session,
+      popup,
+      'open-options',
+      Boolean(activeInput && triggerContext),
+    );
+  } catch (error) {
+    console.error('[promptit] Failed to open options page.', error);
+    session.isBusy = false;
+    popup.setBusy(false);
+    if (activeInput?.isConnected) {
+      adapter.focusInput(activeInput);
+    }
+    showToast('설정 페이지를 열지 못했습니다.', 'error');
+    return false;
+  }
 }
 
-function getSelectedPopupItem(session: PopupSessionState): PromptItem | null {
+function getSelectedPopupItem(session: PopupSessionState): LauncherItem | null {
   if (!session.activeCell) {
     return null;
   }
@@ -464,8 +518,8 @@ function getSelectedPopupItem(session: PopupSessionState): PromptItem | null {
 }
 
 function resolveNextActiveCell(
-  previousItems: PromptItem[],
-  nextItems: PromptItem[],
+  previousItems: LauncherItem[],
+  nextItems: LauncherItem[],
   currentActiveCell: PopupActiveCell | null,
 ): PopupActiveCell | null {
   if (currentActiveCell) {
@@ -487,13 +541,15 @@ function resolveNextActiveCell(
 }
 
 function handlePromptStorageChange(
-  nextItems: PromptItem[],
+  nextUserPrompts: PromptItem[],
   session: PopupSessionState,
   popup: PromptPopup,
 ): void {
   if (session.status !== 'open' || !session.activeInput || !session.activeInput.isConnected) {
     return;
   }
+
+  const nextItems = buildLauncherItems(nextUserPrompts);
 
   const nextActiveCell = resolveNextActiveCell(
     session.items,

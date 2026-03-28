@@ -1,5 +1,8 @@
 import type { TriggerContext } from '../adapters/base';
-import { isStarterPrompt, type PromptItem } from '../prompt/schema';
+import {
+  isPromptLauncherItem,
+  type LauncherItem,
+} from './launcher-items';
 
 export type SessionStatus = 'idle' | 'armed' | 'open' | 'closing';
 export type ActiveCellColumn = 'title' | 'copy';
@@ -26,7 +29,7 @@ export type PopupSessionState = {
   status: SessionStatus;
   activeInput: HTMLElement | null;
   triggerContext: TriggerContext | null;
-  items: PromptItem[];
+  items: LauncherItem[];
   activeCell: PopupActiveCell | null;
   closeReason: CloseReason | null;
   armedTimer: number | null;
@@ -62,18 +65,18 @@ export function setActiveCell(
 }
 
 function canUseColumn(
-  item: PromptItem | undefined,
+  item: LauncherItem | undefined,
   column: ActiveCellColumn,
 ): boolean {
   if (!item) {
     return false;
   }
 
-  return column === 'title' || !isStarterPrompt(item);
+  return column === 'title' || isPromptLauncherItem(item);
 }
 
 export function getInitialActiveCell(
-  items: PromptItem[],
+  items: LauncherItem[],
 ): PopupActiveCell | null {
   return items.length > 0
     ? {
@@ -84,7 +87,7 @@ export function getInitialActiveCell(
 }
 
 export function clampActiveCell(
-  items: PromptItem[],
+  items: LauncherItem[],
   preferred: PopupActiveCell | null,
 ): PopupActiveCell | null {
   if (items.length === 0) {
@@ -113,7 +116,7 @@ export function clampActiveCell(
 }
 
 export function moveActiveCell(
-  items: PromptItem[],
+  items: LauncherItem[],
   current: PopupActiveCell | null,
   direction: ActiveCellDirection,
 ): PopupActiveCell | null {

@@ -77,7 +77,10 @@ function ensureToastHost(): {
   return { content };
 }
 
-export function showCopyToast(message: string, variant: 'success' | 'error' = 'success'): void {
+export function showToast(
+  message: string,
+  variant: 'success' | 'error' = 'success',
+): void {
   const { content } = ensureToastHost();
   content.textContent = message;
   content.dataset.variant = variant;
@@ -94,4 +97,8 @@ export function showCopyToast(message: string, variant: 'success' | 'error' = 's
   hideTimer = window.setTimeout(() => {
     content.classList.remove('is-visible');
   }, 1800);
+}
+
+export function showCopyToast(message: string, variant: 'success' | 'error' = 'success'): void {
+  showToast(message, variant);
 }
