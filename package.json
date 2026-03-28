@@ -4,10 +4,13 @@
   "description": "Slash-command prompt launcher for ChatGPT",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "build:test": "VITE_PROMPTIT_TEST_MODE=1 vite build",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test",
+    "test:e2e:headed": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --headed",
+    "test:e2e:ui": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --ui"
   },
   "keywords": [],
   "author": "",
@@ -21,6 +24,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.4.0",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.2.2",
     "@types/chrome": "^0.1.38",
     "@types/node": "^25.5.0",

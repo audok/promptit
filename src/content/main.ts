@@ -31,10 +31,21 @@ declare global {
 }
 
 const adapter = new ChatGPTAdapter();
+const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
+const TEST_READY_ATTRIBUTE = 'data-promptit-ready';
 
 if (adapter.canHandle(window.location.href) && !window.__promptitContentInitialized__) {
   window.__promptitContentInitialized__ = true;
   bootstrapPromptit();
+  markTestReady();
+}
+
+function markTestReady(): void {
+  if (!IS_TEST_MODE) {
+    return;
+  }
+
+  document.documentElement.setAttribute(TEST_READY_ATTRIBUTE, 'true');
 }
 
 async function requestOpenOptionsPage(): Promise<void> {

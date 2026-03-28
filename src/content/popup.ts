@@ -147,6 +147,7 @@ export class PromptPopup {
   private mount(): void {
     this.host = document.createElement('div');
     this.host.setAttribute('data-promptit-popup-host', 'true');
+    this.host.setAttribute('data-testid', 'promptit-popup-host');
     this.shadowRoot = this.host.attachShadow({ mode: 'open' });
     document.documentElement.append(this.host);
 
@@ -229,7 +230,11 @@ export class PromptPopup {
     this.shadowRoot.innerHTML = `
       <style>${popupStyles}</style>
       <div class="promptit-root">
-        <section class="promptit-card${this.state.isBusy ? ' is-busy' : ''}" aria-label="Promptit prompt picker">
+        <section
+          class="promptit-card${this.state.isBusy ? ' is-busy' : ''}"
+          aria-label="Promptit prompt picker"
+          data-testid="promptit-popup"
+        >
           <header class="promptit-header">
             <div class="promptit-header-label">
               <span class="promptit-header-slash">/</span>
@@ -244,7 +249,11 @@ export class PromptPopup {
               Exit
             </button>
           </header>
-          <div class="promptit-list" data-role="prompt-list"></div>
+          <div
+            class="promptit-list"
+            data-role="prompt-list"
+            data-testid="promptit-popup-list"
+          ></div>
           <footer class="promptit-footer">
             <span class="promptit-footer-label">${savedCountLabel}</span>
             <button
@@ -455,6 +464,7 @@ function createLauncherRow(
     ? item.id
     : EMPTY_STATE_LAUNCHER_ITEM_ID;
   row.dataset.itemKind = item.kind;
+  row.dataset.testid = 'promptit-row';
 
   const leadingButton = document.createElement('button');
   leadingButton.type = 'button';
@@ -477,6 +487,7 @@ function createLauncherRow(
   titleButton.dataset.role = 'prompt-cell';
   titleButton.dataset.rowIndex = String(index);
   titleButton.dataset.column = 'title';
+  titleButton.dataset.testid = 'promptit-title-cell';
   titleButton.tabIndex = -1;
   titleButton.ariaLabel = isPromptLauncherItem(item)
     ? `Insert prompt: ${item.title}`
@@ -508,6 +519,7 @@ function createLauncherRow(
     copyButton.dataset.role = 'prompt-cell';
     copyButton.dataset.rowIndex = String(index);
     copyButton.dataset.column = 'copy';
+    copyButton.dataset.testid = 'promptit-copy-cell';
     copyButton.ariaLabel = `Copy prompt: ${item.title}`;
   }
 

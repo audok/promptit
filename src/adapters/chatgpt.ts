@@ -6,6 +6,11 @@ import {
 
 const CHATGPT_URL_PATTERN =
   /^https:\/\/(?:chatgpt\.com|chat\.openai\.com)(?:\/|$)/;
+const TEST_FIXTURE_URL_PATTERN =
+  /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/;
+const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
+const TEST_TRIGGER_RESULT_ATTRIBUTE = 'data-promptit-trigger-result';
+const TEST_TRIGGER_TEXT_ATTRIBUTE = 'data-promptit-trigger-text';
 
 const CHATGPT_INPUT_SELECTORS = [
   'textarea#prompt-textarea',
@@ -17,7 +22,11 @@ const CHATGPT_INPUT_SELECTORS = [
   'div#prompt-textarea.ProseMirror[contenteditable="true"]',
   'div[data-testid="prompt-textarea"].ProseMirror[contenteditable="true"]',
 ];
-const CHATGPT_INPUT_SELECTOR = CHATGPT_INPUT_SELECTORS.join(', ');
+const TEST_FIXTURE_INPUT_SELECTORS = ['#editor[contenteditable="true"]'];
+const INPUT_SELECTORS = IS_TEST_MODE
+  ? [...CHATGPT_INPUT_SELECTORS, ...TEST_FIXTURE_INPUT_SELECTORS]
+  : CHATGPT_INPUT_SELECTORS;
+const CHATGPT_INPUT_SELECTOR = INPUT_SELECTORS.join(', ');
 
 function asElement(node: EventTarget | null): HTMLElement | null {
   return node instanceof HTMLElement ? node : null;
@@ -101,7 +110,24 @@ function getTextBeforeCaret(input: HTMLElement, range: Range): string {
   const preCaretRange = range.cloneRange();
   preCaretRange.selectNodeContents(input);
   preCaretRange.setEnd(range.endContainer, range.endOffset);
-  return preCaretRange.toString();
+  const fragment = preCaretRange.cloneContents();
+  return fragment.textContent ?? preCaretRange.toString();
+}
+
+function normalizeTriggerText(text: string): string {
+  return text.replace(/\u00A0/g, ' ');
+}
+
+function setTestTriggerDebug(result: string, text: string): void {
+  if (!IS_TEST_MODE) {
+    return;
+  }
+
+  document.documentElement.setAttribute(TEST_TRIGGER_RESULT_ATTRIBUTE, result);
+  document.documentElement.setAttribute(
+    TEST_TRIGGER_TEXT_ATTRIBUTE,
+    encodeURIComponent(text),
+  );
 }
 
 function resolveTextPosition(
@@ -230,7 +256,7 @@ function replaceContenteditableRange(
 
 export class ChatGPTAdapter implements BaseAdapter {
   canHandle(url: string): boolean {
-    return CHATGPT_URL_PATTERN.test(url);
+    return CHATGPT_URL_PATTERN.test(url) || (IS_TEST_MODE && TEST_FIXTURE_URL_PATTERN.test(url));
   }
 
   findActiveInput(): HTMLElement | null {
@@ -240,7 +266,7 @@ export class ChatGPTAdapter implements BaseAdapter {
       return activeElement;
     }
 
-    for (const selector of CHATGPT_INPUT_SELECTORS) {
+    for (const selector of INPUT_SELECTORS) {
       const candidate = document.querySelector<HTMLElement>(selector);
 
       if (isComposerInput(candidate)) {
@@ -282,6 +308,7 @@ export class ChatGPTAdapter implements BaseAdapter {
         input.selectionStart !== input.selectionEnd ||
         input.selectionStart < 2
       ) {
+        setTestTriggerDebug('textarea-invalid-selection', input.value);
         return null;
       }
 
@@ -289,8 +316,11 @@ export class ChatGPTAdapter implements BaseAdapter {
       const triggerSlice = input.value.slice(caretOffset - 2, caretOffset);
 
       if (triggerSlice !== '/ ') {
+        setTestTriggerDebug('textarea-no-match', triggerSlice);
         return null;
       }
+
+       setTestTriggerDebug('textarea-match', triggerSlice);
 
       return {
         kind: 'text',
@@ -306,12 +336,15 @@ export class ChatGPTAdapter implements BaseAdapter {
     const selectionRange = getCollapsedSelectionRange(input);
 
     if (!selectionRange) {
+      setTestTriggerDebug('contenteditable-no-selection', '');
       return null;
     }
 
     const textBeforeCaret = getTextBeforeCaret(input, selectionRange);
+    const normalizedTextBeforeCaret = normalizeTriggerText(textBeforeCaret);
 
-    if (!textBeforeCaret.endsWith('/ ')) {
+    if (!normalizedTextBeforeCaret.endsWith('/ ')) {
+      setTestTriggerDebug('contenteditable-no-match', textBeforeCaret);
       return null;
     }
 
@@ -320,8 +353,11 @@ export class ChatGPTAdapter implements BaseAdapter {
     const endPosition = resolveTextPosition(input, caretOffset);
 
     if (!startPosition || !endPosition) {
+      setTestTriggerDebug('contenteditable-range-resolution-failed', textBeforeCaret);
       return null;
     }
+
+    setTestTriggerDebug('contenteditable-match', textBeforeCaret);
 
     const range = document.createRange();
     range.setStart(startPosition.node, startPosition.offset);
