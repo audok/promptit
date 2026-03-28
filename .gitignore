@@ -140,3 +140,6 @@ vite.config.ts.timestamp-*
 
 # Codex-only directory
 _codex/
+
+# Local planning docs
+.agent/
