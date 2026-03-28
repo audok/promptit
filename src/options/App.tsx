@@ -281,15 +281,15 @@ export default function App() {
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-4">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
-                Promptit Sprint 2
+                Promptit Sprint 3
               </p>
               <div className="space-y-3">
                 <h1 className="text-4xl font-semibold tracking-tight text-stone-900">
-                  프롬프트를 저장하고 바로 실행하세요.
+                  프롬프트를 저장하고 바로 불러오세요.
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-stone-600">
                   이 페이지에서 프롬프트를 만들고 수정하면 ChatGPT의 Promptit
-                  팝업에 즉시 반영됩니다. 기본 정렬은{' '}
+                  팝업에 즉시 반영됩니다. 목록은{' '}
                   <span className="font-semibold">sortOrder</span> 오름차순입니다.
                 </p>
               </div>
@@ -298,12 +298,18 @@ export default function App() {
             <div className="grid gap-3 sm:grid-cols-3">
               <MetricCard label="저장된 프롬프트" value={`${prompts.length}`} />
               <MetricCard
-                label="편집 모드"
+                label="편집 상태"
                 value={isEditing ? '수정 중' : '새로 작성'}
               />
               <MetricCard
                 label="상태"
-                value={loadState === 'error' ? '오류' : isSaving ? '저장 중' : '준비됨'}
+                value={
+                  loadState === 'error'
+                    ? '불러오기 실패'
+                    : isSaving
+                      ? '저장 중'
+                      : '대기 중'
+                }
               />
             </div>
           </div>
@@ -314,7 +320,7 @@ export default function App() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                  Prompt Library
+                  프롬프트 목록
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-stone-900">
                   저장된 프롬프트
@@ -330,21 +336,21 @@ export default function App() {
                 }}
                 disabled={isSaving}
               >
-                New Prompt
+                새 프롬프트
               </button>
             </div>
 
             <div className="mt-5 space-y-3">
               {loadState === 'loading' ? (
-                <EmptyPanel message="저장소를 불러오는 중입니다." />
+                <EmptyPanel message="저장된 프롬프트를 불러오는 중입니다." />
               ) : null}
 
               {loadState === 'error' ? (
-                <EmptyPanel message="저장소를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요." />
+                <EmptyPanel message="저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요." />
               ) : null}
 
               {loadState === 'ready' && prompts.length === 0 ? (
-                <EmptyPanel message="아직 저장된 프롬프트가 없습니다. 오른쪽 폼에서 첫 프롬프트를 추가하세요." />
+                <EmptyPanel message="아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요." />
               ) : null}
 
               {loadState === 'ready' && prompts.length > 0 ? (
@@ -432,7 +438,7 @@ export default function App() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                  Editor
+                  편집기
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-stone-900">
                   {isEditing ? '프롬프트 수정' : '새 프롬프트 추가'}
@@ -449,14 +455,14 @@ export default function App() {
                   }}
                   disabled={isSaving}
                 >
-                  Cancel Edit
+                  편집 취소
                 </button>
               ) : null}
             </div>
 
             <form className="mt-5 space-y-5" onSubmit={(event) => void handleSubmit(event)}>
               <Field
-                label="Title"
+                label="제목"
                 error={errors.title}
                 hint="1자 이상 40자 이하"
               >
@@ -474,7 +480,7 @@ export default function App() {
               </Field>
 
               <Field
-                label="Content"
+                label="본문"
                 error={errors.content}
                 hint="실제로 삽입할 프롬프트 본문"
               >
@@ -490,7 +496,7 @@ export default function App() {
               </Field>
 
               <Field
-                label="Sort Order"
+                label="정렬 순서"
                 error={errors.sortOrder}
                 hint="작을수록 위에 노출됩니다."
               >
@@ -524,7 +530,7 @@ export default function App() {
                   className="rounded-full bg-stone-900 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-500"
                   disabled={isSaving || loadState === 'error'}
                 >
-                  {isSaving ? 'Saving...' : isEditing ? 'Update Prompt' : 'Save Prompt'}
+                  {isSaving ? '저장 중...' : isEditing ? '프롬프트 수정' : '프롬프트 저장'}
                 </button>
 
                 {isEditing ? (
@@ -538,7 +544,7 @@ export default function App() {
                     }}
                     disabled={isSaving || !activePrompt}
                   >
-                    Delete Prompt
+                    프롬프트 삭제
                   </button>
                 ) : null}
               </div>
