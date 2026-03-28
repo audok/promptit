@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+zero_oid="0000000000000000000000000000000000000000"
+blocked_files=""
+
+append_blocked_files() {
+  local input="$1"
+
+  if [[ -z "$input" ]]; then
+    return
+  fi
+
+  if [[ -z "$blocked_files" ]]; then
+    blocked_files="$input"
+    return
+  fi
+
+  blocked_files+=$'\n'"$input"
+}
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  if [[ -z "${local_ref:-}" || "$local_oid" == "$zero_oid" ]]; then
+    continue
+  fi
+
+  if [[ "$remote_oid" == "$zero_oid" ]]; then
+    commit_list="$(git rev-list "$local_oid" --not --remotes)"
+  else
+    commit_list="$(git rev-list "${remote_oid}..${local_oid}")"
+  fi
+
+  if [[ -z "$commit_list" ]]; then
+    continue
+  fi
+
+  while IFS= read -r commit; do
+    [[ -z "$commit" ]] && continue
+
+    commit_blocked_files="$(
+      git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -m "$commit" \
+        | awk -F/ '$NF ~ /^__/ { print }'
+    )"
+
+    append_blocked_files "$commit_blocked_files"
+  done <<< "$commit_list"
+done
+
+if [[ -z "$blocked_files" ]]; then
+  exit 0
+fi
+
+echo "Push blocked: commits being pushed include files starting with '__'."
+echo "Remove, rename, or rewrite these paths before pushing:"
+printf '%s\n' "$blocked_files" | awk 'NF' | sort -u
+exit 1
