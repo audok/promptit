@@ -1,15 +1,20 @@
 import { ChatGPTAdapter } from '../adapters/chatgpt';
 import { cloneTriggerContext } from '../adapters/base';
 import { isStarterPrompt, type PromptItem } from '../prompt/schema';
+import { getPrompts, subscribeToPrompts } from '../prompt/storage';
 import { OPEN_OPTIONS_PAGE_MESSAGE } from '../runtime/messages';
-import { getPrompts } from '../prompt/storage';
 import { getPopupKeyAction } from './keyboard';
 import { PromptPopup, type PopupRenderItem } from './popup';
 import {
+  clampActiveCell,
   createSessionState,
+  getInitialActiveCell,
+  isSameActiveCell,
+  moveActiveCell,
   resetSessionState,
-  setActiveIndex,
+  setActiveCell,
   type CloseReason,
+  type PopupActiveCell,
   type PopupSessionState,
 } from './session';
 import { showCopyToast } from './toast';
@@ -47,9 +52,13 @@ function bootstrapPromptit(): void {
     onOpenOptions: () => {
       void openOptionsFromPopup(session, popup);
     },
-    onActiveIndexChange: (nextIndex) => {
-      setActiveIndex(session, nextIndex);
+    onActiveCellChange: (nextActiveCell) => {
+      setActiveCell(session, nextActiveCell);
     },
+  });
+
+  subscribeToPrompts((nextItems) => {
+    handlePromptStorageChange(nextItems, session, popup);
   });
 
   document.addEventListener(
@@ -132,14 +141,37 @@ function bootstrapPromptit(): void {
         return;
       }
 
+      if (action.type === 'move-active') {
+        const nextActiveCell = moveActiveCell(
+          session.items,
+          session.activeCell,
+          action.direction,
+        );
+
+        if (isSameActiveCell(nextActiveCell, session.activeCell)) {
+          return;
+        }
+
+        setActiveCell(session, nextActiveCell);
+        popup.setActiveCell(nextActiveCell);
+        return;
+      }
+
       if (action.type === 'select-active') {
-        const selectedItem = session.items[session.activeIndex];
+        const selectedItem = getSelectedPopupItem(session);
 
         if (!selectedItem) {
           return;
         }
 
-        void handleSelection(toPopupRenderItem(selectedItem), session, popup);
+        const popupItem = toPopupRenderItem(selectedItem);
+
+        if (session.activeCell?.column === 'copy') {
+          void handleCopy(popupItem, session, popup);
+          return;
+        }
+
+        void handleSelection(popupItem, session, popup);
       }
     },
     true,
@@ -182,31 +214,22 @@ function bootstrapPromptit(): void {
   );
 
   window.addEventListener(
-    'blur',
-    () => {
-      if (session.status === 'open' && !session.isBusy) {
-        void closePopup(session, popup, 'blur', true);
-      }
-    },
-    true,
-  );
-
-  document.addEventListener(
-    'visibilitychange',
-    () => {
-      if (document.hidden && session.status === 'open' && !session.isBusy) {
-        void closePopup(session, popup, 'blur', true);
-      }
-    },
-    true,
-  );
-
-  window.addEventListener(
     'scroll',
     () => {
-      if (session.status === 'open' && !session.isBusy) {
-        void closePopup(session, popup, 'scroll', true);
+      if (session.status !== 'open' || session.isBusy) {
+        return;
       }
+
+      if (!session.activeInput || !session.activeInput.isConnected) {
+        void closePopup(session, popup, 'dom-removed', true);
+        return;
+      }
+
+      popup.update(
+        session.items,
+        session.activeCell,
+        adapter.getPopupAnchorRect(session.activeInput),
+      );
     },
     true,
   );
@@ -276,9 +299,9 @@ async function resolveTriggerCheck(
   session.activeInput = input;
   session.triggerContext = cloneTriggerContext(triggerContext);
   session.items = items;
-  session.activeIndex = 0;
+  session.activeCell = getInitialActiveCell(items);
 
-  popup.show(items, session.activeIndex, adapter.getPopupAnchorRect(input));
+  popup.show(items, session.activeCell, adapter.getPopupAnchorRect(input));
 
   const observer = new MutationObserver(() => {
     if (session.status === 'open' && session.activeInput && !session.activeInput.isConnected) {
@@ -362,7 +385,7 @@ async function handleCopy(
 
     await navigator.clipboard.writeText(item.content);
     showCopyToast('프롬프트를 복사했습니다.');
-    await closePopup(session, popup, 'copy', false);
+    await closePopup(session, popup, 'copy', true);
   } catch (error) {
     console.error('[promptit] Failed to copy prompt content.', error);
     session.isBusy = false;
@@ -430,6 +453,62 @@ function toPopupRenderItem(item: PromptItem): PopupRenderItem {
     ...item,
     action: isStarterPrompt(item) ? 'open-options' : 'insert',
   };
+}
+
+function getSelectedPopupItem(session: PopupSessionState): PromptItem | null {
+  if (!session.activeCell) {
+    return null;
+  }
+
+  return session.items[session.activeCell.rowIndex] ?? null;
+}
+
+function resolveNextActiveCell(
+  previousItems: PromptItem[],
+  nextItems: PromptItem[],
+  currentActiveCell: PopupActiveCell | null,
+): PopupActiveCell | null {
+  if (currentActiveCell) {
+    const currentItem = previousItems[currentActiveCell.rowIndex];
+
+    if (currentItem) {
+      const nextIndex = nextItems.findIndex((item) => item.id === currentItem.id);
+
+      if (nextIndex >= 0) {
+        return clampActiveCell(nextItems, {
+          rowIndex: nextIndex,
+          column: currentActiveCell.column,
+        });
+      }
+    }
+  }
+
+  return clampActiveCell(nextItems, currentActiveCell);
+}
+
+function handlePromptStorageChange(
+  nextItems: PromptItem[],
+  session: PopupSessionState,
+  popup: PromptPopup,
+): void {
+  if (session.status !== 'open' || !session.activeInput || !session.activeInput.isConnected) {
+    return;
+  }
+
+  const nextActiveCell = resolveNextActiveCell(
+    session.items,
+    nextItems,
+    session.activeCell,
+  );
+
+  session.items = nextItems;
+  session.activeCell = nextActiveCell;
+
+  popup.update(
+    nextItems,
+    nextActiveCell,
+    adapter.getPopupAnchorRect(session.activeInput),
+  );
 }
 
 function isSessionClosing(session: PopupSessionState): boolean {

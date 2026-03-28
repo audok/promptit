@@ -1,7 +1,13 @@
 import type { TriggerContext } from '../adapters/base';
-import type { PromptItem } from '../prompt/schema';
+import { isStarterPrompt, type PromptItem } from '../prompt/schema';
 
 export type SessionStatus = 'idle' | 'armed' | 'open' | 'closing';
+export type ActiveCellColumn = 'title' | 'copy';
+export type ActiveCellDirection = 'up' | 'down' | 'left' | 'right';
+export type PopupActiveCell = {
+  rowIndex: number;
+  column: ActiveCellColumn;
+};
 
 export type CloseReason =
   | 'escape'
@@ -21,7 +27,7 @@ export type PopupSessionState = {
   activeInput: HTMLElement | null;
   triggerContext: TriggerContext | null;
   items: PromptItem[];
-  activeIndex: number;
+  activeCell: PopupActiveCell | null;
   closeReason: CloseReason | null;
   armedTimer: number | null;
   triggerRequestId: number;
@@ -37,7 +43,7 @@ export function createSessionState(): PopupSessionState {
     activeInput: null,
     triggerContext: null,
     items: [],
-    activeIndex: 0,
+    activeCell: null,
     closeReason: null,
     armedTimer: null,
     triggerRequestId: 0,
@@ -48,11 +54,110 @@ export function createSessionState(): PopupSessionState {
   };
 }
 
-export function setActiveIndex(
+export function setActiveCell(
   session: PopupSessionState,
-  nextIndex: number,
+  nextCell: PopupActiveCell | null,
 ): void {
-  session.activeIndex = nextIndex;
+  session.activeCell = nextCell;
+}
+
+function canUseColumn(
+  item: PromptItem | undefined,
+  column: ActiveCellColumn,
+): boolean {
+  if (!item) {
+    return false;
+  }
+
+  return column === 'title' || !isStarterPrompt(item);
+}
+
+export function getInitialActiveCell(
+  items: PromptItem[],
+): PopupActiveCell | null {
+  return items.length > 0
+    ? {
+        rowIndex: 0,
+        column: 'title',
+      }
+    : null;
+}
+
+export function clampActiveCell(
+  items: PromptItem[],
+  preferred: PopupActiveCell | null,
+): PopupActiveCell | null {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const fallbackCell = getInitialActiveCell(items);
+
+  if (!preferred) {
+    return fallbackCell;
+  }
+
+  const rowIndex = Math.min(Math.max(preferred.rowIndex, 0), items.length - 1);
+  const item = items[rowIndex];
+
+  if (!item) {
+    return fallbackCell;
+  }
+
+  const column = canUseColumn(item, preferred.column) ? preferred.column : 'title';
+
+  return {
+    rowIndex,
+    column,
+  };
+}
+
+export function moveActiveCell(
+  items: PromptItem[],
+  current: PopupActiveCell | null,
+  direction: ActiveCellDirection,
+): PopupActiveCell | null {
+  const baseCell = clampActiveCell(items, current);
+
+  if (!baseCell) {
+    return null;
+  }
+
+  if (direction === 'left') {
+    return {
+      ...baseCell,
+      column: 'title',
+    };
+  }
+
+  if (direction === 'right') {
+    return clampActiveCell(items, {
+      ...baseCell,
+      column: 'copy',
+    });
+  }
+
+  const rowDelta = direction === 'up' ? -1 : 1;
+
+  return clampActiveCell(items, {
+    rowIndex: baseCell.rowIndex + rowDelta,
+    column: baseCell.column,
+  });
+}
+
+export function isSameActiveCell(
+  left: PopupActiveCell | null,
+  right: PopupActiveCell | null,
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return left.rowIndex === right.rowIndex && left.column === right.column;
 }
 
 export function resetSessionState(session: PopupSessionState): void {
@@ -65,7 +170,7 @@ export function resetSessionState(session: PopupSessionState): void {
   session.activeInput = null;
   session.triggerContext = null;
   session.items = [];
-  session.activeIndex = 0;
+  session.activeCell = null;
   session.closeReason = null;
   session.armedTimer = null;
   session.isBusy = false;

@@ -7,6 +7,16 @@ export type PromptItem = {
   updatedAt: string;
 };
 
+export type PromptDraft = {
+  title: string;
+  content: string;
+  sortOrder: number;
+};
+
+export type PromptDraftErrors = Partial<
+  Record<keyof PromptDraft, string>
+>;
+
 export const PROMPTS_STORAGE_KEY = 'prompts';
 export const STARTER_PROMPT_ID = '__promptit_starter_prompt__';
 export const STARTER_PROMPT_TITLE = '설정에서 프롬프트를 저장해보세요!';
@@ -24,6 +34,40 @@ export function createStarterPrompt(now = new Date()): PromptItem {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+}
+
+export function normalizePromptDraft(draft: PromptDraft): PromptDraft {
+  return {
+    title: draft.title.trim(),
+    content: draft.content,
+    sortOrder: Math.trunc(draft.sortOrder),
+  };
+}
+
+export function validatePromptDraft(
+  draft: PromptDraft,
+): PromptDraftErrors {
+  const errors: PromptDraftErrors = {};
+
+  if (draft.title.trim().length < 1 || draft.title.trim().length > 40) {
+    errors.title = '제목은 1자 이상 40자 이하로 입력해주세요.';
+  }
+
+  if (draft.content.trim().length < 1) {
+    errors.content = '본문은 비워둘 수 없습니다.';
+  }
+
+  if (!Number.isInteger(draft.sortOrder)) {
+    errors.sortOrder = '정렬 순서는 정수여야 합니다.';
+  }
+
+  return errors;
+}
+
+export function hasPromptDraftErrors(
+  errors: PromptDraftErrors,
+): boolean {
+  return Object.values(errors).some(Boolean);
 }
 
 export function isPromptItem(value: unknown): value is PromptItem {

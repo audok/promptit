@@ -1,5 +1,6 @@
-import popupStyles from './popup.css?inline';
 import { isStarterPrompt, type PromptItem } from '../prompt/schema';
+import type { ActiveCellColumn, PopupActiveCell } from './session';
+import popupStyles from './popup.css?inline';
 
 export type PopupItemAction = 'insert' | 'open-options';
 
@@ -12,12 +13,12 @@ type PopupOptions = {
   onCopy: (item: PopupRenderItem) => void;
   onExit: () => void;
   onOpenOptions: () => void;
-  onActiveIndexChange: (index: number) => void;
+  onActiveCellChange: (activeCell: PopupActiveCell | null) => void;
 };
 
 type RenderState = {
   items: PopupRenderItem[];
-  activeIndex: number;
+  activeCell: PopupActiveCell | null;
   isBusy: boolean;
 };
 
@@ -28,24 +29,59 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+function toRenderItems(items: PromptItem[]): PopupRenderItem[] {
+  return items.map((item) => ({
+    ...item,
+    action: isStarterPrompt(item) ? 'open-options' : 'insert',
+  }));
+}
+
+function cloneActiveCell(
+  activeCell: PopupActiveCell | null,
+): PopupActiveCell | null {
+  return activeCell ? { ...activeCell } : null;
+}
+
+function getTargetCell(target: EventTarget | null): PopupActiveCell | null {
+  const element = target instanceof HTMLElement ? target : null;
+  const cell = element?.closest<HTMLElement>('[data-role="prompt-cell"]');
+
+  if (!cell) {
+    return null;
+  }
+
+  const rowIndex = Number(cell.dataset.rowIndex);
+  const column = cell.dataset.column as ActiveCellColumn | undefined;
+
+  if (!Number.isFinite(rowIndex) || !column) {
+    return null;
+  }
+
+  return {
+    rowIndex,
+    column,
+  };
+}
+
 export class PromptPopup {
   private host: HTMLDivElement | null = null;
   private shadowRoot: ShadowRoot | null = null;
   private state: RenderState = {
     items: [],
-    activeIndex: 0,
+    activeCell: null,
     isBusy: false,
   };
 
   constructor(private readonly options: PopupOptions) {}
 
-  show(items: PromptItem[], activeIndex: number, anchorRect: DOMRect): void {
+  show(
+    items: PromptItem[],
+    activeCell: PopupActiveCell | null,
+    anchorRect: DOMRect,
+  ): void {
     this.state = {
-      items: items.map((item) => ({
-        ...item,
-        action: isStarterPrompt(item) ? 'open-options' : 'insert',
-      })),
-      activeIndex,
+      items: toRenderItems(items),
+      activeCell: cloneActiveCell(activeCell),
       isBusy: false,
     };
 
@@ -57,29 +93,44 @@ export class PromptPopup {
     this.position(anchorRect);
   }
 
+  update(
+    items: PromptItem[],
+    activeCell: PopupActiveCell | null,
+    anchorRect: DOMRect,
+  ): void {
+    if (!this.host) {
+      this.show(items, activeCell, anchorRect);
+      return;
+    }
+
+    this.state = {
+      items: toRenderItems(items),
+      activeCell: cloneActiveCell(activeCell),
+      isBusy: this.state.isBusy,
+    };
+
+    this.render();
+    this.position(anchorRect);
+  }
+
   destroy(): void {
     this.host?.remove();
     this.host = null;
     this.shadowRoot = null;
     this.state = {
       items: [],
-      activeIndex: 0,
+      activeCell: null,
       isBusy: false,
     };
   }
 
-  setActiveIndex(activeIndex: number): void {
+  setActiveCell(activeCell: PopupActiveCell | null): void {
     if (!this.host) {
       return;
     }
 
-    this.state.activeIndex = activeIndex;
-    const rows = this.shadowRoot?.querySelectorAll<HTMLElement>('[data-role="prompt-row"]');
-
-    rows?.forEach((row) => {
-      const rowIndex = Number(row.dataset.index);
-      row.classList.toggle('is-active', rowIndex === activeIndex);
-    });
+    this.state.activeCell = cloneActiveCell(activeCell);
+    this.applyActiveState();
   }
 
   containsEvent(event: Event): boolean {
@@ -109,16 +160,14 @@ export class PromptPopup {
     });
 
     this.shadowRoot.addEventListener('mouseover', (event) => {
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const row = target?.closest<HTMLElement>('[data-role="prompt-row"]');
+      const nextActiveCell = getTargetCell(event.target);
 
-      if (!row || row.dataset.index === undefined) {
+      if (!nextActiveCell) {
         return;
       }
 
-      const nextIndex = Number(row.dataset.index);
-      this.options.onActiveIndexChange(nextIndex);
-      this.setActiveIndex(nextIndex);
+      this.options.onActiveCellChange(nextActiveCell);
+      this.setActiveCell(nextActiveCell);
     });
 
     this.shadowRoot.addEventListener('click', (event) => {
@@ -126,6 +175,13 @@ export class PromptPopup {
 
       if (!target) {
         return;
+      }
+
+      const nextActiveCell = getTargetCell(target);
+
+      if (nextActiveCell) {
+        this.options.onActiveCellChange(nextActiveCell);
+        this.setActiveCell(nextActiveCell);
       }
 
       const action = target.closest<HTMLElement>('[data-action]')?.dataset.action;
@@ -226,11 +282,55 @@ export class PromptPopup {
     const fragment = document.createDocumentFragment();
 
     this.state.items.forEach((item, index) => {
-      fragment.append(createPromptRow(item, index, index === this.state.activeIndex));
+      fragment.append(
+        createPromptRow(item, index, this.state.activeCell),
+      );
     });
 
     list.replaceChildren(fragment);
+    this.applyActiveState();
     this.setBusy(this.state.isBusy);
+  }
+
+  private applyActiveState(): void {
+    if (!this.shadowRoot) {
+      return;
+    }
+
+    const activeCell = this.state.activeCell;
+    const rows = this.shadowRoot.querySelectorAll<HTMLElement>('[data-role="prompt-row"]');
+
+    rows.forEach((row) => {
+      const rowIndex = Number(row.dataset.index);
+      row.classList.toggle('is-active-row', rowIndex === activeCell?.rowIndex);
+    });
+
+    const cells = this.shadowRoot.querySelectorAll<HTMLElement>('[data-role="prompt-cell"]');
+
+    cells.forEach((cell) => {
+      const rowIndex = Number(cell.dataset.rowIndex);
+      const column = cell.dataset.column as ActiveCellColumn | undefined;
+      const isActive =
+        rowIndex === activeCell?.rowIndex && column === activeCell?.column;
+
+      cell.classList.toggle('is-active-cell', isActive);
+
+      if (isActive) {
+        cell.setAttribute('aria-current', 'true');
+      } else {
+        cell.removeAttribute('aria-current');
+      }
+    });
+
+    const activeElement = this.shadowRoot.querySelector<HTMLElement>(
+      '[data-role="prompt-cell"].is-active-cell',
+    );
+
+    const list = this.shadowRoot.querySelector<HTMLElement>('[data-role="prompt-list"]');
+
+    if (activeElement && list) {
+      keepElementVisibleWithinList(list, activeElement);
+    }
   }
 
   private position(anchorRect: DOMRect): void {
@@ -273,13 +373,38 @@ export class PromptPopup {
   }
 }
 
+function keepElementVisibleWithinList(
+  list: HTMLElement,
+  element: HTMLElement,
+): void {
+  const listRect = list.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  const topDelta = elementRect.top - listRect.top;
+  const bottomDelta = elementRect.bottom - listRect.bottom;
+
+  if (topDelta < 0) {
+    list.scrollTop += topDelta;
+    return;
+  }
+
+  if (bottomDelta > 0) {
+    list.scrollTop += bottomDelta;
+  }
+}
+
 function createPromptRow(
   item: PopupRenderItem,
   index: number,
-  isActive: boolean,
+  activeCell: PopupActiveCell | null,
 ): HTMLElement {
+  const isActiveRow = activeCell?.rowIndex === index;
+  const isActiveTitleCell =
+    activeCell?.rowIndex === index && activeCell.column === 'title';
+  const isActiveCopyCell =
+    activeCell?.rowIndex === index && activeCell.column === 'copy';
+
   const row = document.createElement('div');
-  row.className = `promptit-row${isActive ? ' is-active' : ''}`;
+  row.className = `promptit-row${isActiveRow ? ' is-active-row' : ''}${isActiveCopyCell ? ' is-copy-active' : ''}`;
   row.dataset.role = 'prompt-row';
   row.dataset.index = String(index);
 
@@ -292,13 +417,16 @@ function createPromptRow(
 
   const leadingBadge = document.createElement('span');
   leadingBadge.className = 'promptit-row-leading-badge';
-  leadingBadge.innerHTML = renderPushPinIcon(isActive);
+  leadingBadge.innerHTML = renderPushPinIcon();
   leadingButton.append(leadingBadge);
 
   const titleButton = document.createElement('button');
   titleButton.type = 'button';
-  titleButton.className = 'promptit-row-title-button';
+  titleButton.className = `promptit-row-title-button${isActiveTitleCell ? ' is-active-cell' : ''}`;
   titleButton.dataset.action = 'select';
+  titleButton.dataset.role = 'prompt-cell';
+  titleButton.dataset.rowIndex = String(index);
+  titleButton.dataset.column = 'title';
   titleButton.tabIndex = -1;
   titleButton.ariaLabel =
     item.action === 'open-options'
@@ -312,7 +440,7 @@ function createPromptRow(
 
   const copyButton = document.createElement('button');
   copyButton.type = 'button';
-  copyButton.className = 'promptit-row-copy-button';
+  copyButton.className = `promptit-row-copy-button${isActiveCopyCell ? ' is-active-cell' : ''}`;
   copyButton.tabIndex = -1;
 
   if (item.action === 'open-options') {
@@ -320,10 +448,16 @@ function createPromptRow(
     copyButton.setAttribute('aria-hidden', 'true');
   } else {
     copyButton.dataset.action = 'copy';
+    copyButton.dataset.role = 'prompt-cell';
+    copyButton.dataset.rowIndex = String(index);
+    copyButton.dataset.column = 'copy';
     copyButton.ariaLabel = `Copy prompt: ${item.title}`;
   }
 
-  copyButton.innerHTML = renderCopyIcon();
+  const copyBadge = document.createElement('span');
+  copyBadge.className = 'promptit-row-copy-badge';
+  copyBadge.innerHTML = renderCopyIcon();
+  copyButton.append(copyBadge);
 
   row.append(leadingButton, titleButton, copyButton);
   return row;
@@ -348,15 +482,7 @@ function createEmptyState(): HTMLElement {
   return emptyState;
 }
 
-function renderPushPinIcon(isActive: boolean): string {
-  if (isActive) {
-    return `
-      <svg viewBox="0 0 24 24" class="promptit-icon" aria-hidden="true">
-        <path d="m16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Z" fill="currentColor" />
-      </svg>
-    `;
-  }
-
+function renderPushPinIcon(): string {
   return `
     <svg viewBox="0 0 24 24" class="promptit-icon" aria-hidden="true">
       <path d="m16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Zm-7.15 2h6.3L14 12.85V5h-4v7.85ZM12 14Z" fill="currentColor" />
