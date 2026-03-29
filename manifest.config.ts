@@ -12,10 +12,21 @@ export default defineManifest({
   name: 'Promptit',
   version: '0.0.1',
   description: 'Load saved prompts into ChatGPT with a slash trigger.',
+  icons: {
+    16: 'icons/icon16.png',
+    32: 'icons/icon32.png',
+    48: 'icons/icon48.png',
+    128: 'icons/icon128.png',
+  },
   permissions: ['storage'],
   host_permissions: contentScriptMatches,
   action: {
     default_title: 'Promptit',
+    default_icon: {
+      16: 'icons/icon16.png',
+      24: 'icons/icon24.png',
+      32: 'icons/icon32.png',
+    },
   },
   background: {
     service_worker: 'src/background/service-worker.ts',
