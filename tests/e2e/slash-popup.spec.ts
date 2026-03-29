@@ -145,6 +145,26 @@ async function getPopupPositionSnapshot(
   });
 }
 
+async function getPopupListScrollTop(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<number> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+
+    if (!(host instanceof HTMLDivElement)) {
+      throw new Error('Popup host not found.');
+    }
+
+    const list = host.shadowRoot?.querySelector('[data-role="prompt-list"]');
+
+    if (!(list instanceof HTMLElement)) {
+      throw new Error('Popup list not found.');
+    }
+
+    return list.scrollTop;
+  });
+}
+
 test('opens the slash popup from the contenteditable fixture', async ({
   extension,
 }) => {
@@ -718,19 +738,53 @@ test('scrolls the popup list to keep the active row visible', async ({
     'Insert prompt: 프롬프트 7',
   );
   await expect
-    .poll(async () => {
-      return await page.evaluate(() => {
-        const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    .poll(async () => await getPopupListScrollTop(page))
+    .toBeGreaterThan(0);
+});
 
-        if (!(host instanceof HTMLDivElement)) {
-          return 0;
-        }
+test('keeps keyboard navigation active while the hovered popup cell scrolls out from under a stationary pointer', async ({
+  extension,
+}) => {
+  await extension.setPrompts(
+    Array.from({ length: 7 }, (_, index) =>
+      createPromptItem({
+        id: `prompt-${index + 1}`,
+        title: `프롬프트 ${index + 1}`,
+        content: `내용 ${index + 1}`,
+        sortOrder: index,
+        createdAt: new Date(
+          `2026-03-29T00:0${index}:00.000Z`,
+        ).toISOString(),
+        updatedAt: new Date(
+          `2026-03-29T00:0${index}:00.000Z`,
+        ).toISOString(),
+      }),
+    ),
+  );
 
-        const list = host.shadowRoot?.querySelector('[data-role="prompt-list"]');
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
-        return list instanceof HTMLElement ? list.scrollTop : 0;
-      });
-    })
+  await openPromptPopup(page);
+
+  const hoveredCopyButton = page.getByRole('button', {
+    name: 'Copy prompt: 프롬프트 2',
+  });
+
+  await hoveredCopyButton.hover();
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Copy prompt: 프롬프트 2',
+  );
+
+  for (let index = 0; index < 5; index += 1) {
+    await page.keyboard.press('ArrowDown');
+  }
+
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Copy prompt: 프롬프트 7',
+  );
+  await expect
+    .poll(async () => await getPopupListScrollTop(page))
     .toBeGreaterThan(0);
 });
 

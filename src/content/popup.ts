@@ -3,7 +3,11 @@ import {
   isPromptLauncherItem,
   type LauncherItem,
 } from './launcher-items';
-import type { ActiveCellColumn, PopupActiveCell } from './session';
+import {
+  isSameActiveCell,
+  type ActiveCellColumn,
+  type PopupActiveCell,
+} from './session';
 import popupStyles from './popup.css?inline';
 
 type PopupOptions = {
@@ -155,10 +159,13 @@ export class PromptPopup {
       event.preventDefault();
     });
 
-    this.shadowRoot.addEventListener('mouseover', (event) => {
+    this.shadowRoot.addEventListener('pointermove', (event) => {
       const nextActiveCell = getTargetCell(event.target);
 
-      if (!nextActiveCell) {
+      if (
+        !nextActiveCell ||
+        isSameActiveCell(nextActiveCell, this.state.activeCell)
+      ) {
         return;
       }
 

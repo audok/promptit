@@ -53,6 +53,7 @@
 - [x] title click으로 프롬프트를 insert할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] copy button click으로 프롬프트를 복사할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 항목이 많을 때 active row가 보이도록 리스트를 스크롤한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] 정지한 포인터 아래로 리스트가 스크롤되더라도 키보드 active cell이 hover에 덮어써지지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 뷰포트 여유에 따라 팝업을 위 또는 아래에 배치한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [ ] window `scroll` 시 anchor 기준으로 팝업을 재배치하는지 명시적으로 검증한다. `Gap`
 - [ ] Arrow Up/Down/Left/Right의 전체 edge behavior를 명시적으로 검증한다. `Gap`
