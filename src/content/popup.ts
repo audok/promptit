@@ -238,7 +238,7 @@ export class PromptPopup {
           <header class="promptit-header">
             <div class="promptit-header-label">
               <span class="promptit-header-slash">/</span>
-              <span class="promptit-header-text">prompt</span>
+              <span class="promptit-header-text">prompt-it</span>
             </div>
             <button
               type="button"
