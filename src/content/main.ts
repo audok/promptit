@@ -2,7 +2,9 @@ import { ChatGPTAdapter } from '../adapters/chatgpt';
 import { cloneTriggerContext } from '../adapters/base';
 import { type PromptItem } from '../prompt/schema';
 import { getPrompts, subscribeToPrompts } from '../prompt/storage';
-import { OPEN_OPTIONS_PAGE_MESSAGE } from '../runtime/messages';
+import {
+  OPEN_OPTIONS_PAGE_MESSAGE,
+} from '../runtime/messages';
 import {
   buildLauncherItems,
   type LauncherItem,
@@ -33,6 +35,18 @@ declare global {
 const adapter = new ChatGPTAdapter();
 const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
 const TEST_READY_ATTRIBUTE = 'data-promptit-ready';
+const TEST_OPEN_OPTIONS_EVENT = 'promptit:test-open-options-page';
+const TEST_SET_CONTROLS_EVENT = 'promptit:test-set-controls';
+
+type TestControlState = {
+  failClipboardWrite: boolean;
+  failOpenOptions: boolean;
+};
+
+const testControlState: TestControlState = {
+  failClipboardWrite: false,
+  failOpenOptions: false,
+};
 
 if (adapter.canHandle(window.location.href) && !window.__promptitContentInitialized__) {
   window.__promptitContentInitialized__ = true;
@@ -49,6 +63,10 @@ function markTestReady(): void {
 }
 
 async function requestOpenOptionsPage(): Promise<void> {
+  if (IS_TEST_MODE && testControlState.failOpenOptions) {
+    throw new Error('mock open options failure');
+  }
+
   await chrome.runtime.sendMessage({ type: OPEN_OPTIONS_PAGE_MESSAGE });
 }
 
@@ -256,6 +274,34 @@ function bootstrapPromptit(): void {
     },
     true,
   );
+
+  if (IS_TEST_MODE) {
+    document.addEventListener(TEST_OPEN_OPTIONS_EVENT, () => {
+      void requestOpenOptionsPage();
+    });
+
+    document.addEventListener(TEST_SET_CONTROLS_EVENT, (event) => {
+      if (!(event instanceof CustomEvent)) {
+        return;
+      }
+
+      const detail = event.detail;
+
+      if (!detail || typeof detail !== 'object') {
+        return;
+      }
+
+      if ('failClipboardWrite' in detail) {
+        testControlState.failClipboardWrite = Boolean(
+          detail.failClipboardWrite,
+        );
+      }
+
+      if ('failOpenOptions' in detail) {
+        testControlState.failOpenOptions = Boolean(detail.failOpenOptions);
+      }
+    });
+  }
 }
 
 function scheduleTriggerCheck(
@@ -401,6 +447,10 @@ async function handleCopy(
   popup.setBusy(true);
 
   try {
+    if (IS_TEST_MODE && testControlState.failClipboardWrite) {
+      throw new Error('mock clipboard write failure');
+    }
+
     if (!navigator.clipboard?.writeText) {
       throw new Error('Clipboard API is not available.');
     }

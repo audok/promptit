@@ -9,6 +9,7 @@
     "build:test": "VITE_PROMPTIT_TEST_MODE=1 vite build",
     "typecheck": "tsc --noEmit",
     "test:e2e": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test",
+    "test:e2e:live": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --config playwright.live.config.ts",
     "test:e2e:headed": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --headed",
     "test:e2e:ui": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --ui"
   },

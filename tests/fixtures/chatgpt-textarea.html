@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Promptit ChatGPT Textarea Fixture</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        background: #f3f5f7;
+        color: #0f172a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(180deg, #f8fafc 0%, #edf2f7 55%, #e2e8f0 100%);
+      }
+
+      .page-shell {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 40px 24px 96px;
+      }
+
+      .outside-target {
+        margin-bottom: 24px;
+        padding: 18px 20px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      }
+
+      .composer-form {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .composer-shell {
+        padding: 18px;
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
+      }
+
+      #prompt-textarea {
+        width: 100%;
+        min-height: 132px;
+        resize: none;
+        border: 0;
+        background: transparent;
+        outline: none;
+        font: inherit;
+        line-height: 1.6;
+        color: inherit;
+      }
+
+      .send-button {
+        min-width: 92px;
+        height: 52px;
+        border: 0;
+        border-radius: 999px;
+        background: #0f172a;
+        color: #f8fafc;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page-shell">
+      <section
+        class="outside-target"
+        data-testid="outside-target"
+      >
+        Textarea fallback fixture for Promptit.
+      </section>
+
+      <form class="composer-form">
+        <section class="composer-shell">
+          <textarea
+            id="prompt-textarea"
+            data-testid="prompt-textarea"
+            aria-label="Message ChatGPT"
+            placeholder="Message ChatGPT"
+          ></textarea>
+        </section>
+        <button
+          class="send-button"
+          type="submit"
+          disabled
+        >
+          Send
+        </button>
+      </form>
+    </main>
+  </body>
+</html>

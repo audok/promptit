@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { PromptItem } from '../../src/prompt/schema';
+import type { PromptitRuntimeMessage } from '../../src/runtime/messages';
+
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = path.dirname(currentFilePath);
 const extensionPath = path.resolve(currentDirPath, '../../dist');
@@ -20,6 +23,10 @@ export type LoadedExtension = {
   context: BrowserContext;
   extensionId: string;
   optionsPageUrl: string;
+  getPrompts: () => Promise<PromptItem[]>;
+  setPrompts: (prompts: PromptItem[]) => Promise<void>;
+  setRawPrompts: (rawValue: unknown) => Promise<void>;
+  sendRuntimeMessage: (message: PromptitRuntimeMessage) => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -67,18 +74,51 @@ export async function launchExtension(): Promise<LoadedExtension> {
     ],
   });
 
-  let [serviceWorker] = context.serviceWorkers();
+  async function getServiceWorker() {
+    let [serviceWorker] = context.serviceWorkers();
 
-  if (!serviceWorker) {
-    serviceWorker = await context.waitForEvent('serviceworker');
+    if (!serviceWorker) {
+      serviceWorker = await context.waitForEvent('serviceworker');
+    }
+
+    return serviceWorker;
   }
 
-  const extensionId = new URL(serviceWorker.url()).host;
+  const extensionId = new URL((await getServiceWorker()).url()).host;
 
   return {
     context,
     extensionId,
     optionsPageUrl: `chrome-extension://${extensionId}/src/options/index.html`,
+    async getPrompts() {
+      const serviceWorker = await getServiceWorker();
+
+      return await serviceWorker.evaluate(async () => {
+        const result = await chrome.storage.local.get('prompts');
+        return (result.prompts ?? []) as PromptItem[];
+      });
+    },
+    async setPrompts(prompts) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async (nextPrompts) => {
+        await chrome.storage.local.set({ prompts: nextPrompts });
+      }, prompts);
+    },
+    async setRawPrompts(rawValue) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async (nextRawValue) => {
+        await chrome.storage.local.set({ prompts: nextRawValue });
+      }, rawValue);
+    },
+    async sendRuntimeMessage(message) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async (nextMessage) => {
+        await chrome.runtime.sendMessage(nextMessage);
+      }, message);
+    },
     async close() {
       await context.close();
       await rm(userDataDir, { recursive: true, force: true });

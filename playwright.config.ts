@@ -14,7 +14,7 @@ export default defineConfig({
   outputDir: 'test-results',
   webServer: {
     command: 'python3 -m http.server 4173 --directory tests/fixtures',
-    url: 'http://127.0.0.1:4173/editor.html',
+    url: 'http://127.0.0.1:4173/chatgpt-contenteditable.html',
     reuseExistingServer: true,
   },
   use: {
