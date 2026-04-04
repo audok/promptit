@@ -19,8 +19,13 @@ const test = base.extend<{
 
 async function openOptionsPage(
   extension: LoadedExtension,
+  setupPage?: (page: Page) => Promise<void>,
 ): Promise<Page> {
   const page = await extension.context.newPage();
+
+  if (setupPage) {
+    await setupPage(page);
+  }
 
   await page.goto(extension.optionsPageUrl, {
     waitUntil: 'domcontentloaded',
@@ -30,6 +35,33 @@ async function openOptionsPage(
   await expect(page.getByText('Promptit Sprint 3')).toBeVisible();
 
   return page;
+}
+
+async function getServiceWorker(extension: LoadedExtension) {
+  const [serviceWorker] = extension.context.serviceWorkers();
+
+  if (serviceWorker) {
+    return serviceWorker;
+  }
+
+  return await extension.context.waitForEvent('serviceworker');
+}
+
+async function patchBackgroundStorageSetFailure(
+  extension: LoadedExtension,
+  message: string,
+): Promise<void> {
+  const serviceWorker = await getServiceWorker(extension);
+
+  await serviceWorker.evaluate((failureMessage) => {
+    const localStorageArea = chrome.storage.local as typeof chrome.storage.local & {
+      set: (...args: unknown[]) => Promise<unknown>;
+    };
+
+    localStorageArea.set = async () => {
+      throw new Error(failureMessage);
+    };
+  }, message);
 }
 
 test('opens the options page', async ({ extension }) => {
@@ -259,60 +291,165 @@ test('normalizes invalid storage entries when the options page loads', async ({
     ]);
 });
 
-test('recovers to an empty state when prompt storage reads fail', async ({
+test('preserves prompts and shows a load error when prompt storage reads fail', async ({
   extension,
 }) => {
-  await extension.setPrompts([
+  const existingPrompts = [
     createPromptItem({
       id: 'stale-prompt',
       title: '남은 프롬프트',
-      content: '이 값은 복구 중 제거되어야 한다.',
+      content: '이 값은 지워지면 안 된다.',
       sortOrder: 4,
     }),
-  ]);
+  ];
 
-  const page = await extension.context.newPage();
-  await page.addInitScript(() => {
-    const localStorageArea = chrome.storage.local as typeof chrome.storage.local & {
-      get: (...args: unknown[]) => Promise<unknown>;
-    };
+  await extension.setPrompts(existingPrompts);
 
-    localStorageArea.get = async (...args: unknown[]) => {
-      void args;
-      throw new Error('mock get failure');
-    };
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.addInitScript(() => {
+      const localStorageArea = chrome.storage.local as typeof chrome.storage.local & {
+        get: (...args: unknown[]) => Promise<unknown>;
+      };
+
+      localStorageArea.get = async (...args: unknown[]) => {
+        void args;
+        throw new Error('mock get failure');
+      };
+    });
   });
 
-  await page.goto(extension.optionsPageUrl, {
-    waitUntil: 'domcontentloaded',
-  });
-
-  await expect(page).toHaveTitle(/Promptit Settings/i);
+  await expect(page.getByText('mock get failure')).toBeVisible();
   await expect(
     page.getByText(
       '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
     ),
+  ).toHaveCount(0);
+  await expect.poll(async () => await extension.getPrompts()).toEqual(
+    existingPrompts,
+  );
+});
+
+test('does not repair malformed storage when the initial read fails', async ({
+  extension,
+}) => {
+  const rawPrompts: unknown[] = [
+    createPromptItem({
+      id: 'valid-prompt',
+      title: '유효한 프롬프트',
+      content: '이 항목은 유지되어야 한다.',
+      sortOrder: 3,
+    }),
+    {
+      id: STARTER_PROMPT_ID,
+      title: 'starter',
+      content: 'starter content',
+      sortOrder: 0,
+      createdAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
+      updatedAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
+    },
+    { id: 'broken-prompt', title: '', content: '', sortOrder: 'x' },
+  ];
+
+  await extension.setRawPrompts(rawPrompts);
+
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.addInitScript(() => {
+      const localStorageArea = chrome.storage.local as typeof chrome.storage.local & {
+        get: (...args: unknown[]) => Promise<unknown>;
+      };
+
+      localStorageArea.get = async (...args: unknown[]) => {
+        void args;
+        throw new Error('mock get failure');
+      };
+    });
+  });
+
+  await expect(page.getByText('mock get failure')).toBeVisible();
+  await expect.poll(async () => await extension.getPrompts()).toEqual(rawPrompts);
+});
+
+test('surfaces a conflict when two options tabs save the same prompt stale', async ({
+  extension,
+}) => {
+  const initialPrompt = createPromptItem({
+    id: 'shared-prompt',
+    title: '동시 수정 대상',
+    content: '같은 프롬프트를 두 탭에서 편집한다.',
+    sortOrder: 2,
+  });
+
+  await extension.setPrompts([initialPrompt]);
+
+  const primaryPage = await openOptionsPage(extension);
+  const stalePage = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.addInitScript(() => {
+      const storageEventArea = chrome.storage.onChanged as typeof chrome.storage.onChanged & {
+        addListener: typeof chrome.storage.onChanged.addListener;
+      };
+
+      storageEventArea.addListener = () => {};
+    });
+  });
+
+  await primaryPage.getByRole('button', { name: /동시 수정 대상/ }).click();
+  await stalePage.getByRole('button', { name: /동시 수정 대상/ }).click();
+
+  await primaryPage.getByLabel(/제목/).fill('첫 번째 저장');
+  await primaryPage.getByRole('button', { name: '프롬프트 수정' }).click();
+
+  await expect(primaryPage.getByText('프롬프트를 업데이트했습니다.')).toBeVisible();
+  await expect
+    .poll(async () =>
+      (await extension.getPrompts()).map((prompt) => ({
+        id: prompt.id,
+        title: prompt.title,
+        content: prompt.content,
+        sortOrder: prompt.sortOrder,
+      })),
+    )
+    .toEqual([
+      {
+        id: 'shared-prompt',
+        title: '첫 번째 저장',
+        content: '같은 프롬프트를 두 탭에서 편집한다.',
+        sortOrder: 2,
+      },
+    ]);
+
+  await stalePage.getByLabel(/제목/).fill('두 번째 저장');
+  await stalePage.getByRole('button', { name: '프롬프트 수정' }).click();
+
+  await expect(
+    stalePage.getByText(
+      '다른 창의 변경이 먼저 저장되었습니다. 최신 내용을 확인한 뒤 다시 시도해주세요.',
+    ),
   ).toBeVisible();
-  await expect.poll(async () => await extension.getPrompts()).toEqual([]);
+  await expect(stalePage.getByLabel(/제목/)).toHaveValue('첫 번째 저장');
+  await expect
+    .poll(async () =>
+      (await extension.getPrompts()).map((prompt) => ({
+        id: prompt.id,
+        title: prompt.title,
+        content: prompt.content,
+        sortOrder: prompt.sortOrder,
+      })),
+    )
+    .toEqual([
+      {
+        id: 'shared-prompt',
+        title: '첫 번째 저장',
+        content: '같은 프롬프트를 두 탭에서 편집한다.',
+        sortOrder: 2,
+      },
+    ]);
 });
 
 test('shows an error when saving fails', async ({ extension }) => {
   await extension.setPrompts([]);
 
-  const page = await extension.context.newPage();
-  await page.addInitScript(() => {
-    const localStorageArea = chrome.storage.local as typeof chrome.storage.local & {
-      set: (...args: unknown[]) => Promise<unknown>;
-    };
-
-    localStorageArea.set = async () => {
-      throw new Error('mock set failure');
-    };
-  });
-
-  await page.goto(extension.optionsPageUrl, {
-    waitUntil: 'domcontentloaded',
-  });
+  const page = await openOptionsPage(extension);
+  await patchBackgroundStorageSetFailure(extension, 'mock set failure');
 
   await page.getByLabel(/제목/).fill('저장 실패');
   await page.getByLabel(/본문/).fill('저장 실패를 검증한다.');
@@ -335,22 +472,10 @@ test('shows an error when deleting fails', async ({ extension }) => {
 
   await extension.setPrompts(prompts);
 
-  const page = await extension.context.newPage();
-  await page.addInitScript(() => {
-    const localStorageArea = chrome.storage.local as typeof chrome.storage.local & {
-      set: (...args: unknown[]) => Promise<unknown>;
-    };
-
-    localStorageArea.set = async () => {
-      throw new Error('mock delete failure');
-    };
-  });
-
-  await page.goto(extension.optionsPageUrl, {
-    waitUntil: 'domcontentloaded',
-  });
+  const page = await openOptionsPage(extension);
 
   await page.getByRole('button', { name: /삭제 실패/ }).click();
+  await patchBackgroundStorageSetFailure(extension, 'mock delete failure');
   page.once('dialog', async (dialog) => {
     await dialog.accept();
   });

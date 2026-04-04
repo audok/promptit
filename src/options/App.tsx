@@ -7,9 +7,11 @@ import {
 } from 'react';
 
 import {
+  PROMPTS_STORAGE_KEY,
   hasPromptDraftErrors,
   isStarterPrompt,
   normalizePromptDraft,
+  sortPrompts,
   validatePromptDraft,
   type PromptDraftErrors,
   type PromptItem,
@@ -46,6 +48,14 @@ function createEmptyForm(sortOrder: number): PromptFormState {
   };
 }
 
+function createFormFromPrompt(prompt: PromptItem): PromptFormState {
+  return {
+    title: prompt.title,
+    content: prompt.content,
+    sortOrder: String(prompt.sortOrder),
+  };
+}
+
 function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString('ko-KR', {
     dateStyle: 'medium',
@@ -53,9 +63,113 @@ function formatTimestamp(value: string): string {
   });
 }
 
+function upsertPrompt(prompts: PromptItem[], prompt: PromptItem): PromptItem[] {
+  return sortPrompts([
+    ...prompts.filter((item) => item.id !== prompt.id),
+    prompt,
+  ]);
+}
+
+function removePrompt(prompts: PromptItem[], id: string): PromptItem[] {
+  return prompts.filter((prompt) => prompt.id !== id);
+}
+
+type PromptMutationFailure = {
+  code: 'conflict' | 'not-found';
+  message: string;
+  currentPrompt?: PromptItem;
+};
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isPromptItem(value: unknown): value is PromptItem {
+  return (
+    isObjectRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.content === 'string' &&
+    typeof value.sortOrder === 'number' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.updatedAt === 'string'
+  );
+}
+
+function getUpdateSuccessPrompt(value: unknown): PromptItem | null {
+  if (isPromptItem(value)) {
+    return value;
+  }
+
+  if (!isObjectRecord(value) || value.status !== 'success') {
+    return null;
+  }
+
+  if (isPromptItem(value.prompt)) {
+    return value.prompt;
+  }
+
+  if (isPromptItem(value.value)) {
+    return value.value;
+  }
+
+  return null;
+}
+
+function isDeleteSuccess(value: unknown): boolean {
+  return (
+    value === true ||
+    (isObjectRecord(value) &&
+      value.ok === true &&
+      value.status === 'success')
+  );
+}
+
+function getPromptMutationFailure(value: unknown): PromptMutationFailure | null {
+  if (!isObjectRecord(value) || typeof value.message !== 'string') {
+    return null;
+  }
+
+  const code =
+    value.code === 'conflict' || value.code === 'not-found'
+      ? value.code
+      : value.status === 'conflict' || value.status === 'not-found'
+        ? value.status
+        : null;
+
+  if (code === null) {
+    return null;
+  }
+
+  return {
+    code,
+    message: value.message,
+    currentPrompt: isPromptItem(value.currentPrompt)
+      ? value.currentPrompt
+      : undefined,
+  };
+}
+
+function getResultMessage(value: unknown, fallback: string): string {
+  if (isObjectRecord(value) && typeof value.message === 'string') {
+    return value.message;
+  }
+
+  return fallback;
+}
+
+async function ensurePromptStorageReadable(): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+    return;
+  }
+
+  await chrome.storage.local.get(PROMPTS_STORAGE_KEY);
+}
+
 export default function App() {
   const [prompts, setPrompts] = useState<PromptItem[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PromptFormState>(() => createEmptyForm(0));
@@ -76,10 +190,12 @@ export default function App() {
       startTransition(() => {
         setPrompts(userPrompts);
         setLoadState('ready');
+        setLoadError(null);
       });
     };
 
-    void getUserPrompts()
+    void ensurePromptStorageReadable()
+      .then(() => getUserPrompts())
       .then((nextPrompts) => {
         if (cancelled) {
           return;
@@ -88,6 +204,7 @@ export default function App() {
         startTransition(() => {
           setPrompts(nextPrompts);
           setLoadState('ready');
+          setLoadError(null);
           setForm(createEmptyForm(getNextSortOrder(nextPrompts)));
         });
       })
@@ -97,6 +214,11 @@ export default function App() {
         if (!cancelled) {
           startTransition(() => {
             setLoadState('error');
+            setLoadError(
+              error instanceof Error && error.message.trim().length > 0
+                ? error.message
+                : '저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요.',
+            );
           });
         }
       });
@@ -136,6 +258,12 @@ export default function App() {
     setEditingId(null);
     setErrors({});
     setForm(createEmptyForm(getNextSortOrder(nextPrompts)));
+  }
+
+  function syncEditingPrompt(prompt: PromptItem): void {
+    setEditingId(prompt.id);
+    setErrors({});
+    setForm(createFormFromPrompt(prompt));
   }
 
   function handleFieldChange(
@@ -190,30 +318,82 @@ export default function App() {
 
     try {
       if (editingId) {
-        const updatedPrompt = await updatePrompt(editingId, draft);
+        if (!activePrompt) {
+          const nextPrompts = removePrompt(prompts, editingId);
 
-        if (!updatedPrompt) {
-          throw new Error('수정할 프롬프트를 찾지 못했습니다.');
+          startTransition(() => {
+            setPrompts(nextPrompts);
+            resetToCreateMode(nextPrompts);
+            setSaveError(
+              '수정할 프롬프트를 찾지 못했습니다. 새 프롬프트 작성 모드로 전환했습니다.',
+            );
+          });
+          return;
         }
 
-        startTransition(() => {
-          setNotice('프롬프트를 업데이트했습니다.');
-          setForm({
-            title: updatedPrompt.title,
-            content: updatedPrompt.content,
-            sortOrder: String(updatedPrompt.sortOrder),
-          });
+        const updatedPromptResult = await updatePrompt(editingId, draft, {
+          expectedUpdatedAt: activePrompt.updatedAt,
         });
-      } else {
-        await createPrompt(draft);
 
-        startTransition(() => {
-          setNotice('프롬프트를 저장했습니다.');
-          setForm(
-            createEmptyForm(
-              Math.max(getNextSortOrder(prompts), draft.sortOrder + 1),
+        const updatedPrompt = getUpdateSuccessPrompt(updatedPromptResult);
+
+        if (updatedPrompt) {
+          const nextPrompts = upsertPrompt(prompts, updatedPrompt);
+
+          startTransition(() => {
+            setPrompts(nextPrompts);
+            setNotice('프롬프트를 업데이트했습니다.');
+            syncEditingPrompt(updatedPrompt);
+          });
+        } else {
+          const updateFailure = getPromptMutationFailure(updatedPromptResult);
+
+          if (updateFailure?.code === 'conflict') {
+            if (!updateFailure.currentPrompt) {
+              setSaveError(updateFailure.message);
+              return;
+            }
+
+            const currentPrompt = updateFailure.currentPrompt;
+
+            startTransition(() => {
+              setPrompts(upsertPrompt(prompts, currentPrompt));
+              syncEditingPrompt(currentPrompt);
+              setSaveError(
+                `${updateFailure.message} 최신 저장본을 편집기에 반영했습니다.`,
+              );
+            });
+            return;
+          }
+
+          if (updateFailure?.code === 'not-found') {
+            const nextPrompts = removePrompt(prompts, editingId);
+
+            startTransition(() => {
+              setPrompts(nextPrompts);
+              resetToCreateMode(nextPrompts);
+              setSaveError(
+                `${updateFailure.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+              );
+            });
+            return;
+          }
+
+          throw new Error(
+            getResultMessage(
+              updatedPromptResult,
+              '프롬프트 저장 중 오류가 발생했습니다.',
             ),
           );
+        }
+      } else {
+        const createdPrompt = await createPrompt(draft);
+        const nextPrompts = upsertPrompt(prompts, createdPrompt);
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+          setNotice('프롬프트를 저장했습니다.');
+          resetToCreateMode(nextPrompts);
         });
       }
     } catch (error) {
@@ -248,20 +428,66 @@ export default function App() {
     setSaveState('saving');
 
     try {
-      const didDelete = await deletePrompt(id);
+      const deleteResult = await deletePrompt(id, {
+        expectedUpdatedAt: targetPrompt.updatedAt,
+      });
 
-      if (!didDelete) {
-        throw new Error('삭제할 프롬프트를 찾지 못했습니다.');
+      if (isDeleteSuccess(deleteResult)) {
+        const remainingPrompts = removePrompt(prompts, id);
+
+        startTransition(() => {
+          setPrompts(remainingPrompts);
+          if (editingId === id) {
+            resetToCreateMode(remainingPrompts);
+          }
+          setNotice('프롬프트를 삭제했습니다.');
+        });
+        return;
       }
 
-      const remainingPrompts = prompts.filter((prompt) => prompt.id !== id);
+      const deleteFailure = getPromptMutationFailure(deleteResult);
 
-      startTransition(() => {
-        if (editingId === id) {
-          resetToCreateMode(remainingPrompts);
+      if (deleteFailure?.code === 'conflict') {
+        if (!deleteFailure.currentPrompt) {
+          setSaveError(deleteFailure.message);
+          return;
         }
-        setNotice('프롬프트를 삭제했습니다.');
-      });
+
+        const currentPrompt = deleteFailure.currentPrompt;
+
+        startTransition(() => {
+          setPrompts(upsertPrompt(prompts, currentPrompt));
+
+          if (editingId === id) {
+            syncEditingPrompt(currentPrompt);
+          }
+          setSaveError(
+            `${deleteFailure.message} 최신 저장본을 확인한 뒤 다시 시도해주세요.`,
+          );
+        });
+        return;
+      }
+
+      if (deleteFailure?.code === 'not-found') {
+        const nextPrompts = removePrompt(prompts, id);
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+          if (editingId === id) {
+            resetToCreateMode(nextPrompts);
+          }
+          setSaveError(
+            editingId === id
+              ? `${deleteFailure.message} 새 프롬프트 작성 모드로 전환했습니다.`
+              : deleteFailure.message,
+          );
+        });
+        return;
+      }
+
+      throw new Error(
+        getResultMessage(deleteResult, '프롬프트 삭제 중 오류가 발생했습니다.'),
+      );
     } catch (error) {
       console.error('[promptit] Failed to delete prompt.', error);
       setSaveError(
@@ -346,7 +572,12 @@ export default function App() {
               ) : null}
 
               {loadState === 'error' ? (
-                <EmptyPanel message="저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요." />
+                <EmptyPanel
+                  message={
+                    loadError ??
+                    '저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요.'
+                  }
+                />
               ) : null}
 
               {loadState === 'ready' && prompts.length === 0 ? (
