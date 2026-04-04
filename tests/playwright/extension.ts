@@ -6,7 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { PromptItem } from '../../src/prompt/schema';
-import type { PromptitRuntimeMessage } from '../../src/runtime/messages';
+import {
+  sendPromptitRuntimeRequest,
+  type PromptitRuntimeRequest,
+  type PromptitRuntimeResponse,
+} from '../../src/runtime/messages';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = path.dirname(currentFilePath);
@@ -26,7 +30,9 @@ export type LoadedExtension = {
   getPrompts: () => Promise<PromptItem[]>;
   setPrompts: (prompts: PromptItem[]) => Promise<void>;
   setRawPrompts: (rawValue: unknown) => Promise<void>;
-  sendRuntimeMessage: (message: PromptitRuntimeMessage) => Promise<void>;
+  sendRuntimeMessage: (
+    message: PromptitRuntimeRequest,
+  ) => Promise<PromptitRuntimeResponse>;
   close: () => Promise<void>;
 };
 
@@ -115,9 +121,14 @@ export async function launchExtension(): Promise<LoadedExtension> {
     async sendRuntimeMessage(message) {
       const serviceWorker = await getServiceWorker();
 
-      await serviceWorker.evaluate(async (nextMessage) => {
-        await chrome.runtime.sendMessage(nextMessage);
-      }, message);
+      return sendPromptitRuntimeRequest(
+        async (nextMessage) =>
+          await serviceWorker.evaluate(
+            async (request) => await chrome.runtime.sendMessage(request),
+            nextMessage,
+          ),
+        message,
+      );
     },
     async close() {
       await context.close();

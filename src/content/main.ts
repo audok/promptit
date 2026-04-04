@@ -4,6 +4,8 @@ import { type PromptItem } from '../prompt/schema';
 import { getPrompts, subscribeToPrompts } from '../prompt/storage';
 import {
   OPEN_OPTIONS_PAGE_MESSAGE,
+  buildOpenOptionsPageRequest,
+  parsePromptitRuntimeResponse,
 } from '../runtime/messages';
 import {
   buildLauncherItems,
@@ -37,6 +39,7 @@ const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
 const TEST_READY_ATTRIBUTE = 'data-promptit-ready';
 const TEST_OPEN_OPTIONS_EVENT = 'promptit:test-open-options-page';
 const TEST_SET_CONTROLS_EVENT = 'promptit:test-set-controls';
+const TEST_FAIL_OPEN_OPTIONS_STORAGE_KEY = 'promptit:test-fail-open-options';
 
 type TestControlState = {
   failClipboardWrite: boolean;
@@ -63,11 +66,27 @@ function markTestReady(): void {
 }
 
 async function requestOpenOptionsPage(): Promise<void> {
-  if (IS_TEST_MODE && testControlState.failOpenOptions) {
-    throw new Error('mock open options failure');
+  if (IS_TEST_MODE) {
+    await chrome.storage.local.set({
+      [TEST_FAIL_OPEN_OPTIONS_STORAGE_KEY]: testControlState.failOpenOptions,
+    });
   }
 
-  await chrome.runtime.sendMessage({ type: OPEN_OPTIONS_PAGE_MESSAGE });
+  const response = parsePromptitRuntimeResponse(
+    await chrome.runtime.sendMessage(buildOpenOptionsPageRequest()) as unknown,
+  );
+
+  if (!response) {
+    throw new Error('Invalid open options response.');
+  }
+
+  switch (response.type) {
+    case OPEN_OPTIONS_PAGE_MESSAGE:
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      return;
+  }
 }
 
 function bootstrapPromptit(): void {

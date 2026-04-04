@@ -394,7 +394,7 @@ test('opens the options page from the popup empty state', async ({
   await expect(await getComposerText(page)).toBe('');
 });
 
-test('shows an error toast when opening options fails and keeps the popup open', async ({
+test('shows an error toast when the background fails to open options and keeps the popup open', async ({
   extension,
 }) => {
   await extension.setPrompts([]);
@@ -406,12 +406,16 @@ test('shows an error toast when opening options fails and keeps the popup open',
   await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
     failOpenOptions: true,
   });
+  const optionsPagePromise = extension.context.waitForEvent('page', {
+    timeout: 500,
+  });
   await page.keyboard.press('Enter');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
     .toBe('설정 페이지를 열지 못했습니다.');
+  await expect(optionsPagePromise).rejects.toThrow(/Timeout/);
   await expect.poll(async () => {
     return await page.evaluate(() => document.activeElement?.id ?? null);
   }).toBe('prompt-textarea');
