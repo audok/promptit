@@ -37,6 +37,49 @@ async function openOptionsPage(
   return page;
 }
 
+async function deferInitialPromptLoad(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const localStorageArea = chrome.storage.local as typeof chrome.storage.local & {
+      get: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalGet = localStorageArea.get.bind(localStorageArea);
+    const pendingGets: Array<{
+      args: unknown[];
+      reject: (reason: unknown) => void;
+      resolve: (value: unknown) => void;
+    }> = [];
+    let isReleased = false;
+
+    (window as Window & {
+      __releasePromptitInitialLoad?: () => Promise<void>;
+    }).__releasePromptitInitialLoad = async () => {
+      if (isReleased) {
+        return;
+      }
+
+      isReleased = true;
+
+      for (const pendingGet of pendingGets.splice(0)) {
+        try {
+          pendingGet.resolve(await originalGet(...pendingGet.args));
+        } catch (error) {
+          pendingGet.reject(error);
+        }
+      }
+    };
+
+    localStorageArea.get = async (...args: unknown[]) => {
+      if (isReleased) {
+        return await originalGet(...args);
+      }
+
+      return await new Promise((resolve, reject) => {
+        pendingGets.push({ args, reject, resolve });
+      });
+    };
+  });
+}
+
 async function getServiceWorker(extension: LoadedExtension) {
   const [serviceWorker] = extension.context.serviceWorkers();
 
@@ -80,7 +123,9 @@ test('creates and updates prompts from the options page', async ({
   await page.getByLabel(/정렬 순서/).fill('3.7');
   await page.getByRole('button', { name: '프롬프트 저장' }).click();
 
-  await expect(page.getByText('프롬프트를 저장했습니다.')).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: '프롬프트를 저장했습니다.' }),
+  ).toBeVisible();
   await expect(page.getByLabel(/제목/)).toHaveValue('');
   await expect(page.getByLabel(/정렬 순서/)).toHaveValue('4');
 
@@ -100,7 +145,7 @@ test('creates and updates prompts from the options page', async ({
       },
     ]);
 
-  await page.getByRole('button', { name: /회의록 정리/ }).click();
+  await page.getByRole('button').filter({ hasText: '회의록 정리' }).click();
   await expect(
     page.getByRole('heading', { name: '프롬프트 수정' }),
   ).toBeVisible();
@@ -110,7 +155,9 @@ test('creates and updates prompts from the options page', async ({
   await page.getByLabel(/정렬 순서/).fill('1');
   await page.getByRole('button', { name: '프롬프트 수정' }).click();
 
-  await expect(page.getByText('프롬프트를 업데이트했습니다.')).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: '프롬프트를 업데이트했습니다.' }),
+  ).toBeVisible();
   await expect(page.getByLabel(/제목/)).toHaveValue('회의록 요약');
   await expect(page.getByLabel(/정렬 순서/)).toHaveValue('1');
 
@@ -129,6 +176,65 @@ test('creates and updates prompts from the options page', async ({
         sortOrder: 1,
       },
     ]);
+});
+
+test('preserves draft input while the initial prompt load resolves', async ({
+  extension,
+}) => {
+  await extension.setPrompts([
+    createPromptItem({
+      id: 'loaded-prompt',
+      title: '불러온 프롬프트',
+      content: '로드가 끝난 뒤 목록에 나타나야 한다.',
+      sortOrder: 7,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await deferInitialPromptLoad(nextPage);
+  });
+
+  await expect(
+    page
+      .getByRole('article')
+      .filter({ hasText: '저장된 프롬프트를 불러오는 중입니다.' }),
+  ).toBeVisible();
+
+  await page.getByLabel(/제목/).fill('로딩 중 입력한 제목');
+  await page.getByLabel(/본문/).fill('로딩 중 입력한 본문');
+  await page.getByLabel(/정렬 순서/).fill('11');
+
+  await page.evaluate(() => (window as any).__releasePromptitInitialLoad?.());
+
+  await expect(
+    page.getByRole('button').filter({ hasText: '불러온 프롬프트' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '새 프롬프트 추가' })).toBeVisible();
+  await expect(page.getByLabel(/제목/)).toHaveValue('로딩 중 입력한 제목');
+  await expect(page.getByLabel(/본문/)).toHaveValue('로딩 중 입력한 본문');
+  await expect(page.getByLabel(/정렬 순서/)).toHaveValue('11');
+});
+
+test('rejects blank sortOrder before coercion and focuses the field', async ({
+  extension,
+}) => {
+  await extension.setPrompts([]);
+
+  const page = await openOptionsPage(extension);
+
+  await page.getByLabel(/제목/).fill('정렬 순서 검증');
+  await page.getByLabel(/본문/).fill('정렬 순서가 비어 있으면 저장되지 않아야 한다.');
+  await page.getByLabel(/정렬 순서/).fill('');
+  await page.getByRole('button', { name: '프롬프트 저장' }).click();
+
+  await expect(page.getByText('정렬 순서를 입력해주세요.')).toBeVisible();
+  await expect(page.getByLabel(/정렬 순서/)).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByLabel(/정렬 순서/)).toHaveAttribute(
+    'aria-describedby',
+    /-hint.*-error/,
+  );
+  await expect(page.getByLabel(/정렬 순서/)).toBeFocused();
+  await expect.poll(async () => await extension.getPrompts()).toEqual([]);
 });
 
 test('shows validation errors instead of saving invalid prompts', async ({
@@ -165,12 +271,15 @@ test('cancels and confirms prompt deletion from edit mode', async ({
   ]);
 
   const page = await openOptionsPage(extension);
-  await page.getByRole('button', { name: /삭제 테스트/ }).click();
+  await page.getByRole('button').filter({ hasText: '삭제 테스트' }).click();
 
   page.once('dialog', async (dialog) => {
     await dialog.dismiss();
   });
-  await page.getByRole('button', { name: '프롬프트 삭제' }).click();
+  await page
+    .locator('form')
+    .getByRole('button', { name: '프롬프트 삭제', exact: true })
+    .click();
 
   await expect
     .poll(async () => (await extension.getPrompts()).map((prompt) => prompt.id))
@@ -179,9 +288,14 @@ test('cancels and confirms prompt deletion from edit mode', async ({
   page.once('dialog', async (dialog) => {
     await dialog.accept();
   });
-  await page.getByRole('button', { name: '프롬프트 삭제' }).click();
+  await page
+    .locator('form')
+    .getByRole('button', { name: '프롬프트 삭제', exact: true })
+    .click();
 
-  await expect(page.getByText('프롬프트를 삭제했습니다.')).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: '프롬프트를 삭제했습니다.' }),
+  ).toBeVisible();
   await expect(
     page.getByText(
       '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
@@ -213,7 +327,7 @@ test('returns to create mode when the editing prompt is deleted elsewhere', asyn
   await extension.setPrompts(prompts);
 
   const page = await openOptionsPage(extension);
-  await page.getByRole('button', { name: /편집 중/ }).click();
+  await page.getByRole('button').filter({ hasText: '편집 중' }).click();
   await expect(
     page.getByRole('heading', { name: '프롬프트 수정' }),
   ).toBeVisible();
@@ -221,15 +335,90 @@ test('returns to create mode when the editing prompt is deleted elsewhere', asyn
   await extension.setPrompts([prompts[1]]);
 
   await expect(
-    page.getByText(
-      '편집 중인 프롬프트가 삭제되어 새 프롬프트 작성 모드로 전환했습니다.',
-    ),
+    page
+      .getByRole('status')
+      .filter({ hasText: '편집 중인 프롬프트가 삭제되어 새 프롬프트 작성 모드로 전환했습니다.' }),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: '새 프롬프트 추가' }),
   ).toBeVisible();
   await expect(page.getByLabel(/제목/)).toHaveValue('');
   await expect(page.getByLabel(/정렬 순서/)).toHaveValue('6');
+});
+
+test('surfaces a stale delete conflict when a second tab deletes an edited prompt', async ({
+  extension,
+}) => {
+  const initialPrompt = createPromptItem({
+    id: 'shared-delete-prompt',
+    title: '삭제 충돌 대상',
+    content: '두 번째 탭이 오래된 상태로 삭제를 시도한다.',
+    sortOrder: 2,
+  });
+
+  await extension.setPrompts([initialPrompt]);
+
+  const primaryPage = await openOptionsPage(extension);
+  const stalePage = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.addInitScript(() => {
+      const storageEventArea = chrome.storage.onChanged as typeof chrome.storage.onChanged & {
+        addListener: typeof chrome.storage.onChanged.addListener;
+      };
+
+      storageEventArea.addListener = () => {};
+    });
+  });
+
+  await primaryPage.getByRole('button').filter({ hasText: '삭제 충돌 대상' }).click();
+  await stalePage.getByRole('button').filter({ hasText: '삭제 충돌 대상' }).click();
+
+  await primaryPage.getByLabel(/제목/).fill('최신 삭제 충돌 제목');
+  await primaryPage.getByRole('button', { name: '프롬프트 수정' }).click();
+
+  await expect(
+    primaryPage
+      .getByRole('status')
+      .filter({ hasText: '프롬프트를 업데이트했습니다.' }),
+  ).toBeVisible();
+
+  stalePage.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await stalePage
+    .locator('form')
+    .getByRole('button', { name: '프롬프트 삭제', exact: true })
+    .click();
+
+  await expect(
+    stalePage.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
+  ).toBeVisible();
+  await expect(
+    stalePage.getByRole('status').filter({ hasText: '충돌 감지됨' }),
+  ).toBeVisible();
+  await expect(stalePage.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(
+    stalePage.locator('form').getByRole('textbox', { name: /제목/ }),
+  ).toHaveValue('최신 삭제 충돌 제목');
+
+  await expect
+    .poll(async () =>
+      (await extension.getPrompts()).map((prompt) => ({
+        id: prompt.id,
+        title: prompt.title,
+        content: prompt.content,
+        sortOrder: prompt.sortOrder,
+      })),
+    )
+    .toEqual([
+      {
+        id: 'shared-delete-prompt',
+        title: '최신 삭제 충돌 제목',
+        content: '두 번째 탭이 오래된 상태로 삭제를 시도한다.',
+        sortOrder: 2,
+      },
+    ]);
 });
 
 test('normalizes invalid storage entries when the options page loads', async ({
@@ -265,8 +454,8 @@ test('normalizes invalid storage entries when the options page loads', async ({
 
   const page = await openOptionsPage(extension);
 
-  await expect(page.getByRole('button', { name: /먼저 프롬프트/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /나중 프롬프트/ })).toBeVisible();
+  await expect(page.getByRole('button').filter({ hasText: '먼저 프롬프트' })).toBeVisible();
+  await expect(page.getByRole('button').filter({ hasText: '나중 프롬프트' })).toBeVisible();
   await expect(page.getByText('starter')).toHaveCount(0);
 
   await expect
@@ -392,13 +581,17 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
     });
   });
 
-  await primaryPage.getByRole('button', { name: /동시 수정 대상/ }).click();
-  await stalePage.getByRole('button', { name: /동시 수정 대상/ }).click();
+  await primaryPage.getByRole('button').filter({ hasText: '동시 수정 대상' }).click();
+  await stalePage.getByRole('button').filter({ hasText: '동시 수정 대상' }).click();
 
   await primaryPage.getByLabel(/제목/).fill('첫 번째 저장');
   await primaryPage.getByRole('button', { name: '프롬프트 수정' }).click();
 
-  await expect(primaryPage.getByText('프롬프트를 업데이트했습니다.')).toBeVisible();
+  await expect(
+    primaryPage
+      .getByRole('status')
+      .filter({ hasText: '프롬프트를 업데이트했습니다.' }),
+  ).toBeVisible();
   await expect
     .poll(async () =>
       (await extension.getPrompts()).map((prompt) => ({
@@ -421,9 +614,9 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
   await stalePage.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
-    stalePage.getByText(
-      '다른 창의 변경이 먼저 저장되었습니다. 최신 내용을 확인한 뒤 다시 시도해주세요.',
-    ),
+    stalePage
+      .getByRole('alert')
+      .filter({ hasText: '다른 창의 변경이 먼저 저장되었습니다.' }),
   ).toBeVisible();
   await expect(stalePage.getByLabel(/제목/)).toHaveValue('첫 번째 저장');
   await expect
@@ -456,7 +649,7 @@ test('shows an error when saving fails', async ({ extension }) => {
   await page.getByLabel(/정렬 순서/).fill('1');
   await page.getByRole('button', { name: '프롬프트 저장' }).click();
 
-  await expect(page.getByText('mock set failure')).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'mock set failure' })).toBeVisible();
   await expect.poll(async () => await extension.getPrompts()).toEqual([]);
 });
 
@@ -474,14 +667,14 @@ test('shows an error when deleting fails', async ({ extension }) => {
 
   const page = await openOptionsPage(extension);
 
-  await page.getByRole('button', { name: /삭제 실패/ }).click();
+  await page.getByRole('button').filter({ hasText: '삭제 실패' }).click();
   await patchBackgroundStorageSetFailure(extension, 'mock delete failure');
   page.once('dialog', async (dialog) => {
     await dialog.accept();
   });
   await page.getByRole('button', { name: '프롬프트 삭제' }).click();
 
-  await expect(page.getByText('mock delete failure')).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'mock delete failure' })).toBeVisible();
   await expect
     .poll(async () => (await extension.getPrompts()).map((prompt) => prompt.id))
     .toEqual(['delete-failure']);
