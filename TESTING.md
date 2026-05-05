@@ -2,7 +2,7 @@
 
 이 문서는 Promptit의 자동 테스트와 수동 최종 확인 절차를 한 곳에 정리한 문서입니다.
 
-상세 커버리지 체크리스트와 현재 남은 갭은 [TEST_CHECKLIST.md](/home/seok/code/promptit/TEST_CHECKLIST.md)에 정리합니다.
+상세 커버리지 체크리스트와 현재 남은 갭은 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)에 정리합니다.
 
 ## 목적
 
@@ -133,7 +133,7 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - 브라우저 툴바 확장 아이콘 클릭은 자동화하지 않았다.
 - 일부 브라우저/확장 플랫폼 자체 동작은 Playwright보다 수동 점검이 더 현실적이다.
 - 실사이트 smoke는 OpenAI UI 변경, 로그인 유도 모달, A/B 테스트의 영향을 받을 수 있다.
-- 자동화 커버리지의 세부 갭은 [TEST_CHECKLIST.md](/home/seok/code/promptit/TEST_CHECKLIST.md)를 기준으로 관리한다.
+- 자동화 커버리지의 세부 갭은 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)를 기준으로 관리한다.
 
 ## 빠른 체크리스트
 
