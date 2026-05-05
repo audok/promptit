@@ -40,6 +40,37 @@ export type PopupSessionState = {
   disconnectInputObserver: (() => void) | null;
 };
 
+export type IdlePopupSessionState = PopupSessionState & {
+  status: 'idle';
+  triggerContext: null;
+  activeCell: null;
+  closeReason: null;
+  armedTimer: null;
+  isBusy: false;
+  disconnectInputObserver: null;
+};
+
+export type ArmedPopupSessionState = PopupSessionState & {
+  status: 'armed';
+  activeInput: HTMLElement;
+  triggerContext: null;
+  closeReason: null;
+  isBusy: false;
+};
+
+export type OpenPopupSessionState = PopupSessionState & {
+  status: 'open';
+  activeInput: HTMLElement;
+  triggerContext: TriggerContext;
+  closeReason: null;
+  armedTimer: null;
+};
+
+export type ClosingPopupSessionState = PopupSessionState & {
+  status: 'closing';
+  closeReason: CloseReason;
+};
+
 export function createSessionState(): PopupSessionState {
   return {
     status: 'idle',
@@ -62,6 +93,67 @@ export function setActiveCell(
   nextCell: PopupActiveCell | null,
 ): void {
   session.activeCell = nextCell;
+}
+
+export function invalidateTriggerRequestId(
+  session: PopupSessionState,
+): number {
+  session.triggerRequestId += 1;
+  return session.triggerRequestId;
+}
+
+export function isIdleSession(
+  session: PopupSessionState,
+): session is IdlePopupSessionState {
+  return (
+    session.status === 'idle' &&
+    session.triggerContext === null &&
+    session.activeCell === null &&
+    session.closeReason === null &&
+    session.armedTimer === null &&
+    session.isBusy === false &&
+    session.disconnectInputObserver === null
+  );
+}
+
+export function isArmedSession(
+  session: PopupSessionState,
+): session is ArmedPopupSessionState {
+  return (
+    session.status === 'armed' &&
+    session.activeInput !== null &&
+    session.triggerContext === null &&
+    session.closeReason === null &&
+    session.isBusy === false
+  );
+}
+
+export function isOpenSession(
+  session: PopupSessionState,
+): session is OpenPopupSessionState {
+  return (
+    session.status === 'open' &&
+    session.activeInput !== null &&
+    session.triggerContext !== null &&
+    session.closeReason === null &&
+    session.armedTimer === null
+  );
+}
+
+export function isClosingSession(
+  session: PopupSessionState,
+): session is ClosingPopupSessionState {
+  return session.status === 'closing' && session.closeReason !== null;
+}
+
+export function hasSessionTriggerContext(
+  session: PopupSessionState,
+): session is OpenPopupSessionState | ClosingPopupSessionState {
+  return (
+    session.triggerContext !== null &&
+    session.activeInput !== null &&
+    (session.status === 'open' || session.status === 'closing')
+  );
 }
 
 function canUseColumn(
@@ -169,6 +261,7 @@ export function resetSessionState(session: PopupSessionState): void {
   }
 
   session.disconnectInputObserver?.();
+  invalidateTriggerRequestId(session);
   session.status = 'idle';
   session.activeInput = null;
   session.triggerContext = null;
@@ -176,6 +269,8 @@ export function resetSessionState(session: PopupSessionState): void {
   session.activeCell = null;
   session.closeReason = null;
   session.armedTimer = null;
+  session.isComposing = false;
+  session.isInternalChange = false;
   session.isBusy = false;
   session.disconnectInputObserver = null;
 }

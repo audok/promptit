@@ -41,16 +41,21 @@ function cloneActiveCell(
   return activeCell ? { ...activeCell } : null;
 }
 
-function getTargetCell(target: EventTarget | null): PopupActiveCell | null {
-  const element = target instanceof HTMLElement ? target : null;
-  const cell = element?.closest<HTMLElement>('[data-role="prompt-cell"]');
-
-  if (!cell) {
-    return null;
+function parseActiveCellColumn(
+  value: string | undefined,
+): ActiveCellColumn | null {
+  if (value === 'title' || value === 'copy') {
+    return value;
   }
 
-  const rowIndex = Number(cell.dataset.rowIndex);
-  const column = cell.dataset.column as ActiveCellColumn | undefined;
+  return null;
+}
+
+function parseActiveCellDataset(
+  dataset: DOMStringMap,
+): PopupActiveCell | null {
+  const rowIndex = Number(dataset.rowIndex);
+  const column = parseActiveCellColumn(dataset.column);
 
   if (!Number.isFinite(rowIndex) || !column) {
     return null;
@@ -60,6 +65,17 @@ function getTargetCell(target: EventTarget | null): PopupActiveCell | null {
     rowIndex,
     column,
   };
+}
+
+function getTargetCell(target: EventTarget | null): PopupActiveCell | null {
+  const element = target instanceof HTMLElement ? target : null;
+  const cell = element?.closest<HTMLElement>('[data-role="prompt-cell"]');
+
+  if (!cell) {
+    return null;
+  }
+
+  return parseActiveCellDataset(cell.dataset);
 }
 
 export class PromptPopup {
@@ -310,10 +326,8 @@ export class PromptPopup {
     const cells = this.shadowRoot.querySelectorAll<HTMLElement>('[data-role="prompt-cell"]');
 
     cells.forEach((cell) => {
-      const rowIndex = Number(cell.dataset.rowIndex);
-      const column = cell.dataset.column as ActiveCellColumn | undefined;
-      const isActive =
-        rowIndex === activeCell?.rowIndex && column === activeCell?.column;
+      const cellState = parseActiveCellDataset(cell.dataset);
+      const isActive = isSameActiveCell(cellState, activeCell);
 
       cell.classList.toggle('is-active-cell', isActive);
 
