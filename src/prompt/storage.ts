@@ -161,12 +161,9 @@ export async function getUserPrompts(): Promise<PromptItem[]> {
   return getReadablePrompts();
 }
 
-export function createPrompt(
-  draft: PromptDraft,
-): Promise<CreatePromptResponse & PromptItem>;
 export async function createPrompt(
   draft: PromptDraft,
-): Promise<CreatePromptResponse> {
+): Promise<PromptItem> {
   const validatedDraft = getValidatedDraft(draft);
   const response = await sendPromptMutationRequest(
     buildCreatePromptRequest(validatedDraft),
@@ -176,10 +173,7 @@ export async function createPrompt(
     throw new Error(response.message);
   }
 
-  return {
-    ...response,
-    ...response.prompt,
-  };
+  return response.prompt;
 }
 
 export async function updatePrompt(

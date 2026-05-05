@@ -85,8 +85,6 @@ type ParsedPromptForm =
   | { ok: true; draft: PromptDraft }
   | { ok: false; errors: PromptFormErrors };
 
-type CreatedPromptResult = Awaited<ReturnType<typeof createPrompt>>;
-
 function getNextSortOrder(prompts: PromptItem[]): number {
   if (prompts.length === 0) {
     return 0;
@@ -147,21 +145,6 @@ function parsePromptForm(form: PromptFormState): ParsedPromptForm {
   return {
     ok: true,
     draft: normalizedDraft,
-  };
-}
-
-function extractCreatedPrompt(result: CreatedPromptResult): PromptItem {
-  if ('prompt' in result) {
-    return result.prompt;
-  }
-
-  return {
-    id: result.id,
-    title: result.title,
-    content: result.content,
-    sortOrder: result.sortOrder,
-    createdAt: result.createdAt,
-    updatedAt: result.updatedAt,
   };
 }
 
@@ -455,7 +438,7 @@ export function usePromptEditor(): UsePromptEditorResult {
         throw new Error(result.message);
       }
 
-      const createdPrompt = extractCreatedPrompt(await createPrompt(parsedForm.draft));
+      const createdPrompt = await createPrompt(parsedForm.draft);
       const nextPrompts = upsertPrompt(promptsRef.current, createdPrompt);
 
       startTransition(() => {
