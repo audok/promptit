@@ -47,6 +47,7 @@ const TEST_FAIL_OPEN_OPTIONS_STORAGE_KEY = 'promptit:test-fail-open-options';
 type TestControlState = {
   failClipboardWrite: boolean;
   failOpenOptions: boolean;
+  failPromptRead: boolean;
 };
 
 type AdapterMutationRecord = {
@@ -63,6 +64,11 @@ type AdapterMutationRecord = {
 const testControlState: TestControlState = {
   failClipboardWrite: false,
   failOpenOptions: false,
+  failPromptRead: false,
+};
+
+type ClosePopupOptions = {
+  reopenOnCleanupFailure?: boolean;
 };
 
 export function bootstrapContentScript(): void {
@@ -327,6 +333,10 @@ function registerTestListeners(): void {
     if ('failOpenOptions' in detail) {
       testControlState.failOpenOptions = Boolean(detail.failOpenOptions);
     }
+
+    if ('failPromptRead' in detail) {
+      testControlState.failPromptRead = Boolean(detail.failPromptRead);
+    }
   });
 }
 
@@ -382,7 +392,11 @@ async function resolveTriggerCheck(
     return;
   }
 
-  const userPrompts = await getPrompts();
+  const userPrompts = await readPromptsForTrigger(input, requestId, session);
+
+  if (!userPrompts) {
+    return;
+  }
 
   if (shouldAbortTriggerCheck(input, requestId, session)) {
     return;
@@ -412,6 +426,29 @@ async function resolveTriggerCheck(
 
   session.disconnectInputObserver?.();
   session.disconnectInputObserver = () => observer.disconnect();
+}
+
+async function readPromptsForTrigger(
+  input: HTMLElement,
+  requestId: number,
+  session: PopupSessionState,
+): Promise<PromptItem[] | null> {
+  try {
+    if (IS_TEST_MODE && testControlState.failPromptRead) {
+      throw new Error('mock prompt read failure');
+    }
+
+    return await getPrompts();
+  } catch (error) {
+    console.error('[promptit] Failed to read prompts before opening popup.', error);
+
+    if (!shouldAbortTriggerCheck(input, requestId, session)) {
+      clearTriggerForInput(input, session);
+      showToast('프롬프트 목록을 읽지 못했습니다.', 'error');
+    }
+
+    return null;
+  }
 }
 
 function shouldAbortTriggerCheck(
@@ -562,6 +599,7 @@ async function closePopup(
   popup: PromptPopup,
   reason: CloseReason,
   cleanupTrigger: boolean,
+  options: ClosePopupOptions = {},
 ): Promise<boolean> {
   if (session.status === 'idle') {
     return false;
@@ -589,14 +627,16 @@ async function closePopup(
     } catch (error) {
       console.error('[promptit] Failed to clean up trigger text.', error);
       showToast('입력창 정리에 실패했습니다.', 'error');
-      if (activeInput.isConnected) {
-        adapter.focusInput(activeInput);
+      if (options.reopenOnCleanupFailure !== false) {
+        if (activeInput.isConnected) {
+          adapter.focusInput(activeInput);
+        }
+        session.isBusy = false;
+        popup.setBusy(false);
+        session.status = 'open';
+        session.closeReason = null;
+        return false;
       }
-      session.isBusy = false;
-      popup.setBusy(false);
-      session.status = 'open';
-      session.closeReason = null;
-      return false;
     } finally {
       queueMicrotask(() => {
         session.isInternalChange = false;
@@ -629,6 +669,9 @@ async function performOpenOptionsAction(
       popup,
       'open-options',
       Boolean(activeInput && triggerContext),
+      {
+        reopenOnCleanupFailure: false,
+      },
     );
   } catch (error) {
     console.error('[promptit] Failed to open options page.', error);

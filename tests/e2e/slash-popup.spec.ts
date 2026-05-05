@@ -547,6 +547,28 @@ test('opens the options page from the popup empty state', async ({
   await expect(await getComposerText(page)).toBe('');
 });
 
+test('opens options and closes the popup when trigger cleanup fails', async ({
+  extension,
+}) => {
+  await extension.setPrompts([]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, TEXTAREA_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await replaceComposerTextWithoutInputEvent(page, 'x');
+
+  const optionsPagePromise = extension.context.waitForEvent('page');
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  const optionsPage = await optionsPagePromise;
+  await optionsPage.waitForLoadState('domcontentloaded');
+
+  await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
+  await expect(await getComposerText(page)).toBe('x');
+});
+
 test('shows an error toast when the background fails to open options and keeps the popup open', async ({
   extension,
 }) => {
@@ -766,6 +788,29 @@ test('does not open the popup when only a slash is typed', async ({
     'contenteditable-no-match',
   );
   await expect(await getComposerText(page)).toBe('/');
+});
+
+test('shows an error toast when prompt storage cannot be read for the trigger', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    failPromptRead: true,
+  });
+
+  const composer = await page.getByTestId('prompt-textarea');
+  await composer.click();
+  await page.keyboard.type('/ ');
+  await page.waitForTimeout(150);
+
+  await waitForPromptPopupToClose(page);
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('프롬프트 목록을 읽지 못했습니다.');
+  await expect(await getComposerText(page)).toBe('/ ');
 });
 
 test('shows an error toast when trigger cleanup fails', async ({
