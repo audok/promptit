@@ -1,160 +1,461 @@
-import { startTransition, useEffect, useState } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 
-import { isStarterPrompt, type PromptItem } from '../prompt/schema';
-import { getPrompts } from '../prompt/storage';
+import { type PromptItem } from '../prompt/schema';
+import { usePromptEditor } from './usePromptEditor';
 
-type LoadState = 'loading' | 'ready' | 'error';
+function formatTimestamp(value: string): string {
+  return new Date(value).toLocaleString('ko-KR', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
 
 export default function App() {
-  const [prompts, setPrompts] = useState<PromptItem[]>([]);
-  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const {
+    form,
+    errors,
+    notice,
+    alertMessage,
+    conflictState,
+    loadState,
+    isSaving,
+    isEditing,
+    activePrompt,
+    prompts,
+    startCreateMode,
+    selectPrompt,
+    updateField,
+    submit,
+    deletePromptById,
+    clearNotice,
+    clearAlertMessage,
+  } = usePromptEditor();
+
+  const titleInputId = useId();
+  const contentInputId = useId();
+  const sortOrderInputId = useId();
+  const statusRegionId = useId();
+  const alertRegionId = useId();
+  const conflictHintId = useId();
+
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const contentInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const sortOrderInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingInvalidFocusRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!pendingInvalidFocusRef.current) {
+      return;
+    }
 
-    void getPrompts()
-      .then((nextPrompts) => {
-        if (cancelled) {
-          return;
-        }
+    if (errors.title) {
+      titleInputRef.current?.focus();
+      pendingInvalidFocusRef.current = false;
+      return;
+    }
 
-        startTransition(() => {
-          setPrompts(nextPrompts);
-          setLoadState('ready');
-        });
-      })
-      .catch((error) => {
-        console.error('[promptit] Failed to load prompts in options page.', error);
+    if (errors.content) {
+      contentInputRef.current?.focus();
+      pendingInvalidFocusRef.current = false;
+      return;
+    }
 
-        if (!cancelled) {
-          startTransition(() => {
-            setLoadState('error');
-          });
-        }
-      });
+    if (errors.sortOrder) {
+      sortOrderInputRef.current?.focus();
+      pendingInvalidFocusRef.current = false;
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!isSaving) {
+      pendingInvalidFocusRef.current = false;
+    }
+  }, [errors, isSaving]);
 
-  const userPrompts = prompts.filter((prompt) => !isStarterPrompt(prompt));
+  const loadStatusLabel =
+    loadState.status === 'error'
+      ? '불러오기 실패'
+      : loadState.status === 'loading'
+        ? '불러오는 중'
+        : isSaving
+          ? '저장 중'
+          : '대기 중';
+
+  const listMessage =
+    loadState.status === 'loading'
+      ? '저장된 프롬프트를 불러오는 중입니다.'
+      : loadState.status === 'error'
+        ? loadState.message
+        : prompts.length === 0
+          ? '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.'
+          : null;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    pendingInvalidFocusRef.current = true;
+    await submit();
+  }
+
+  async function handleDelete(prompt: PromptItem): Promise<void> {
+    const shouldDelete = window.confirm(`"${prompt.title}" 프롬프트를 삭제할까요?`);
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    await deletePromptById(prompt.id);
+  }
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-900">
-      <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-6 py-12">
-        <section className="grid gap-6 rounded-[32px] border border-white/70 bg-white/75 p-8 shadow-[0_28px_70px_rgba(66,53,49,0.10)] backdrop-blur md:grid-cols-[1.4fr_0.8fr]">
-          <div className="space-y-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
-              Promptit Sprint 1
-            </p>
-            <div className="space-y-3">
-              <h1 className="text-4xl font-semibold tracking-tight text-stone-900">
-                프롬프트 관리는 Sprint 2에서 제공됩니다.
-              </h1>
-              <p className="max-w-2xl text-sm leading-6 text-stone-600">
-                지금은 ChatGPT 입력창에서 <span className="font-semibold">/ </span>
-                를 입력해 Promptit 팝업을 호출하고, 저장된 프롬프트를 삽입하는
-                핵심 흐름만 먼저 안정화한 상태입니다.
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12">
+        <section className="rounded-[32px] border border-white/70 bg-white/80 p-8 shadow-[0_28px_70px_rgba(66,53,49,0.10)] backdrop-blur">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+                Promptit Sprint 3
               </p>
+              <div className="space-y-3">
+                <h1 className="text-4xl font-semibold tracking-tight text-stone-900">
+                  프롬프트를 저장하고 바로 불러오세요.
+                </h1>
+                <p className="max-w-2xl text-sm leading-6 text-stone-600">
+                  이 페이지에서 프롬프트를 만들고 수정하면 ChatGPT의 Promptit
+                  팝업에 즉시 반영됩니다. 목록은{' '}
+                  <span className="font-semibold">sortOrder</span> 오름차순입니다.
+                </p>
+              </div>
             </div>
+
             <div className="grid gap-3 sm:grid-cols-3">
-              <MetricCard label="저장된 프롬프트" value={`${userPrompts.length}`} />
+              <MetricCard label="저장된 프롬프트" value={`${prompts.length}`} />
               <MetricCard
-                label="스타터 항목"
-                value={userPrompts.length > 0 ? '숨김' : '노출 중'}
+                label="편집 상태"
+                value={isEditing ? '수정 중' : '새로 작성'}
               />
-              <MetricCard
-                label="상태"
-                value={loadState === 'error' ? '오류' : '준비됨'}
-              />
+              <MetricCard label="상태" value={loadStatusLabel} />
             </div>
           </div>
-          <aside className="rounded-[28px] bg-stone-900 p-6 text-stone-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-              Next Up
-            </p>
-            <ul className="mt-5 space-y-3 text-sm leading-6 text-stone-300">
-              <li>Prompt CRUD UI</li>
-              <li>3열 키보드 탐색</li>
-              <li>복사 액션과 토스트</li>
-              <li>라이트/다크 테마 확장</li>
-            </ul>
-          </aside>
         </section>
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]">
+        <div className="sr-only" aria-live="polite" aria-atomic="true" id={statusRegionId}>
+          {loadState.status === 'loading'
+            ? '저장된 프롬프트를 불러오는 중입니다.'
+            : notice}
+        </div>
+        <div
+          className="sr-only"
+          aria-live="assertive"
+          aria-atomic="true"
+          id={alertRegionId}
+        >
+          {alertMessage}
+        </div>
+
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+          <article
+            className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
+            aria-busy={loadState.status === 'loading' || isSaving}
+          >
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                  Storage Snapshot
+                  프롬프트 목록
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-stone-900">
-                  현재 저장 상태
+                  저장된 프롬프트
                 </h2>
               </div>
-              <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-600">
-                {loadState}
-              </span>
+              <button
+                type="button"
+                className="rounded-full border border-stone-300 bg-stone-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={startCreateMode}
+                disabled={isSaving}
+              >
+                새 프롬프트
+              </button>
             </div>
 
-            <div className="mt-5 rounded-[22px] bg-stone-50 p-4">
-              {loadState === 'loading' ? (
-                <p className="text-sm text-stone-600">저장소를 불러오는 중입니다.</p>
-              ) : null}
-              {loadState === 'error' ? (
-                <p className="text-sm text-rose-600">
-                  저장소를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요.
-                </p>
-              ) : null}
-              {loadState === 'ready' ? (
+            <div className="mt-5 space-y-3">
+              {listMessage ? <EmptyPanel message={listMessage} /> : null}
+
+              {loadState.status === 'ready' && prompts.length > 0 ? (
                 <div className="space-y-3">
-                  {prompts.map((prompt) => (
-                    <div
-                      key={prompt.id}
-                      className="rounded-2xl border border-stone-200 bg-white px-4 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-stone-900">
-                            {prompt.title}
-                          </p>
-                          <p className="mt-1 text-xs text-stone-500">
-                            {isStarterPrompt(prompt)
-                              ? 'Starter CTA'
-                              : `sortOrder ${prompt.sortOrder}`}
-                          </p>
+                  {prompts.map((prompt) => {
+                    const isActive = prompt.id === activePrompt?.id;
+
+                    return (
+                      <div
+                        key={prompt.id}
+                        className={`rounded-[24px] border px-4 py-4 transition ${
+                          isActive
+                            ? 'border-stone-900 bg-stone-900 text-stone-50 shadow-[0_18px_34px_rgba(28,25,23,0.20)]'
+                            : 'border-stone-200 bg-stone-50 text-stone-900 hover:border-stone-300 hover:bg-stone-100'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 cursor-pointer text-left"
+                            onClick={() => {
+                              selectPrompt(prompt);
+                            }}
+                            disabled={isSaving}
+                            aria-pressed={isActive}
+                            aria-current={isActive ? 'true' : undefined}
+                          >
+                            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
+                              <span
+                                className={
+                                  isActive ? 'text-stone-300' : 'text-stone-500'
+                                }
+                              >
+                                sortOrder {prompt.sortOrder}
+                              </span>
+                              <span
+                                className={
+                                  isActive ? 'text-stone-500' : 'text-stone-300'
+                                }
+                              >
+                                •
+                              </span>
+                              <span
+                                className={
+                                  isActive ? 'text-stone-300' : 'text-stone-500'
+                                }
+                              >
+                                updated {formatTimestamp(prompt.updatedAt)}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-lg font-semibold tracking-tight">
+                              {prompt.title}
+                            </p>
+                            <p
+                              className={`mt-2 line-clamp-3 text-sm leading-6 ${
+                                isActive ? 'text-stone-300' : 'text-stone-600'
+                              }`}
+                            >
+                              {prompt.content}
+                            </p>
+                          </button>
+
+                          <button
+                            type="button"
+                            className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                              isActive
+                                ? 'bg-white/10 text-stone-200 hover:bg-white/15'
+                                : 'bg-white text-stone-600 hover:bg-stone-200'
+                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                            onClick={() => {
+                              void handleDelete(prompt);
+                            }}
+                            disabled={isSaving}
+                            aria-label={`${prompt.title} 프롬프트 삭제`}
+                          >
+                            Delete
+                          </button>
                         </div>
-                        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-stone-500">
-                          {isStarterPrompt(prompt) ? 'system' : 'user'}
-                        </span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : null}
             </div>
           </article>
 
-          <article className="rounded-[28px] border border-stone-200 bg-[linear-gradient(180deg,#fef8f5,#f7eee8)] p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-              Current Flow
-            </p>
-            <h2 className="mt-2 text-xl font-semibold text-stone-900">
-              Sprint 1 동작 방식
-            </h2>
-            <ol className="mt-5 space-y-4 text-sm leading-6 text-stone-700">
-              <li>1. ChatGPT 입력창에서 <span className="font-semibold">/ </span> 입력</li>
-              <li>2. 약 100ms 뒤 Promptit 팝업 오픈</li>
-              <li>3. 마우스로 항목 선택 또는 Enter로 현재 항목 실행</li>
-              <li>4. 스타터 항목은 설정 페이지로 이동</li>
-            </ol>
+          <article
+            className="rounded-[28px] border border-stone-200 bg-[linear-gradient(180deg,#fef8f5,#f7eee8)] p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
+            aria-busy={isSaving}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+                  편집기
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-stone-900">
+                  {isEditing ? '프롬프트 수정' : '새 프롬프트 추가'}
+                </h2>
+              </div>
+              {isEditing ? (
+                <button
+                  type="button"
+                  className="rounded-full border border-stone-300 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={startCreateMode}
+                  disabled={isSaving}
+                >
+                  편집 취소
+                </button>
+              ) : null}
+            </div>
+
+            {notice ? (
+              <Banner
+                tone="success"
+                role="status"
+                message={notice}
+                onDismiss={clearNotice}
+              />
+            ) : null}
+
+            {alertMessage ? (
+              <Banner
+                tone="danger"
+                role="alert"
+                message={alertMessage}
+                onDismiss={clearAlertMessage}
+              />
+            ) : null}
+
+            {conflictState.status === 'stale' ? (
+              <div
+                className="mt-5 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900"
+                role="status"
+                aria-live="polite"
+                id={conflictHintId}
+              >
+                <p className="font-semibold">충돌 감지됨</p>
+                <p className="mt-2 leading-6">{conflictState.message}</p>
+                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-amber-700">
+                  최신 저장본 {formatTimestamp(conflictState.currentPrompt.updatedAt)}
+                </p>
+              </div>
+            ) : null}
+
+            <form className="mt-5 space-y-5" onSubmit={(event) => void handleSubmit(event)}>
+              <Field
+                inputId={titleInputId}
+                label="제목"
+                error={errors.title}
+                hint="1자 이상 40자 이하"
+              >
+                <input
+                  ref={titleInputRef}
+                  id={titleInputId}
+                  type="text"
+                  value={form.title}
+                  onChange={(event) => {
+                    updateField('title', event.target.value);
+                  }}
+                  className="w-full rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                  placeholder="예: 회의록 정리"
+                  maxLength={40}
+                  disabled={isSaving}
+                  aria-invalid={Boolean(errors.title)}
+                  aria-describedby={getDescribedBy(titleInputId, {
+                    hasError: Boolean(errors.title),
+                    includeConflictHint: conflictState.status === 'stale',
+                    conflictHintId,
+                  })}
+                />
+              </Field>
+
+              <Field
+                inputId={contentInputId}
+                label="본문"
+                error={errors.content}
+                hint="실제로 삽입할 프롬프트 본문"
+              >
+                <textarea
+                  ref={contentInputRef}
+                  id={contentInputId}
+                  value={form.content}
+                  onChange={(event) => {
+                    updateField('content', event.target.value);
+                  }}
+                  className="min-h-[220px] w-full rounded-[22px] border border-stone-200 bg-white px-4 py-4 text-sm leading-6 text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                  placeholder="프롬프트 내용을 입력하세요."
+                  disabled={isSaving}
+                  aria-invalid={Boolean(errors.content)}
+                  aria-describedby={getDescribedBy(contentInputId, {
+                    hasError: Boolean(errors.content),
+                    includeConflictHint: conflictState.status === 'stale',
+                    conflictHintId,
+                  })}
+                />
+              </Field>
+
+              <Field
+                inputId={sortOrderInputId}
+                label="정렬 순서"
+                error={errors.sortOrder}
+                hint="작을수록 위에 노출됩니다."
+              >
+                <input
+                  ref={sortOrderInputRef}
+                  id={sortOrderInputId}
+                  type="number"
+                  step="1"
+                  value={form.sortOrder}
+                  onChange={(event) => {
+                    updateField('sortOrder', event.target.value);
+                  }}
+                  className="w-full rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                  disabled={isSaving}
+                  aria-invalid={Boolean(errors.sortOrder)}
+                  aria-describedby={getDescribedBy(sortOrderInputId, {
+                    hasError: Boolean(errors.sortOrder),
+                    includeConflictHint: conflictState.status === 'stale',
+                    conflictHintId,
+                  })}
+                />
+              </Field>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  className="rounded-full bg-stone-900 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-500"
+                  disabled={isSaving || loadState.status === 'error'}
+                >
+                  {isSaving ? '저장 중...' : isEditing ? '프롬프트 수정' : '프롬프트 저장'}
+                </button>
+
+                {isEditing ? (
+                  <button
+                    type="button"
+                    className="rounded-full border border-stone-300 bg-white/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-700 transition hover:border-stone-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => {
+                      if (activePrompt) {
+                        void handleDelete(activePrompt);
+                      }
+                    }}
+                    disabled={isSaving || !activePrompt}
+                  >
+                    프롬프트 삭제
+                  </button>
+                ) : null}
+              </div>
+            </form>
           </article>
         </section>
       </div>
     </main>
   );
+}
+
+function getDescribedBy(
+  inputId: string,
+  options: {
+    hasError: boolean;
+    includeConflictHint: boolean;
+    conflictHintId: string;
+  },
+): string | undefined {
+  const ids = [`${inputId}-hint`];
+
+  if (options.hasError) {
+    ids.push(`${inputId}-error`);
+  }
+
+  if (options.includeConflictHint) {
+    ids.push(options.conflictHintId);
+  }
+
+  return ids.join(' ');
 }
 
 function MetricCard(props: { label: string; value: string }) {
@@ -166,6 +467,67 @@ function MetricCard(props: { label: string; value: string }) {
       <p className="mt-3 text-2xl font-semibold tracking-tight text-stone-900">
         {props.value}
       </p>
+    </div>
+  );
+}
+
+function EmptyPanel(props: { message: string }) {
+  return (
+    <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-sm leading-6 text-stone-600">
+      {props.message}
+    </div>
+  );
+}
+
+function Banner(props: {
+  message: string;
+  onDismiss: () => void;
+  role: 'alert' | 'status';
+  tone: 'danger' | 'success';
+}) {
+  const palette =
+    props.tone === 'danger'
+      ? 'mt-5 rounded-[18px] bg-rose-50 px-4 py-3 text-sm text-rose-700'
+      : 'mt-5 rounded-[18px] bg-emerald-50 px-4 py-3 text-sm text-emerald-700';
+
+  return (
+    <div className={`${palette} flex items-start justify-between gap-3`} role={props.role}>
+      <p className="leading-6">{props.message}</p>
+      <button
+        type="button"
+        className="shrink-0 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] hover:bg-black/5"
+        onClick={props.onDismiss}
+        aria-label="메시지 닫기"
+      >
+        닫기
+      </button>
+    </div>
+  );
+}
+
+function Field(props: {
+  inputId: string;
+  label: string;
+  hint: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={props.inputId} className="flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+          {props.label}
+        </span>
+        <span id={`${props.inputId}-hint`} className="text-[11px] text-stone-500">
+          {props.hint}
+        </span>
+      </label>
+      <div className="mt-3">{props.children}</div>
+      {props.error ? (
+        <p id={`${props.inputId}-error`} className="mt-2 text-sm text-rose-600">
+          {props.error}
+        </p>
+      ) : null}
     </div>
   );
 }

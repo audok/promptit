@@ -1,4 +1,7 @@
-import type { PopupSessionState } from './session';
+import {
+  invalidateTriggerRequestId,
+  type PopupSessionState,
+} from './session';
 
 export const TRIGGER_SEQUENCE = '/ ';
 export const TRIGGER_DEBOUNCE_MS = 100;
@@ -20,8 +23,7 @@ export function armTrigger(
 ): void {
   clearTriggerArm(session);
   session.status = 'armed';
-  session.triggerRequestId += 1;
-  const requestId = session.triggerRequestId;
+  const requestId = invalidateTriggerRequestId(session);
   session.armedTimer = window.setTimeout(() => {
     session.armedTimer = null;
     runCheck(requestId);

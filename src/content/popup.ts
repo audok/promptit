@@ -1,31 +1,81 @@
+import {
+  EMPTY_STATE_LAUNCHER_ITEM_ID,
+  isPromptLauncherItem,
+  type LauncherItem,
+} from './launcher-items';
+import {
+  isSameActiveCell,
+  type ActiveCellColumn,
+  type PopupActiveCell,
+} from './session';
 import popupStyles from './popup.css?inline';
-import { isStarterPrompt, type PromptItem } from '../prompt/schema';
-
-export type PopupItemAction = 'insert' | 'open-options';
-
-export type PopupRenderItem = PromptItem & {
-  action: PopupItemAction;
-};
 
 type PopupOptions = {
-  onSelect: (item: PopupRenderItem) => void;
-  onCopy: (item: PopupRenderItem) => void;
+  onSelect: (item: LauncherItem) => void;
+  onCopy: (item: LauncherItem) => void;
   onExit: () => void;
   onOpenOptions: () => void;
-  onActiveIndexChange: (index: number) => void;
+  onActiveCellChange: (activeCell: PopupActiveCell | null) => void;
 };
 
 type RenderState = {
-  items: PopupRenderItem[];
-  activeIndex: number;
+  items: LauncherItem[];
+  activeCell: PopupActiveCell | null;
   isBusy: boolean;
 };
 
 const VIEWPORT_MARGIN_PX = 12;
 const ANCHOR_GAP_PX = 24;
+const LIST_ROW_HEIGHT_PX = 56;
+const LIST_MAX_ROWS = 5;
+const LIST_VERTICAL_PADDING_PX = 16;
+const LIST_MAX_HEIGHT_PX = LIST_ROW_HEIGHT_PX * LIST_MAX_ROWS + LIST_VERTICAL_PADDING_PX;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function cloneActiveCell(
+  activeCell: PopupActiveCell | null,
+): PopupActiveCell | null {
+  return activeCell ? { ...activeCell } : null;
+}
+
+function parseActiveCellColumn(
+  value: string | undefined,
+): ActiveCellColumn | null {
+  if (value === 'title' || value === 'copy') {
+    return value;
+  }
+
+  return null;
+}
+
+function parseActiveCellDataset(
+  dataset: DOMStringMap,
+): PopupActiveCell | null {
+  const rowIndex = Number(dataset.rowIndex);
+  const column = parseActiveCellColumn(dataset.column);
+
+  if (!Number.isFinite(rowIndex) || !column) {
+    return null;
+  }
+
+  return {
+    rowIndex,
+    column,
+  };
+}
+
+function getTargetCell(target: EventTarget | null): PopupActiveCell | null {
+  const element = target instanceof HTMLElement ? target : null;
+  const cell = element?.closest<HTMLElement>('[data-role="prompt-cell"]');
+
+  if (!cell) {
+    return null;
+  }
+
+  return parseActiveCellDataset(cell.dataset);
 }
 
 export class PromptPopup {
@@ -33,19 +83,20 @@ export class PromptPopup {
   private shadowRoot: ShadowRoot | null = null;
   private state: RenderState = {
     items: [],
-    activeIndex: 0,
+    activeCell: null,
     isBusy: false,
   };
 
   constructor(private readonly options: PopupOptions) {}
 
-  show(items: PromptItem[], activeIndex: number, anchorRect: DOMRect): void {
+  show(
+    items: LauncherItem[],
+    activeCell: PopupActiveCell | null,
+    anchorRect: DOMRect,
+  ): void {
     this.state = {
-      items: items.map((item) => ({
-        ...item,
-        action: isStarterPrompt(item) ? 'open-options' : 'insert',
-      })),
-      activeIndex,
+      items,
+      activeCell: cloneActiveCell(activeCell),
       isBusy: false,
     };
 
@@ -57,29 +108,44 @@ export class PromptPopup {
     this.position(anchorRect);
   }
 
+  update(
+    items: LauncherItem[],
+    activeCell: PopupActiveCell | null,
+    anchorRect: DOMRect,
+  ): void {
+    if (!this.host) {
+      this.show(items, activeCell, anchorRect);
+      return;
+    }
+
+    this.state = {
+      items,
+      activeCell: cloneActiveCell(activeCell),
+      isBusy: this.state.isBusy,
+    };
+
+    this.render();
+    this.position(anchorRect);
+  }
+
   destroy(): void {
     this.host?.remove();
     this.host = null;
     this.shadowRoot = null;
     this.state = {
       items: [],
-      activeIndex: 0,
+      activeCell: null,
       isBusy: false,
     };
   }
 
-  setActiveIndex(activeIndex: number): void {
+  setActiveCell(activeCell: PopupActiveCell | null): void {
     if (!this.host) {
       return;
     }
 
-    this.state.activeIndex = activeIndex;
-    const rows = this.shadowRoot?.querySelectorAll<HTMLElement>('[data-role="prompt-row"]');
-
-    rows?.forEach((row) => {
-      const rowIndex = Number(row.dataset.index);
-      row.classList.toggle('is-active', rowIndex === activeIndex);
-    });
+    this.state.activeCell = cloneActiveCell(activeCell);
+    this.applyActiveState();
   }
 
   containsEvent(event: Event): boolean {
@@ -101,6 +167,7 @@ export class PromptPopup {
   private mount(): void {
     this.host = document.createElement('div');
     this.host.setAttribute('data-promptit-popup-host', 'true');
+    this.host.setAttribute('data-testid', 'promptit-popup-host');
     this.shadowRoot = this.host.attachShadow({ mode: 'open' });
     document.documentElement.append(this.host);
 
@@ -108,17 +175,18 @@ export class PromptPopup {
       event.preventDefault();
     });
 
-    this.shadowRoot.addEventListener('mouseover', (event) => {
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const row = target?.closest<HTMLElement>('[data-role="prompt-row"]');
+    this.shadowRoot.addEventListener('pointermove', (event) => {
+      const nextActiveCell = getTargetCell(event.target);
 
-      if (!row || row.dataset.index === undefined) {
+      if (
+        !nextActiveCell ||
+        isSameActiveCell(nextActiveCell, this.state.activeCell)
+      ) {
         return;
       }
 
-      const nextIndex = Number(row.dataset.index);
-      this.options.onActiveIndexChange(nextIndex);
-      this.setActiveIndex(nextIndex);
+      this.options.onActiveCellChange(nextActiveCell);
+      this.setActiveCell(nextActiveCell);
     });
 
     this.shadowRoot.addEventListener('click', (event) => {
@@ -126,6 +194,13 @@ export class PromptPopup {
 
       if (!target) {
         return;
+      }
+
+      const nextActiveCell = getTargetCell(target);
+
+      if (nextActiveCell) {
+        this.options.onActiveCellChange(nextActiveCell);
+        this.setActiveCell(nextActiveCell);
       }
 
       const action = target.closest<HTMLElement>('[data-action]')?.dataset.action;
@@ -152,6 +227,10 @@ export class PromptPopup {
         return;
       }
 
+      if (!isPromptLauncherItem(selectedItem)) {
+        return;
+      }
+
       if (action === 'copy') {
         this.options.onCopy(selectedItem);
         return;
@@ -168,17 +247,21 @@ export class PromptPopup {
       return;
     }
 
-    const savedCount = this.state.items.filter((item) => item.action === 'insert').length;
+    const savedCount = this.state.items.filter(isPromptLauncherItem).length;
     const savedCountLabel = `${savedCount} saved`;
 
     this.shadowRoot.innerHTML = `
       <style>${popupStyles}</style>
       <div class="promptit-root">
-        <section class="promptit-card${this.state.isBusy ? ' is-busy' : ''}" aria-label="Promptit prompt picker">
+        <section
+          class="promptit-card${this.state.isBusy ? ' is-busy' : ''}"
+          aria-label="Promptit prompt picker"
+          data-testid="promptit-popup"
+        >
           <header class="promptit-header">
             <div class="promptit-header-label">
               <span class="promptit-header-slash">/</span>
-              <span class="promptit-header-text">prompt</span>
+              <span class="promptit-header-text">prompt-it</span>
             </div>
             <button
               type="button"
@@ -189,23 +272,22 @@ export class PromptPopup {
               Exit
             </button>
           </header>
-          <div class="promptit-list" data-role="prompt-list"></div>
+          <div
+            class="promptit-list"
+            data-role="prompt-list"
+            data-testid="promptit-popup-list"
+          ></div>
           <footer class="promptit-footer">
             <span class="promptit-footer-label">${savedCountLabel}</span>
-            <div class="promptit-footer-actions">
-              <span class="promptit-footer-icon" aria-hidden="true">
-                ${renderChevronDownIcon()}
-              </span>
-              <button
-                type="button"
-                class="promptit-footer-button"
-                data-action="open-options"
-                aria-label="Open settings"
-                tabindex="-1"
-              >
-                ${renderSettingsIcon()}
-              </button>
-            </div>
+            <button
+              type="button"
+              class="promptit-footer-button"
+              data-action="open-options"
+              aria-label="Open settings"
+              tabindex="-1"
+            >
+              ${renderSettingsIcon()}
+            </button>
           </footer>
         </section>
       </div>
@@ -217,20 +299,54 @@ export class PromptPopup {
       return;
     }
 
-    if (this.state.items.length === 0) {
-      list.replaceChildren(createEmptyState());
-      this.setBusy(this.state.isBusy);
-      return;
-    }
-
     const fragment = document.createDocumentFragment();
 
     this.state.items.forEach((item, index) => {
-      fragment.append(createPromptRow(item, index, index === this.state.activeIndex));
+      fragment.append(createLauncherRow(item, index, this.state.activeCell));
     });
 
     list.replaceChildren(fragment);
+    this.applyActiveState();
     this.setBusy(this.state.isBusy);
+  }
+
+  private applyActiveState(): void {
+    if (!this.shadowRoot) {
+      return;
+    }
+
+    const activeCell = this.state.activeCell;
+    const rows = this.shadowRoot.querySelectorAll<HTMLElement>('[data-role="prompt-row"]');
+
+    rows.forEach((row) => {
+      const rowIndex = Number(row.dataset.index);
+      row.classList.toggle('is-active-row', rowIndex === activeCell?.rowIndex);
+    });
+
+    const cells = this.shadowRoot.querySelectorAll<HTMLElement>('[data-role="prompt-cell"]');
+
+    cells.forEach((cell) => {
+      const cellState = parseActiveCellDataset(cell.dataset);
+      const isActive = isSameActiveCell(cellState, activeCell);
+
+      cell.classList.toggle('is-active-cell', isActive);
+
+      if (isActive) {
+        cell.setAttribute('aria-current', 'true');
+      } else {
+        cell.removeAttribute('aria-current');
+      }
+    });
+
+    const activeElement = this.shadowRoot.querySelector<HTMLElement>(
+      '[data-role="prompt-cell"].is-active-cell',
+    );
+
+    const list = this.shadowRoot.querySelector<HTMLElement>('[data-role="prompt-list"]');
+
+    if (activeElement && list) {
+      keepElementVisibleWithinList(list, activeElement);
+    }
   }
 
   private position(anchorRect: DOMRect): void {
@@ -238,50 +354,138 @@ export class PromptPopup {
       return;
     }
 
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
     const card = this.shadowRoot.querySelector<HTMLElement>('.promptit-card');
+    const list = this.shadowRoot.querySelector<HTMLElement>('[data-role="prompt-list"]');
 
-    if (!card) {
+    if (!card || !list) {
       return;
     }
 
-    const maxAllowedWidth = Math.max(160, viewportWidth - VIEWPORT_MARGIN_PX * 2);
-    const popupWidth = Math.min(anchorRect.width, maxAllowedWidth);
-    this.host.style.position = 'fixed';
-    this.host.style.zIndex = '2147483646';
-    this.host.style.width = `${popupWidth}px`;
-
-    const left = clamp(
-      anchorRect.left,
-      VIEWPORT_MARGIN_PX,
-      viewportWidth - popupWidth - VIEWPORT_MARGIN_PX,
-    );
-    const measuredHeight = card.getBoundingClientRect().height;
-    const spaceAbove = anchorRect.top - VIEWPORT_MARGIN_PX;
-    const prefersAbove = spaceAbove >= measuredHeight + ANCHOR_GAP_PX;
-    const top = prefersAbove
-      ? anchorRect.top - measuredHeight - ANCHOR_GAP_PX
-      : clamp(
-          anchorRect.bottom + ANCHOR_GAP_PX,
-          VIEWPORT_MARGIN_PX,
-          viewportHeight - measuredHeight - VIEWPORT_MARGIN_PX,
-        );
-
-    this.host.style.left = `${left}px`;
-    this.host.style.top = `${top}px`;
+    const layout = resolvePopupLayout(this.host, card, list, anchorRect);
+    this.host.style.left = `${layout.left}px`;
+    this.host.style.top = `${layout.top}px`;
   }
 }
 
-function createPromptRow(
-  item: PopupRenderItem,
+type PopupLayout = {
+  left: number;
+  top: number;
+  placement: 'above' | 'below';
+  listMaxHeight: number;
+};
+
+function resolvePopupLayout(
+  host: HTMLDivElement,
+  card: HTMLElement,
+  list: HTMLElement,
+  anchorRect: DOMRect,
+): PopupLayout {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const maxAllowedWidth = Math.max(160, viewportWidth - VIEWPORT_MARGIN_PX * 2);
+  const popupWidth = Math.min(anchorRect.width, maxAllowedWidth);
+  const left = clamp(
+    anchorRect.left,
+    VIEWPORT_MARGIN_PX,
+    Math.max(VIEWPORT_MARGIN_PX, viewportWidth - popupWidth - VIEWPORT_MARGIN_PX),
+  );
+
+  host.style.position = 'fixed';
+  host.style.zIndex = '2147483646';
+  host.style.width = `${popupWidth}px`;
+
+  const measuredCardHeight = card.getBoundingClientRect().height;
+  const measuredListHeight = list.getBoundingClientRect().height;
+  const chromeHeight = Math.max(0, measuredCardHeight - measuredListHeight);
+  const spaceAbove = Math.max(0, anchorRect.top - VIEWPORT_MARGIN_PX - ANCHOR_GAP_PX);
+  const spaceBelow = Math.max(
+    0,
+    viewportHeight - anchorRect.bottom - VIEWPORT_MARGIN_PX - ANCHOR_GAP_PX,
+  );
+  const placement =
+    spaceAbove >= measuredCardHeight
+      ? 'above'
+      : spaceBelow >= measuredCardHeight
+        ? 'below'
+        : spaceAbove >= spaceBelow
+          ? 'above'
+          : 'below';
+  const availableSpace = placement === 'above' ? spaceAbove : spaceBelow;
+  const listMaxHeight = clamp(
+    availableSpace - chromeHeight,
+    0,
+    LIST_MAX_HEIGHT_PX,
+  );
+  list.style.setProperty('--promptit-list-max-height', `${listMaxHeight}px`);
+  const measuredPopupHeight = card.getBoundingClientRect().height;
+  const top =
+    placement === 'above'
+      ? clamp(
+          anchorRect.top - measuredPopupHeight - ANCHOR_GAP_PX,
+          VIEWPORT_MARGIN_PX,
+          Math.max(
+            VIEWPORT_MARGIN_PX,
+            viewportHeight - measuredPopupHeight - VIEWPORT_MARGIN_PX,
+          ),
+        )
+      : clamp(
+          anchorRect.bottom + ANCHOR_GAP_PX,
+          VIEWPORT_MARGIN_PX,
+          Math.max(
+            VIEWPORT_MARGIN_PX,
+            viewportHeight - measuredPopupHeight - VIEWPORT_MARGIN_PX,
+          ),
+        );
+
+  return {
+    left,
+    top,
+    placement,
+    listMaxHeight,
+  };
+}
+
+function keepElementVisibleWithinList(
+  list: HTMLElement,
+  element: HTMLElement,
+): void {
+  const listRect = list.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  const topDelta = elementRect.top - listRect.top;
+  const bottomDelta = elementRect.bottom - listRect.bottom;
+
+  if (topDelta < 0) {
+    list.scrollTop += topDelta;
+    return;
+  }
+
+  if (bottomDelta > 0) {
+    list.scrollTop += bottomDelta;
+  }
+}
+
+function createLauncherRow(
+  item: LauncherItem,
   index: number,
-  isActive: boolean,
+  activeCell: PopupActiveCell | null,
 ): HTMLElement {
+  const isActiveRow = activeCell?.rowIndex === index;
+  const isActiveTitleCell =
+    activeCell?.rowIndex === index && activeCell.column === 'title';
+  const isActiveCopyCell =
+    isPromptLauncherItem(item) &&
+    activeCell?.rowIndex === index &&
+    activeCell.column === 'copy';
+
   const row = document.createElement('div');
-  row.className = `promptit-row${isActive ? ' is-active' : ''}`;
+  row.className = `promptit-row${isActiveRow ? ' is-active-row' : ''}${isActiveCopyCell ? ' is-copy-active' : ''}${!isPromptLauncherItem(item) ? ' is-empty-state' : ''}`;
   row.dataset.role = 'prompt-row';
   row.dataset.index = String(index);
+  row.dataset.itemId = isPromptLauncherItem(item)
+    ? item.id
+    : EMPTY_STATE_LAUNCHER_ITEM_ID;
+  row.dataset.itemKind = item.kind;
+  row.dataset.testid = 'promptit-row';
 
   const leadingButton = document.createElement('button');
   leadingButton.type = 'button';
@@ -292,74 +496,76 @@ function createPromptRow(
 
   const leadingBadge = document.createElement('span');
   leadingBadge.className = 'promptit-row-leading-badge';
-  leadingBadge.innerHTML = renderPushPinIcon(isActive);
+  leadingBadge.innerHTML = isPromptLauncherItem(item)
+    ? renderPushPinIcon()
+    : renderEmptyStateIcon();
   leadingButton.append(leadingBadge);
 
   const titleButton = document.createElement('button');
   titleButton.type = 'button';
-  titleButton.className = 'promptit-row-title-button';
-  titleButton.dataset.action = 'select';
+  titleButton.className = `promptit-row-title-button${isActiveTitleCell ? ' is-active-cell' : ''}${!isPromptLauncherItem(item) ? ' is-empty-state' : ''}`;
+  titleButton.dataset.action = isPromptLauncherItem(item) ? 'select' : 'open-options';
+  titleButton.dataset.role = 'prompt-cell';
+  titleButton.dataset.rowIndex = String(index);
+  titleButton.dataset.column = 'title';
+  titleButton.dataset.testid = 'promptit-title-cell';
   titleButton.tabIndex = -1;
-  titleButton.ariaLabel =
-    item.action === 'open-options'
-      ? `Open settings: ${item.title}`
-      : `Insert prompt: ${item.title}`;
+  titleButton.ariaLabel = isPromptLauncherItem(item)
+    ? `Insert prompt: ${item.title}`
+    : `${item.title} ${item.description}`;
 
   const titleText = document.createElement('span');
   titleText.className = 'promptit-row-title';
   titleText.textContent = item.title;
   titleButton.append(titleText);
 
+  if (!isPromptLauncherItem(item)) {
+    const descriptionText = document.createElement('span');
+    descriptionText.className = 'promptit-row-description';
+    descriptionText.textContent = item.description;
+    titleButton.append(descriptionText);
+  }
+
   const copyButton = document.createElement('button');
   copyButton.type = 'button';
-  copyButton.className = 'promptit-row-copy-button';
+  copyButton.className = `promptit-row-copy-button${isActiveCopyCell ? ' is-active-cell' : ''}`;
   copyButton.tabIndex = -1;
 
-  if (item.action === 'open-options') {
+  if (!isPromptLauncherItem(item)) {
     copyButton.disabled = true;
     copyButton.setAttribute('aria-hidden', 'true');
+    copyButton.classList.add('is-empty-state');
   } else {
     copyButton.dataset.action = 'copy';
+    copyButton.dataset.role = 'prompt-cell';
+    copyButton.dataset.rowIndex = String(index);
+    copyButton.dataset.column = 'copy';
+    copyButton.dataset.testid = 'promptit-copy-cell';
     copyButton.ariaLabel = `Copy prompt: ${item.title}`;
   }
 
-  copyButton.innerHTML = renderCopyIcon();
+  const copyBadge = document.createElement('span');
+  copyBadge.className = 'promptit-row-copy-badge';
+  copyBadge.innerHTML = renderCopyIcon();
+  copyButton.append(copyBadge);
 
   row.append(leadingButton, titleButton, copyButton);
   return row;
 }
 
-function createEmptyState(): HTMLElement {
-  const emptyState = document.createElement('div');
-  emptyState.className = 'promptit-empty';
-
-  const title = document.createElement('p');
-  title.className = 'promptit-empty-title';
-  title.textContent = '저장된 프롬프트가 없습니다.';
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'promptit-settings-button';
-  button.dataset.action = 'open-options';
-  button.tabIndex = -1;
-  button.textContent = '설정 열기';
-
-  emptyState.append(title, button);
-  return emptyState;
-}
-
-function renderPushPinIcon(isActive: boolean): string {
-  if (isActive) {
-    return `
-      <svg viewBox="0 0 24 24" class="promptit-icon" aria-hidden="true">
-        <path d="m16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Z" fill="currentColor" />
-      </svg>
-    `;
-  }
-
+function renderPushPinIcon(): string {
   return `
     <svg viewBox="0 0 24 24" class="promptit-icon" aria-hidden="true">
       <path d="m16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Zm-7.15 2h6.3L14 12.85V5h-4v7.85ZM12 14Z" fill="currentColor" />
+    </svg>
+  `;
+}
+
+function renderEmptyStateIcon(): string {
+  return `
+    <svg viewBox="0 0 24 24" class="promptit-icon" aria-hidden="true">
+      <path d="M11 5h2v14h-2z" fill="currentColor" />
+      <path d="M5 11h14v2H5z" fill="currentColor" />
     </svg>
   `;
 }
@@ -368,14 +574,6 @@ function renderCopyIcon(): string {
   return `
     <svg viewBox="0 -960 960 960" class="promptit-icon" aria-hidden="true">
       <path d="M360-240q-33 0-56.5-23.5T280-320v-480q0-33 23.5-56.5T360-880h360q33 0 56.5 23.5T800-800v480q0 33-23.5 56.5T720-240H360Zm0-80h360v-480H360v480ZM200-80q-33 0-56.5-23.5T120-160v-560h80v560h440v80H200Zm160-240v-480 480Z" fill="currentColor" />
-    </svg>
-  `;
-}
-
-function renderChevronDownIcon(): string {
-  return `
-    <svg viewBox="0 -960 960 960" class="promptit-icon" aria-hidden="true">
-      <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z" fill="currentColor" />
     </svg>
   `;
 }

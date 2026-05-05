@@ -1,1 +1,3 @@
-import './main';
+import { registerBackgroundHandlers } from './main';
+
+registerBackgroundHandlers();

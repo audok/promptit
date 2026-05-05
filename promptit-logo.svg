@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <mask id="cut">
+      <rect width="200%" height="200%" x="-50%" y="-50%" fill="white" />
+      <line x1="-400" y1="1133.25" x2="800" y2="-529.55" stroke="black" stroke-width="85" />
+    </mask>
+  </defs>
+  
+  <circle cx="512" cy="512" r="512" fill="black" />
+  
+  <g transform="translate(512, 512) scale(1.15) translate(-260, -335)">
+    <path transform="translate(40, 40)" mask="url(#cut)" fill="#FFFFFF" fill-rule="evenodd" d="
+      M 0,0 
+      L 287,0 
+      A 224,222 0 0,1 287,444 
+      L 141,444 
+      L 141,639 
+      A 141,141 0 0,1 0,498 
+      Z
+      M 141,112
+      L 287,112
+      A 98,98 0 0,1 287,308
+      L 141,308
+      Z" 
+    />
+  </g>
+</svg>

@@ -1,7 +1,16 @@
 import type { TriggerContext } from '../adapters/base';
-import type { PromptItem } from '../prompt/schema';
+import {
+  isPromptLauncherItem,
+  type LauncherItem,
+} from './launcher-items';
 
 export type SessionStatus = 'idle' | 'armed' | 'open' | 'closing';
+export type ActiveCellColumn = 'title' | 'copy';
+export type ActiveCellDirection = 'up' | 'down' | 'left' | 'right';
+export type PopupActiveCell = {
+  rowIndex: number;
+  column: ActiveCellColumn;
+};
 
 export type CloseReason =
   | 'escape'
@@ -20,8 +29,8 @@ export type PopupSessionState = {
   status: SessionStatus;
   activeInput: HTMLElement | null;
   triggerContext: TriggerContext | null;
-  items: PromptItem[];
-  activeIndex: number;
+  items: LauncherItem[];
+  activeCell: PopupActiveCell | null;
   closeReason: CloseReason | null;
   armedTimer: number | null;
   triggerRequestId: number;
@@ -31,13 +40,44 @@ export type PopupSessionState = {
   disconnectInputObserver: (() => void) | null;
 };
 
+export type IdlePopupSessionState = PopupSessionState & {
+  status: 'idle';
+  triggerContext: null;
+  activeCell: null;
+  closeReason: null;
+  armedTimer: null;
+  isBusy: false;
+  disconnectInputObserver: null;
+};
+
+export type ArmedPopupSessionState = PopupSessionState & {
+  status: 'armed';
+  activeInput: HTMLElement;
+  triggerContext: null;
+  closeReason: null;
+  isBusy: false;
+};
+
+export type OpenPopupSessionState = PopupSessionState & {
+  status: 'open';
+  activeInput: HTMLElement;
+  triggerContext: TriggerContext;
+  closeReason: null;
+  armedTimer: null;
+};
+
+export type ClosingPopupSessionState = PopupSessionState & {
+  status: 'closing';
+  closeReason: CloseReason;
+};
+
 export function createSessionState(): PopupSessionState {
   return {
     status: 'idle',
     activeInput: null,
     triggerContext: null,
     items: [],
-    activeIndex: 0,
+    activeCell: null,
     closeReason: null,
     armedTimer: null,
     triggerRequestId: 0,
@@ -48,11 +88,171 @@ export function createSessionState(): PopupSessionState {
   };
 }
 
-export function setActiveIndex(
+export function setActiveCell(
   session: PopupSessionState,
-  nextIndex: number,
+  nextCell: PopupActiveCell | null,
 ): void {
-  session.activeIndex = nextIndex;
+  session.activeCell = nextCell;
+}
+
+export function invalidateTriggerRequestId(
+  session: PopupSessionState,
+): number {
+  session.triggerRequestId += 1;
+  return session.triggerRequestId;
+}
+
+export function isIdleSession(
+  session: PopupSessionState,
+): session is IdlePopupSessionState {
+  return (
+    session.status === 'idle' &&
+    session.triggerContext === null &&
+    session.activeCell === null &&
+    session.closeReason === null &&
+    session.armedTimer === null &&
+    session.isBusy === false &&
+    session.disconnectInputObserver === null
+  );
+}
+
+export function isArmedSession(
+  session: PopupSessionState,
+): session is ArmedPopupSessionState {
+  return (
+    session.status === 'armed' &&
+    session.activeInput !== null &&
+    session.triggerContext === null &&
+    session.closeReason === null &&
+    session.isBusy === false
+  );
+}
+
+export function isOpenSession(
+  session: PopupSessionState,
+): session is OpenPopupSessionState {
+  return (
+    session.status === 'open' &&
+    session.activeInput !== null &&
+    session.triggerContext !== null &&
+    session.closeReason === null &&
+    session.armedTimer === null
+  );
+}
+
+export function isClosingSession(
+  session: PopupSessionState,
+): session is ClosingPopupSessionState {
+  return session.status === 'closing' && session.closeReason !== null;
+}
+
+export function hasSessionTriggerContext(
+  session: PopupSessionState,
+): session is OpenPopupSessionState | ClosingPopupSessionState {
+  return (
+    session.triggerContext !== null &&
+    session.activeInput !== null &&
+    (session.status === 'open' || session.status === 'closing')
+  );
+}
+
+function canUseColumn(
+  item: LauncherItem | undefined,
+  column: ActiveCellColumn,
+): boolean {
+  if (!item) {
+    return false;
+  }
+
+  return column === 'title' || isPromptLauncherItem(item);
+}
+
+export function getInitialActiveCell(
+  items: LauncherItem[],
+): PopupActiveCell | null {
+  return items.length > 0
+    ? {
+        rowIndex: 0,
+        column: 'title',
+      }
+    : null;
+}
+
+export function clampActiveCell(
+  items: LauncherItem[],
+  preferred: PopupActiveCell | null,
+): PopupActiveCell | null {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const fallbackCell = getInitialActiveCell(items);
+
+  if (!preferred) {
+    return fallbackCell;
+  }
+
+  const rowIndex = Math.min(Math.max(preferred.rowIndex, 0), items.length - 1);
+  const item = items[rowIndex];
+
+  if (!item) {
+    return fallbackCell;
+  }
+
+  const column = canUseColumn(item, preferred.column) ? preferred.column : 'title';
+
+  return {
+    rowIndex,
+    column,
+  };
+}
+
+export function moveActiveCell(
+  items: LauncherItem[],
+  current: PopupActiveCell | null,
+  direction: ActiveCellDirection,
+): PopupActiveCell | null {
+  const baseCell = clampActiveCell(items, current);
+
+  if (!baseCell) {
+    return null;
+  }
+
+  if (direction === 'left') {
+    return {
+      ...baseCell,
+      column: 'title',
+    };
+  }
+
+  if (direction === 'right') {
+    return clampActiveCell(items, {
+      ...baseCell,
+      column: 'copy',
+    });
+  }
+
+  const rowDelta = direction === 'up' ? -1 : 1;
+
+  return clampActiveCell(items, {
+    rowIndex: baseCell.rowIndex + rowDelta,
+    column: baseCell.column,
+  });
+}
+
+export function isSameActiveCell(
+  left: PopupActiveCell | null,
+  right: PopupActiveCell | null,
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return left.rowIndex === right.rowIndex && left.column === right.column;
 }
 
 export function resetSessionState(session: PopupSessionState): void {
@@ -61,13 +261,16 @@ export function resetSessionState(session: PopupSessionState): void {
   }
 
   session.disconnectInputObserver?.();
+  invalidateTriggerRequestId(session);
   session.status = 'idle';
   session.activeInput = null;
   session.triggerContext = null;
   session.items = [];
-  session.activeIndex = 0;
+  session.activeCell = null;
   session.closeReason = null;
   session.armedTimer = null;
+  session.isComposing = false;
+  session.isInternalChange = false;
   session.isBusy = false;
   session.disconnectInputObserver = null;
 }

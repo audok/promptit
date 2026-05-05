@@ -1,4 +1,4 @@
-import type { CloseReason } from './session';
+import type { ActiveCellDirection, CloseReason } from './session';
 
 export type PopupKeyAction =
   | {
@@ -14,17 +14,15 @@ export type PopupKeyAction =
   | {
       type: 'select-active';
       preventDefault: boolean;
+    }
+  | {
+      type: 'move-active';
+      direction: ActiveCellDirection;
+      preventDefault: boolean;
     };
 
 const PASSIVE_MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
-const BLOCKED_NAVIGATION_KEYS = new Set([
-  'ArrowUp',
-  'ArrowDown',
-  'ArrowLeft',
-  'ArrowRight',
-  'Delete',
-  'Tab',
-]);
+const PASSIVE_CONTROL_KEYS = new Set(['Delete', 'Tab']);
 
 function isPrintableKey(event: KeyboardEvent): boolean {
   return event.key.length === 1 && !event.ctrlKey && !event.metaKey;
@@ -38,9 +36,41 @@ export function getPopupKeyAction(event: KeyboardEvent): PopupKeyAction {
     };
   }
 
-  if (BLOCKED_NAVIGATION_KEYS.has(event.key)) {
+  if (PASSIVE_CONTROL_KEYS.has(event.key)) {
     return {
       type: 'none',
+      preventDefault: true,
+    };
+  }
+
+  if (event.key === 'ArrowUp') {
+    return {
+      type: 'move-active',
+      direction: 'up',
+      preventDefault: true,
+    };
+  }
+
+  if (event.key === 'ArrowDown') {
+    return {
+      type: 'move-active',
+      direction: 'down',
+      preventDefault: true,
+    };
+  }
+
+  if (event.key === 'ArrowLeft') {
+    return {
+      type: 'move-active',
+      direction: 'left',
+      preventDefault: true,
+    };
+  }
+
+  if (event.key === 'ArrowRight') {
+    return {
+      type: 'move-active',
+      direction: 'right',
       preventDefault: true,
     };
   }
