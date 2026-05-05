@@ -117,6 +117,159 @@ async function dispatchComposerInput(
   );
 }
 
+type TriggerWindowState = Window & {
+  __promptitPopupOpened?: boolean;
+  __promptitComposerDetached?: boolean;
+};
+
+async function installTriggerDetachmentWatcher(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const state = window as TriggerWindowState;
+    state.__promptitPopupOpened = false;
+    state.__promptitComposerDetached = false;
+
+    const popupObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof HTMLElement)) {
+            continue;
+          }
+
+          if (
+            node.matches('[data-testid="promptit-popup-host"]') ||
+            node.querySelector('[data-testid="promptit-popup-host"]')
+          ) {
+            state.__promptitPopupOpened = true;
+          }
+        }
+      }
+    });
+
+    popupObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    const watchTriggerResult = (): void => {
+      if (state.__promptitComposerDetached) {
+        return;
+      }
+
+      if (
+        document.documentElement.getAttribute(
+          'data-promptit-trigger-result',
+        ) !== 'contenteditable-match'
+      ) {
+        window.setTimeout(watchTriggerResult, 0);
+        return;
+      }
+
+      const composer = document.querySelector('#prompt-textarea');
+
+      if (!(composer instanceof HTMLElement)) {
+        return;
+      }
+
+      state.__promptitComposerDetached = true;
+      composer.remove();
+    };
+
+    watchTriggerResult();
+  });
+}
+
+async function dispatchComposerCompositionEvent(
+  page: Parameters<typeof getComposerText>[0],
+  type: 'compositionstart' | 'compositionend',
+  data: string,
+): Promise<void> {
+  await page.evaluate(
+    ({ nextType, nextData }) => {
+      const composer = document.querySelector('#prompt-textarea');
+
+      if (!(composer instanceof HTMLElement)) {
+        throw new Error('Composer not found.');
+      }
+
+      composer.dispatchEvent(
+        new CompositionEvent(nextType, {
+          bubbles: true,
+          data: nextData,
+        }),
+      );
+    },
+    {
+      nextType: type,
+      nextData: data,
+    },
+  );
+}
+
+async function setMultilineContenteditableComposerState(
+  page: Parameters<typeof getComposerText>[0],
+  options: {
+    prefix: string;
+    trigger: string;
+  },
+): Promise<void> {
+  await page.evaluate(
+    ({ nextPrefix, nextTrigger }) => {
+      const composer = document.querySelector('#prompt-textarea');
+
+      if (!(composer instanceof HTMLElement)) {
+        throw new Error('Composer not found.');
+      }
+
+      const prefixNode = document.createTextNode(nextPrefix);
+      const lineBreak = document.createElement('br');
+      const triggerNode = document.createTextNode(nextTrigger);
+
+      composer.replaceChildren(prefixNode, lineBreak, triggerNode);
+      composer.focus();
+
+      const selection = window.getSelection();
+
+      if (!selection) {
+        throw new Error('Selection not found.');
+      }
+
+      const range = document.createRange();
+      range.setStart(triggerNode, triggerNode.data.length);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    },
+    {
+      nextPrefix: options.prefix,
+      nextTrigger: options.trigger,
+    },
+  );
+}
+
+async function getComposerDomSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  childNodeNames: string[];
+  innerHTML: string;
+  textContent: string;
+}> {
+  return await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    return {
+      childNodeNames: Array.from(composer.childNodes, (node) => node.nodeName),
+      innerHTML: composer.innerHTML,
+      textContent: composer.textContent ?? '',
+    };
+  });
+}
+
 async function getPopupPositionSnapshot(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<{
@@ -463,6 +616,92 @@ test('shows an error toast when prompt insertion fails', async ({
   await expect(await getComposerText(page)).toBe('x');
 });
 
+test('preserves the multiline break when inserting and cleaning up a prompt from contenteditable', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await setMultilineContenteditableComposerState(page, {
+    prefix: 'hello',
+    trigger: '/\u00A0',
+  });
+  await dispatchComposerInput(page, 'insertText', '\u00A0');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  const insertionSnapshot = await getComposerDomSnapshot(page);
+  expect(insertionSnapshot.childNodeNames).toContain('BR');
+  expect(insertionSnapshot.innerHTML).toContain('hello<br>');
+  expect(insertionSnapshot.innerHTML).toContain(
+    '영문으로 자연스럽게 번역해줘.',
+  );
+  expect(insertionSnapshot.innerHTML).not.toContain('/&nbsp;');
+  expect(insertionSnapshot.innerHTML).not.toContain('/ ');
+
+  await setMultilineContenteditableComposerState(page, {
+    prefix: 'hello',
+    trigger: '/\u00A0',
+  });
+  await dispatchComposerInput(page, 'insertText', '\u00A0');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await waitForPromptPopupToClose(page);
+
+  const cleanupSnapshot = await getComposerDomSnapshot(page);
+  expect(cleanupSnapshot.childNodeNames).toContain('BR');
+  expect(cleanupSnapshot.innerHTML).toContain('hello<br>');
+  expect(cleanupSnapshot.innerHTML).not.toContain('/&nbsp;');
+  expect(cleanupSnapshot.innerHTML).not.toContain('/ ');
+});
+
+test('keeps the popup closed if the composer detaches while trigger resolution is pending', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await installTriggerDetachmentWatcher(page);
+
+  const composer = page.getByTestId('prompt-textarea');
+  await composer.click();
+  await page.keyboard.type('/ ');
+
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-promptit-trigger-result',
+    'contenteditable-match',
+  );
+  await expect.poll(async () => {
+    return await page.evaluate(() => {
+      const state = window as TriggerWindowState;
+      return state.__promptitComposerDetached ?? false;
+    });
+  }).toBe(true);
+
+  // Give the async prompt read time to finish and surface the stale-open bug.
+  await page.waitForTimeout(150);
+
+  await expect.poll(async () => {
+    return await page.evaluate(() => {
+      const state = window as TriggerWindowState;
+      return state.__promptitPopupOpened ?? false;
+    });
+  }).toBe(false);
+  await expect.poll(async () => {
+    return await page.evaluate(() => {
+      const composer = document.querySelector('#prompt-textarea');
+      return composer?.isConnected ?? false;
+    });
+  }).toBe(false);
+});
+
 test('copies a prompt through the mouse click path', async ({
   extension,
 }) => {
@@ -618,6 +857,23 @@ test('waits for compositionend before opening the popup', async ({
   });
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+});
+
+test('resets composing state after a popup closes during IME input', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await dispatchComposerCompositionEvent(page, 'compositionstart', 'あ');
+  await dispatchComposerInput(page, 'insertCompositionText', 'あ');
+  await waitForPromptPopupToClose(page);
+
+  await clearComposer(page);
+  await openPromptPopup(page);
 });
 
 test('recognizes a non-breaking-space trigger in the contenteditable composer', async ({
