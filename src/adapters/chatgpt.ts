@@ -61,30 +61,26 @@ function getRectForPopupAnchor(input: HTMLElement): DOMRect {
     input.parentElement?.parentElement,
   ].filter((candidate): candidate is HTMLElement => candidate instanceof HTMLElement);
 
-  let bestRect = inputRect;
-  let bestArea = Number.POSITIVE_INFINITY;
-
   for (const candidate of candidates) {
     const rect = candidate.getBoundingClientRect();
 
     if (
+      rect.width <= 0 ||
+      rect.height <= 0 ||
       rect.width < inputRect.width ||
       rect.height < inputRect.height ||
       rect.left > inputRect.left + 2 ||
-      rect.right < inputRect.right - 2
+      rect.top > inputRect.top + 2 ||
+      rect.right < inputRect.right - 2 ||
+      rect.bottom < inputRect.bottom - 2
     ) {
       continue;
     }
 
-    const area = rect.width * rect.height;
-
-    if (area < bestArea) {
-      bestArea = area;
-      bestRect = rect;
-    }
+    return rect;
   }
 
-  return bestRect;
+  return inputRect;
 }
 
 function setTestTriggerDebug(result: string, text: string): void {

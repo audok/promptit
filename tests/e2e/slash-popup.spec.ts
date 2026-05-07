@@ -298,6 +298,35 @@ async function getPopupPositionSnapshot(
   });
 }
 
+async function getPopupWidthSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  popupWidth: number;
+  formWidth: number;
+  surfaceWidth: number;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const composer = document.querySelector('#prompt-textarea');
+    const form = composer?.closest('form');
+    const surface = composer?.closest('.composer-surface');
+
+    if (
+      !(host instanceof HTMLDivElement) ||
+      !(form instanceof HTMLElement) ||
+      !(surface instanceof HTMLElement)
+    ) {
+      throw new Error('Popup host, form, or composer surface not found.');
+    }
+
+    return {
+      popupWidth: host.getBoundingClientRect().width,
+      formWidth: form.getBoundingClientRect().width,
+      surfaceWidth: surface.getBoundingClientRect().width,
+    };
+  });
+}
+
 async function getPopupListScrollTop(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<number> {
@@ -331,6 +360,21 @@ test('opens the slash popup from the contenteditable fixture', async ({
   await expect(page.locator('[data-testid="promptit-popup-host"]')).toBeVisible();
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
+});
+
+test('matches the ChatGPT popup width to the composer form wrapper', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  const snapshot = await getPopupWidthSnapshot(page);
+
+  expect(Math.abs(snapshot.popupWidth - snapshot.formWidth)).toBeLessThan(1);
+  expect(snapshot.popupWidth).toBeGreaterThan(snapshot.surfaceWidth + 80);
 });
 
 test('inserts the active prompt into the contenteditable fixture', async ({

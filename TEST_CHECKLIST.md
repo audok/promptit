@@ -59,6 +59,7 @@
 - [x] 항목이 많을 때 active row가 보이도록 리스트를 스크롤한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 정지한 포인터 아래로 리스트가 스크롤되더라도 키보드 active cell이 hover에 덮어써지지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 뷰포트 여유에 따라 팝업을 위 또는 아래에 배치한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] ChatGPT fixture에서 팝업 폭이 좁은 editor surface가 아니라 composer form wrapper 폭과 일치한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] Gemini에서 저장 프롬프트 insert가 `/ ` trigger를 치환한다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] Gemini popup이 Enter 선택을 처리할 때 host submit keydown으로 전파되지 않는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] Gemini에서 `Escape`와 `Backspace`가 trigger text를 정리하고 팝업을 닫는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
