@@ -6,6 +6,7 @@ import {
 } from '../playwright/extension';
 import {
   CONTENTEDITABLE_FIXTURE_URL,
+  EDITOR_FIXTURE_URL,
   openFixturePage,
 } from '../playwright/promptit';
 
@@ -83,6 +84,36 @@ test('does not initialize Promptit on unsupported URLs', async ({
 }) => {
   const page = await extension.context.newPage();
   await page.goto('about:blank');
+  await page.waitForTimeout(150);
+
+  await expect
+    .poll(async () => {
+      return await page.evaluate(() => {
+        return {
+          initialized:
+            '__promptitContentInitialized__' in window &&
+            Object.prototype.hasOwnProperty.call(
+              window,
+              '__promptitContentInitialized__',
+            ),
+          readyAttribute:
+            document.documentElement.getAttribute('data-promptit-ready'),
+        };
+      });
+    })
+    .toEqual({
+      initialized: false,
+      readyAttribute: null,
+    });
+});
+
+test('does not initialize Promptit on unsupported localhost fixtures', async ({
+  extension,
+}) => {
+  const page = await extension.context.newPage();
+  await page.goto(EDITOR_FIXTURE_URL, {
+    waitUntil: 'domcontentloaded',
+  });
   await page.waitForTimeout(150);
 
   await expect

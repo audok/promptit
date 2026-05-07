@@ -9,8 +9,12 @@ export const CONTENTEDITABLE_FIXTURE_URL =
   `${FIXTURE_ORIGIN}/chatgpt-contenteditable.html`;
 export const TEXTAREA_FIXTURE_URL =
   `${FIXTURE_ORIGIN}/chatgpt-textarea.html`;
+export const EDITOR_FIXTURE_URL =
+  `${FIXTURE_ORIGIN}/editor.html`;
+export const GEMINI_FIXTURE_URL =
+  `${FIXTURE_ORIGIN}/gemini-contenteditable.html`;
 
-const COMPOSER_SELECTOR = [
+const CHATGPT_COMPOSER_SELECTOR = [
   'textarea#prompt-textarea',
   'textarea[data-testid="prompt-textarea"]',
   'div#prompt-textarea[contenteditable="true"]',
@@ -19,6 +23,12 @@ const COMPOSER_SELECTOR = [
   'div[data-testid="prompt-textarea"][contenteditable="true"][data-lexical-editor="true"]',
   'div#prompt-textarea.ProseMirror[contenteditable="true"]',
   'div[data-testid="prompt-textarea"].ProseMirror[contenteditable="true"]',
+].join(', ');
+export const GEMINI_COMPOSER_SELECTOR =
+  'rich-textarea div.ql-editor[contenteditable="true"][role="textbox"], div.ql-editor.textarea[contenteditable="true"][role="textbox"]';
+const COMPOSER_SELECTOR = [
+  CHATGPT_COMPOSER_SELECTOR,
+  GEMINI_COMPOSER_SELECTOR,
 ].join(', ');
 
 export function createPromptItem(overrides: {
@@ -56,6 +66,7 @@ export async function grantFixtureClipboardPermissions(
 export async function openFixturePage(
   page: Page,
   url: string,
+  composerSelector = COMPOSER_SELECTOR,
 ): Promise<void> {
   await page.goto(url, {
     waitUntil: 'domcontentloaded',
@@ -65,17 +76,23 @@ export async function openFixturePage(
     'data-promptit-ready',
     'true',
   );
-  await expect(page.locator(COMPOSER_SELECTOR).first()).toBeVisible();
+  await expect(page.locator(composerSelector).first()).toBeVisible();
 }
 
-export async function getComposer(page: Page) {
-  const composer = page.locator(COMPOSER_SELECTOR).first();
+export async function getComposer(
+  page: Page,
+  composerSelector = COMPOSER_SELECTOR,
+) {
+  const composer = page.locator(composerSelector).first();
   await expect(composer).toBeVisible();
   return composer;
 }
 
-export async function clearComposer(page: Page): Promise<void> {
-  const composer = await getComposer(page);
+export async function clearComposer(
+  page: Page,
+  composerSelector = COMPOSER_SELECTOR,
+): Promise<void> {
+  const composer = await getComposer(page, composerSelector);
   await composer.click();
 
   const isTextarea = await composer.evaluate(
@@ -100,8 +117,11 @@ export async function clearComposer(page: Page): Promise<void> {
   await page.waitForTimeout(100);
 }
 
-export async function getComposerText(page: Page): Promise<string> {
-  const composer = await getComposer(page);
+export async function getComposerText(
+  page: Page,
+  composerSelector = COMPOSER_SELECTOR,
+): Promise<string> {
+  const composer = await getComposer(page, composerSelector);
 
   return await composer.evaluate((element) => {
     if (element instanceof HTMLTextAreaElement) {
@@ -112,8 +132,11 @@ export async function getComposerText(page: Page): Promise<string> {
   });
 }
 
-export async function openPromptPopup(page: Page): Promise<void> {
-  const composer = await getComposer(page);
+export async function openPromptPopup(
+  page: Page,
+  composerSelector = COMPOSER_SELECTOR,
+): Promise<void> {
+  const composer = await getComposer(page, composerSelector);
   await composer.click();
   await page.keyboard.type('/ ');
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
@@ -142,8 +165,9 @@ export async function getActivePopupCellLabel(
 export async function replaceComposerTextWithoutInputEvent(
   page: Page,
   text: string,
+  composerSelector = COMPOSER_SELECTOR,
 ): Promise<void> {
-  const composer = await getComposer(page);
+  const composer = await getComposer(page, composerSelector);
 
   await composer.evaluate((element, nextText) => {
     if (element instanceof HTMLTextAreaElement) {

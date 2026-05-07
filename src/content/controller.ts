@@ -1,8 +1,9 @@
 import {
+  type BaseAdapter,
   type AdapterMutationResult,
   cloneTriggerContext,
 } from '../adapters/base';
-import { ChatGPTAdapter } from '../adapters/chatgpt';
+import { resolveAdapterForUrl } from '../adapters/registry';
 import { type PromptItem } from '../prompt/schema';
 import { getPrompts, subscribeToPrompts } from '../prompt/storage';
 import {
@@ -37,7 +38,6 @@ declare global {
   }
 }
 
-const adapter = new ChatGPTAdapter();
 const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
 const TEST_READY_ATTRIBUTE = 'data-promptit-ready';
 const TEST_OPEN_OPTIONS_EVENT = 'promptit:test-open-options-page';
@@ -72,7 +72,9 @@ type ClosePopupOptions = {
 };
 
 export function bootstrapContentScript(): void {
-  if (!adapter.canHandle(window.location.href) || window.__promptitContentInitialized__) {
+  const adapter = resolveAdapterForUrl(window.location.href);
+
+  if (!adapter || window.__promptitContentInitialized__) {
     return;
   }
 
@@ -81,16 +83,16 @@ export function bootstrapContentScript(): void {
   const session = createSessionState();
   const popup = new PromptPopup({
     onSelect: (item) => {
-      void handleSelection(item, session, popup);
+      void handleSelection(item, session, popup, adapter);
     },
     onCopy: (item) => {
-      void handleCopy(item, session, popup);
+      void handleCopy(item, session, popup, adapter);
     },
     onExit: () => {
-      void closePopup(session, popup, 'escape', true);
+      void closePopup(session, popup, adapter, 'escape', true);
     },
     onOpenOptions: () => {
-      void openOptionsFromPopup(session, popup);
+      void openOptionsFromPopup(session, popup, adapter);
     },
     onActiveCellChange: (nextActiveCell) => {
       setActiveCell(session, nextActiveCell);
@@ -98,11 +100,11 @@ export function bootstrapContentScript(): void {
   });
 
   subscribeToPrompts((nextItems) => {
-    handlePromptStorageChange(nextItems, session, popup);
+    handlePromptStorageChange(nextItems, session, popup, adapter);
   });
 
-  registerDocumentListeners(session, popup);
-  registerWindowListeners(session, popup);
+  registerDocumentListeners(session, popup, adapter);
+  registerWindowListeners(session, popup, adapter);
   registerTestListeners();
   markTestReady();
 }
@@ -118,6 +120,7 @@ function markTestReady(): void {
 function registerDocumentListeners(
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): void {
   document.addEventListener(
     'compositionstart',
@@ -144,7 +147,7 @@ function registerDocumentListeners(
       }
 
       session.isComposing = false;
-      scheduleTriggerCheck(input, session, popup);
+      scheduleTriggerCheck(input, session, popup, adapter);
     },
     true,
   );
@@ -163,7 +166,7 @@ function registerDocumentListeners(
       }
 
       if (session.status === 'open') {
-        void closePopup(session, popup, 'typing', false);
+        void closePopup(session, popup, adapter, 'typing', false);
         return;
       }
 
@@ -171,7 +174,7 @@ function registerDocumentListeners(
         return;
       }
 
-      scheduleTriggerCheck(input, session, popup);
+      scheduleTriggerCheck(input, session, popup, adapter);
     },
     true,
   );
@@ -183,19 +186,21 @@ function registerDocumentListeners(
         return;
       }
 
-      if (session.isBusy) {
-        event.preventDefault();
+      const action = getPopupKeyAction(event);
+      const isHandledPopupKey = action.type !== 'none' || action.preventDefault;
+
+      if (!isHandledPopupKey) {
         return;
       }
 
-      const action = getPopupKeyAction(event);
+      consumePopupKeyEvent(event, action.preventDefault || session.isBusy);
 
-      if (action.preventDefault) {
-        event.preventDefault();
+      if (session.isBusy) {
+        return;
       }
 
       if (action.type === 'close') {
-        void closePopup(session, popup, action.reason, action.cleanupTrigger);
+        void closePopup(session, popup, adapter, action.reason, action.cleanupTrigger);
         return;
       }
 
@@ -223,11 +228,11 @@ function registerDocumentListeners(
         }
 
         if (session.activeCell?.column === 'copy') {
-          void handleCopy(selectedItem, session, popup);
+          void handleCopy(selectedItem, session, popup, adapter);
           return;
         }
 
-        void handleSelection(selectedItem, session, popup);
+        void handleSelection(selectedItem, session, popup, adapter);
       }
     },
     true,
@@ -244,7 +249,7 @@ function registerDocumentListeners(
         return;
       }
 
-      void closePopup(session, popup, 'outside-click', true);
+      void closePopup(session, popup, adapter, 'outside-click', true);
     },
     true,
   );
@@ -264,15 +269,27 @@ function registerDocumentListeners(
         return;
       }
 
-      void closePopup(session, popup, 'blur', true);
+      void closePopup(session, popup, adapter, 'blur', true);
     },
     true,
   );
 }
 
+function consumePopupKeyEvent(
+  event: KeyboardEvent,
+  preventDefault: boolean,
+): void {
+  if (preventDefault) {
+    event.preventDefault();
+  }
+
+  event.stopImmediatePropagation();
+}
+
 function registerWindowListeners(
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): void {
   window.addEventListener(
     'scroll',
@@ -282,7 +299,7 @@ function registerWindowListeners(
       }
 
       if (!session.activeInput || !session.activeInput.isConnected) {
-        void closePopup(session, popup, 'dom-removed', true);
+        void closePopup(session, popup, adapter, 'dom-removed', true);
         return;
       }
 
@@ -299,7 +316,7 @@ function registerWindowListeners(
     'resize',
     () => {
       if (session.status === 'open' && !session.isBusy) {
-        void closePopup(session, popup, 'resize', true);
+        void closePopup(session, popup, adapter, 'resize', true);
       }
     },
     true,
@@ -368,10 +385,11 @@ function scheduleTriggerCheck(
   input: HTMLElement,
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): void {
   session.activeInput = input;
   armTrigger(session, (requestId) => {
-    void resolveTriggerCheck(input, requestId, session, popup);
+    void resolveTriggerCheck(input, requestId, session, popup, adapter);
   });
 }
 
@@ -380,6 +398,7 @@ async function resolveTriggerCheck(
   requestId: number,
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): Promise<void> {
   if (shouldAbortTriggerCheck(input, requestId, session)) {
     return;
@@ -415,7 +434,7 @@ async function resolveTriggerCheck(
 
   const observer = new MutationObserver(() => {
     if (session.status === 'open' && session.activeInput && !session.activeInput.isConnected) {
-      void closePopup(session, popup, 'dom-removed', true);
+      void closePopup(session, popup, adapter, 'dom-removed', true);
     }
   });
 
@@ -491,6 +510,7 @@ async function handleSelection(
   item: LauncherItem,
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): Promise<void> {
   if (session.isBusy) {
     return;
@@ -502,7 +522,7 @@ async function handleSelection(
     : null;
 
   if (!activeInput || !triggerContext) {
-    await closePopup(session, popup, 'insert', false);
+    await closePopup(session, popup, adapter, 'insert', false);
     return;
   }
 
@@ -511,7 +531,7 @@ async function handleSelection(
 
   try {
     if (item.action === 'open-options') {
-      await performOpenOptionsAction(session, popup);
+      await performOpenOptionsAction(session, popup, adapter);
       return;
     }
 
@@ -522,7 +542,7 @@ async function handleSelection(
       'insert prompt content',
     );
 
-    await closePopup(session, popup, 'insert', false);
+    await closePopup(session, popup, adapter, 'insert', false);
   } catch (error) {
     console.error('[promptit] Failed to handle popup selection.', error);
     session.isBusy = false;
@@ -547,6 +567,7 @@ async function handleCopy(
   item: LauncherItem,
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): Promise<void> {
   if (item.action === 'open-options' || session.isBusy) {
     return;
@@ -565,7 +586,7 @@ async function handleCopy(
     }
 
     await navigator.clipboard.writeText(item.content);
-    const didClose = await closePopup(session, popup, 'copy', true);
+    const didClose = await closePopup(session, popup, adapter, 'copy', true);
 
     if (!didClose) {
       return;
@@ -586,17 +607,19 @@ async function handleCopy(
 async function openOptionsFromPopup(
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): Promise<void> {
   if (session.isBusy) {
     return;
   }
 
-  await performOpenOptionsAction(session, popup);
+  await performOpenOptionsAction(session, popup, adapter);
 }
 
 async function closePopup(
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
   reason: CloseReason,
   cleanupTrigger: boolean,
   options: ClosePopupOptions = {},
@@ -653,6 +676,7 @@ async function closePopup(
 async function performOpenOptionsAction(
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): Promise<boolean> {
   const activeInput = session.activeInput;
   const triggerContext = session.triggerContext
@@ -667,6 +691,7 @@ async function performOpenOptionsAction(
     return await closePopup(
       session,
       popup,
+      adapter,
       'open-options',
       Boolean(activeInput && triggerContext),
       {
@@ -720,6 +745,7 @@ function handlePromptStorageChange(
   nextUserPrompts: PromptItem[],
   session: PopupSessionState,
   popup: PromptPopup,
+  adapter: BaseAdapter,
 ): void {
   if (session.status !== 'open' || !session.activeInput || !session.activeInput.isConnected) {
     return;

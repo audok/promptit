@@ -9,6 +9,7 @@
 
 - `Automated`: 로컬 Playwright 회귀 테스트에서 반복 가능하게 검증됨
 - `Live smoke`: 실제 `chatgpt.com` 또는 `chat.openai.com`에서만 확인함
+- `Skipped live`: 실제 사이트 자동화 후보가 있지만 외부 사이트 상태 때문에 release gate로 쓰지 않음
 - `Manual`: 사람이 직접 확인해야 함
 - `Gap`: 구현은 있지만 아직 반복 가능한 검증이 없음
 
@@ -18,6 +19,7 @@
 - [x] 지원하지 않는 URL에서는 Promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
 - [x] 실제 `chatgpt.com`에서 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] `chat.openai.com`에서 진입해도 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [x] Gemini fixture에서 Promptit이 초기화된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [ ] 같은 페이지에서 중복 초기화 방지 가드가 명시적으로 검증된다. `Gap`
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭으로 옵션 페이지가 열린다. `Manual`
 
@@ -31,6 +33,8 @@
 - [x] NBSP가 섞인 trigger도 `/ `로 정규화해 인식한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] `readonly` textarea는 무시한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] `disabled` textarea는 무시한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] Gemini `rich-textarea div.ql-editor[role="textbox"]` composer에서 `/ ` 입력 시 팝업이 열린다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] Gemini Quill `.ql-clipboard` contenteditable은 입력창으로 취급하지 않는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [ ] 입력창 내부 자식 노드에서 이벤트가 올라와도 같은 composer로 안정적으로 resolve되는지 명시적으로 검증한다. `Gap`
 - [ ] 입력창 DOM이 제거됐을 때 열린 팝업이 정리되는지 명시적으로 검증한다. `Gap`
 
@@ -55,6 +59,10 @@
 - [x] 항목이 많을 때 active row가 보이도록 리스트를 스크롤한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 정지한 포인터 아래로 리스트가 스크롤되더라도 키보드 active cell이 hover에 덮어써지지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 뷰포트 여유에 따라 팝업을 위 또는 아래에 배치한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] Gemini에서 저장 프롬프트 insert가 `/ ` trigger를 치환한다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] Gemini popup이 Enter 선택을 처리할 때 host submit keydown으로 전파되지 않는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] Gemini에서 `Escape`와 `Backspace`가 trigger text를 정리하고 팝업을 닫는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] Gemini popup은 좁은 `ql-editor` 줄이 아니라 composer wrapper 기준으로 anchor된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [ ] window `scroll` 시 anchor 기준으로 팝업을 재배치하는지 명시적으로 검증한다. `Gap`
 - [ ] Arrow Up/Down/Left/Right의 전체 edge behavior를 명시적으로 검증한다. `Gap`
 
@@ -88,7 +96,9 @@
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 copy할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 empty state -> options가 된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chat.openai.com`에서 진입해도 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [ ] 실제 public `gemini.google.com/app` no-submit smoke는 skip되어 있다. `Skipped live` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state로 이동했고 composer readback은 빈 문자열이었다.
 - [ ] 로그인된 ChatGPT 세션에서 전체 흐름을 반복 검증한다. `Gap`
+- [ ] 로그인된 Gemini 세션에서 `/ ` popup open, insert, cleanup, no-submit 동작을 반복 검증한다. `Manual`
 
 ## 7. 릴리스 체크용 빠른 체크리스트
 
@@ -97,3 +107,4 @@
 - [ ] `pnpm test:e2e:live`
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `Promptit Settings`인지 확인
+- [ ] 로그인된 Gemini composer 수동 확인

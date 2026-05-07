@@ -1,7 +1,11 @@
 import { defineManifest } from '@crxjs/vite-plugin';
 
 const isTestMode = process.env.VITE_PROMPTIT_TEST_MODE === '1';
-const defaultMatches = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
+const defaultMatches = [
+  'https://chatgpt.com/*',
+  'https://chat.openai.com/*',
+  'https://gemini.google.com/*',
+];
 const testMatches = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];
 const contentScriptMatches = isTestMode
   ? [...defaultMatches, ...testMatches]
@@ -11,7 +15,7 @@ export default defineManifest({
   manifest_version: 3,
   name: 'Promptit',
   version: '0.0.1',
-  description: 'Load saved prompts into ChatGPT with a slash trigger.',
+  description: 'Load saved prompts into supported AI sites with a slash trigger.',
   icons: {
     16: 'icons/icon16.png',
     32: 'icons/icon32.png',
