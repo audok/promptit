@@ -8,7 +8,7 @@
 
 - 로컬 fixture 기반 결정적 회귀 테스트를 빠르게 반복한다.
 - 실제 ChatGPT 사이트에서 핵심 사용자 흐름을 별도 smoke test로 확인한다.
-- Gemini는 로컬 fixture로 결정적 회귀 테스트를 확인하고, 로그인된 실제 Gemini는 수동 최종 체크로 확인한다.
+- Gemini는 로컬 fixture로 결정적 회귀 테스트를 확인하고, 로그인된 실제 ChatGPT/Gemini 전체 흐름은 수동 최종 체크로 확인한다.
 - 자동화하기 어려운 브라우저 툴바 확장 아이콘 클릭은 수동 최종 체크로 관리한다.
 
 ## 문서 역할
@@ -45,8 +45,9 @@ pnpm test:e2e
   - toast 기반 실패 복구 경로
   - prompt read failure, composer detach stale-open regression
   - popup placement, long-list scroll
-  - unsupported URL no-op
+  - unsupported URL no-op, same-page duplicate initialization guard
   - content script -> runtime message -> options open, malformed runtime message no-op
+  - ChatGPT/Gemini composer child-node event bubbling resolve
   - Gemini fixture에서 초기화, `/ ` popup open, insert, cleanup, Enter no-submit host regression, Quill clipboard 무시, wrapper anchoring
 
 ### 3. 실사이트 Smoke
@@ -71,9 +72,9 @@ pnpm test:e2e:live
 | 파일 | 주 역할 | 상세 체크리스트 섹션 |
 | --- | --- | --- |
 | `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
-| `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `Gemini 지원` |
-| `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, insert/copy, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
-| `tests/e2e/platform.spec.ts` | 지원 URL 범위, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
+| `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, child-node resolve, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `Gemini 지원` |
+| `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, child-node resolve, insert/copy, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
+| `tests/e2e/platform.spec.ts` | 지원 URL 범위, same-page duplicate initialization guard, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
 | `tests/live/live-chatgpt.spec.ts` | 실제 `chatgpt.com` / `chat.openai.com` smoke | `실사이트 smoke` |
 | `tests/live/live-gemini.spec.ts` | Gemini public-page smoke 후보. 현재 no-submit 조건을 만족하지 못해 skip | `실사이트 smoke` |
 
@@ -105,18 +106,19 @@ pnpm test:e2e:live
 - Playwright는 웹페이지 DOM은 안정적으로 제어하지만 브라우저 툴바 UI는 안정적으로 제어하지 못한다.
 - 구현상 실제 비즈니스 로직은 `chrome.action.onClicked -> chrome.runtime.openOptionsPage()` 연결뿐이라, 비용 대비 자동화 이득이 작다.
 
-### 로그인된 Gemini composer
+### 로그인된 ChatGPT/Gemini 전체 흐름
 
-1. Promptit 확장을 로드한 브라우저에서 로그인된 Gemini 세션을 연다.
-2. Gemini composer에 포커스하고 `/ `를 입력한다.
+1. Promptit 확장을 로드한 브라우저에서 로그인된 ChatGPT와 Gemini 세션을 각각 연다.
+2. 각 서비스의 composer에 포커스하고 `/ `를 입력한다.
 3. Promptit popup이 열리는지 확인한다.
-4. Enter 또는 popup click으로 저장된 프롬프트를 선택한다.
-5. `/ ` trigger가 저장된 프롬프트 본문으로 치환되고, 의도치 않게 Gemini prompt가 제출되지 않는지 확인한다.
+4. Enter 또는 popup click으로 저장된 프롬프트 insert와 copy 흐름을 확인한다.
+5. `/ ` trigger cleanup이 정상 동작하고, 의도치 않게 prompt가 제출되지 않는지 확인한다.
 
 이 항목을 수동으로 두는 이유:
 
-- 2026-05-07 자동 live smoke에서 public Gemini page는 Promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동했다.
-- 로그인된 실제 Gemini composer의 최종 no-submit 동작은 사용자 세션에서 확인해야 한다.
+- 로그인 세션은 계정 상태, 쿠키, 사이트 UI 변경, A/B 테스트의 영향을 받아 반복 가능한 회귀 테스트로 고정하기 어렵다.
+- 2026-05-07 자동 live smoke에서 public Gemini page는 Promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동했다. 이 상태에서는 composer readback으로 no-submit 조건을 안전하게 증명할 수 없다.
+- 로그인된 실제 ChatGPT/Gemini composer의 최종 전체 흐름은 사용자 세션에서 확인해야 한다.
 
 ## 언제 어떤 테스트를 돌릴지
 
@@ -136,7 +138,7 @@ pnpm test:e2e:live
 - `pnpm test:e2e`
 - `pnpm test:e2e:live`
 - 브라우저 툴바 아이콘 수동 체크
-- 로그인된 Gemini composer 수동 체크
+- 로그인된 ChatGPT/Gemini 전체 흐름 수동 체크
 
 ## 추천 프롬프트
 
@@ -155,7 +157,7 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - 브라우저 툴바 확장 아이콘 클릭은 자동화하지 않았다.
 - 일부 브라우저/확장 플랫폼 자체 동작은 Playwright보다 수동 점검이 더 현실적이다.
 - 실사이트 smoke는 OpenAI/Gemini UI 변경, 로그인 유도 모달, A/B 테스트의 영향을 받을 수 있다.
-- Gemini public page smoke는 no-submit 조건을 만족하지 못해 skip되어 있다. 2026-05-07 결과: Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state에 표시되고 composer text readback은 빈 문자열이었다.
+- Gemini public page smoke는 no-submit 조건을 만족하지 못해 skip되어 있다. 2026-05-07 결과: Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state에 표시되고 composer text readback은 빈 문자열이었다. 즉, 자동 smoke가 확인하려는 "composer 안에 삽입되고 제출되지 않는다"는 조건을 public page에서 안정적으로 관찰할 수 없었다.
 - 자동화 커버리지의 세부 갭은 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)를 기준으로 관리한다.
 
 ## 빠른 체크리스트
@@ -165,4 +167,4 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - [ ] `pnpm test:e2e:live`
 - [ ] 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 정상 오픈 확인
-- [ ] 로그인된 Gemini composer 확인
+- [ ] 로그인된 ChatGPT/Gemini 전체 흐름 확인

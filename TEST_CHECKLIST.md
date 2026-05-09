@@ -22,7 +22,7 @@
 - [x] 실제 `chatgpt.com`에서 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] `chat.openai.com`에서 진입해도 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] Gemini fixture에서 Promptit이 초기화된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
-- [ ] 같은 페이지에서 중복 초기화 방지 가드가 명시적으로 검증된다. `Gap`
+- [x] 같은 페이지에서 중복 초기화 방지 가드가 명시적으로 검증된다. `Automated` via `tests/e2e/platform.spec.ts`
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭으로 옵션 페이지가 열린다. `Manual`
 
 ## 2. 입력 감지와 trigger
@@ -39,7 +39,7 @@
 - [x] Gemini `rich-textarea div.ql-editor[role="textbox"]` composer에서 `/ ` 입력 시 팝업이 열린다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] Gemini Quill `.ql-clipboard` contenteditable은 입력창으로 취급하지 않는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] trigger resolution이 끝나기 전에 composer DOM이 제거되면 stale popup을 열지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
-- [ ] 입력창 내부 자식 노드에서 이벤트가 올라와도 같은 composer로 안정적으로 resolve되는지 명시적으로 검증한다. `Gap`
+- [x] 입력창 내부 자식 노드에서 이벤트가 올라와도 같은 composer로 안정적으로 resolve되는지 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] 이미 열린 팝업 상태에서 입력창 DOM이 제거됐을 때 팝업이 정리되는지 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 
 ## 3. 팝업 상호작용
@@ -108,9 +108,8 @@
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 copy할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 empty state -> options가 된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chat.openai.com`에서 진입해도 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [ ] 실제 public `gemini.google.com/app` no-submit smoke는 skip되어 있다. `Skipped live` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state로 이동했고 composer readback은 빈 문자열이었다.
-- [ ] 로그인된 ChatGPT 세션에서 전체 흐름을 반복 검증한다. `Gap`
-- [ ] 로그인된 Gemini 세션에서 `/ ` popup open, insert, cleanup, no-submit 동작을 반복 검증한다. `Manual`
+- [ ] 실제 public `gemini.google.com/app` no-submit smoke는 skip되어 있다. `Skipped live` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state로 이동했고 composer readback은 빈 문자열이었다. Deterministic Gemini no-submit은 `tests/e2e/gemini-slash-popup.spec.ts`에서 검증한다.
+- [ ] 로그인된 ChatGPT, Gemini 세션에서 전체 흐름을 반복 검증한다. `Manual`
 
 ## 7. 릴리스 체크용 빠른 체크리스트
 
@@ -119,4 +118,4 @@
 - [ ] `pnpm test:e2e:live`
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `Promptit Settings`인지 확인
-- [ ] 로그인된 Gemini composer 수동 확인
+- [ ] 로그인된 ChatGPT, Gemini 전체 흐름 수동 확인
