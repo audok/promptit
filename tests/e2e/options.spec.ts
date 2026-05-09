@@ -723,7 +723,9 @@ test('shows an error when deleting fails', async ({ extension }) => {
   page.once('dialog', async (dialog) => {
     await dialog.accept();
   });
-  await page.getByRole('button', { name: '프롬프트 삭제' }).click();
+  await page
+    .getByRole('button', { name: '프롬프트 삭제', exact: true })
+    .click();
 
   await expect(page.getByRole('alert').filter({ hasText: 'mock delete failure' })).toBeVisible();
   await expect
