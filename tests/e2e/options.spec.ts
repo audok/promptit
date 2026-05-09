@@ -178,6 +178,57 @@ test('creates and updates prompts from the options page', async ({
     ]);
 });
 
+test('orders prompts with matching sortOrder by createdAt and id tie-breaks', async ({
+  extension,
+}) => {
+  await extension.setPrompts([
+    createPromptItem({
+      id: 'same-sort-later',
+      title: '생성일 늦은 프롬프트',
+      content: '생성일이 가장 늦어서 마지막에 보여야 한다.',
+      sortOrder: 5,
+      createdAt: new Date('2026-03-29T00:03:00.000Z').toISOString(),
+      updatedAt: new Date('2026-03-29T00:03:00.000Z').toISOString(),
+    }),
+    createPromptItem({
+      id: 'same-sort-id-b',
+      title: '같은 생성일 ID B',
+      content: '같은 생성일에서는 ID A 다음에 보여야 한다.',
+      sortOrder: 5,
+      createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
+      updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
+    }),
+    createPromptItem({
+      id: 'same-sort-earlier',
+      title: '생성일 빠른 프롬프트',
+      content: '생성일이 가장 빨라서 먼저 보여야 한다.',
+      sortOrder: 5,
+      createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+      updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+    }),
+    createPromptItem({
+      id: 'same-sort-id-a',
+      title: '같은 생성일 ID A',
+      content: '같은 생성일에서는 ID B보다 먼저 보여야 한다.',
+      sortOrder: 5,
+      createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
+      updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+  const promptButtons = page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name: '저장된 프롬프트' }) })
+    .locator('button[aria-pressed]');
+
+  await expect(promptButtons).toHaveCount(4);
+  await expect(promptButtons.nth(0)).toContainText('생성일 빠른 프롬프트');
+  await expect(promptButtons.nth(1)).toContainText('같은 생성일 ID A');
+  await expect(promptButtons.nth(2)).toContainText('같은 생성일 ID B');
+  await expect(promptButtons.nth(3)).toContainText('생성일 늦은 프롬프트');
+});
+
 test('preserves draft input while the initial prompt load resolves', async ({
   extension,
 }) => {

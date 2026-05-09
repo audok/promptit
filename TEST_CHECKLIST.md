@@ -87,7 +87,7 @@
 - [x] storage read 실패 시 empty state로 복구된다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 저장 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 삭제 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
-- [ ] sortOrder tie-break인 `createdAt`, `id` 정렬이 명시적으로 검증된다. `Gap`
+- [x] sortOrder tie-break인 `createdAt`, `id` 정렬이 명시적으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
 - [ ] starter prompt가 사용자 목록에서 제외되는지 명시적으로 검증된다. `Gap`
 
 ## 6. 실사이트 smoke
