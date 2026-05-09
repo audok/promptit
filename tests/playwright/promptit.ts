@@ -114,7 +114,9 @@ export async function clearComposer(
     });
   }
 
-  await page.waitForTimeout(100);
+  await expect
+    .poll(async () => await getComposerText(page, composerSelector))
+    .toBe('');
 }
 
 export async function getComposerText(

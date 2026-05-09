@@ -275,25 +275,37 @@ async function getPopupPositionSnapshot(
 ): Promise<{
   popupTop: number;
   popupLeft: number;
+  popupBottom: number;
   anchorTop: number;
   anchorBottom: number;
+  viewportHeight: number;
 }> {
   return await page.evaluate(() => {
     const host = document.querySelector('[data-testid="promptit-popup-host"]');
     const composer = document.querySelector('#prompt-textarea');
     const anchor = composer?.closest('form');
+    const card = host?.shadowRoot?.querySelector(
+      '[data-testid="promptit-popup"]',
+    );
 
-    if (!(host instanceof HTMLDivElement) || !(anchor instanceof HTMLElement)) {
-      throw new Error('Popup host or anchor not found.');
+    if (
+      !(host instanceof HTMLDivElement) ||
+      !(anchor instanceof HTMLElement) ||
+      !(card instanceof HTMLElement)
+    ) {
+      throw new Error('Popup host, popup card, or anchor not found.');
     }
 
     const anchorRect = anchor.getBoundingClientRect();
+    const popupRect = card.getBoundingClientRect();
 
     return {
       popupTop: Number.parseFloat(host.style.top),
       popupLeft: Number.parseFloat(host.style.left),
+      popupBottom: popupRect.bottom,
       anchorTop: anchorRect.top,
       anchorBottom: anchorRect.bottom,
+      viewportHeight: window.innerHeight,
     };
   });
 }
@@ -417,6 +429,45 @@ test('copies the selected prompt and clears the trigger text', async ({
   await expect(
     await page.evaluate(() => navigator.clipboard.readText()),
   ).toBe('회의록으로 정리해줘.');
+});
+
+test('clamps keyboard navigation at popup edges and moves between title and copy cells', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 번역',
+  );
+
+  await page.keyboard.press('ArrowUp');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 번역',
+  );
+
+  await page.keyboard.press('ArrowDown');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 회의록',
+  );
+
+  await page.keyboard.press('ArrowDown');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 회의록',
+  );
+
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Copy prompt: 회의록',
+  );
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 회의록',
+  );
 });
 
 test('cleans up the trigger text on escape and backspace', async ({
@@ -768,6 +819,47 @@ test('keeps the popup closed if the composer detaches while trigger resolution i
   }).toBe(false);
 });
 
+test('closes an already-open popup when the composer is removed and does not reopen', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(1);
+
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    composer.remove();
+  });
+
+  await waitForPromptPopupToClose(page);
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(0);
+  await expect(page.getByTestId('prompt-textarea')).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.scrollBy(0, 1);
+    const marker = document.createElement('span');
+    document.body.append(marker);
+    marker.remove();
+  });
+
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(0);
+});
+
 test('copies a prompt through the mouse click path', async ({
   extension,
 }) => {
@@ -824,13 +916,12 @@ test('does not open the popup when only a slash is typed', async ({
   const composer = await page.getByTestId('prompt-textarea');
   await composer.click();
   await page.keyboard.type('/');
-  await page.waitForTimeout(150);
 
-  await waitForPromptPopupToClose(page);
   await expect(page.locator('html')).toHaveAttribute(
     'data-promptit-trigger-result',
     'contenteditable-no-match',
   );
+  await waitForPromptPopupToClose(page);
   await expect(await getComposerText(page)).toBe('/');
 });
 
@@ -848,12 +939,11 @@ test('shows an error toast when prompt storage cannot be read for the trigger', 
   const composer = await page.getByTestId('prompt-textarea');
   await composer.click();
   await page.keyboard.type('/ ');
-  await page.waitForTimeout(150);
 
-  await waitForPromptPopupToClose(page);
   await expect
     .poll(async () => await getToastText(page))
     .toBe('프롬프트 목록을 읽지 못했습니다.');
+  await waitForPromptPopupToClose(page);
   await expect(await getComposerText(page)).toBe('/ ');
 });
 
@@ -891,13 +981,11 @@ test('does not open the popup when the selection is not collapsed', async ({
   });
   await dispatchComposerInput(page, 'insertText', ' ');
 
-  await page.waitForTimeout(150);
-
-  await waitForPromptPopupToClose(page);
   await expect(page.locator('html')).toHaveAttribute(
     'data-promptit-trigger-result',
     'contenteditable-no-selection',
   );
+  await waitForPromptPopupToClose(page);
 });
 
 test('waits for compositionend before opening the popup', async ({
@@ -1135,6 +1223,57 @@ test('keeps keyboard navigation active while the hovered popup cell scrolls out 
   await expect
     .poll(async () => await getPopupListScrollTop(page))
     .toBeGreaterThan(0);
+});
+
+test('repositions the open popup on window scroll instead of closing', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openFixturePage(page, TEXTAREA_FIXTURE_URL);
+
+  await page.evaluate(() => {
+    const form = document.querySelector('.composer-form');
+
+    if (!(form instanceof HTMLElement)) {
+      throw new Error('Composer form not found.');
+    }
+
+    const topSpacer = document.createElement('div');
+    topSpacer.style.height = '720px';
+    const bottomSpacer = document.createElement('div');
+    bottomSpacer.style.height = '720px';
+    form.before(topSpacer);
+    form.after(bottomSpacer);
+    window.scrollTo(0, 500);
+  });
+
+  await openPromptPopup(page);
+  const beforePosition = await getPopupPositionSnapshot(page);
+
+  await page.evaluate(() => {
+    window.scrollBy(0, 120);
+  });
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => {
+      const snapshot = await getPopupPositionSnapshot(page);
+      return Math.abs(snapshot.popupTop - beforePosition.popupTop) > 20;
+    })
+    .toBe(true);
+
+  const afterPosition = await getPopupPositionSnapshot(page);
+  const isAnchoredBelow = afterPosition.popupTop >= afterPosition.anchorBottom;
+  const isAnchoredAbove = afterPosition.popupBottom <= afterPosition.anchorTop;
+
+  expect(isAnchoredBelow || isAnchoredAbove).toBe(true);
+  expect(afterPosition.popupTop).toBeGreaterThanOrEqual(0);
+  expect(afterPosition.popupBottom).toBeLessThanOrEqual(
+    afterPosition.viewportHeight,
+  );
 });
 
 test('positions the popup above or below based on available space', async ({

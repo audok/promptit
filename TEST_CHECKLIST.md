@@ -36,7 +36,7 @@
 - [x] Gemini `rich-textarea div.ql-editor[role="textbox"]` composer에서 `/ ` 입력 시 팝업이 열린다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] Gemini Quill `.ql-clipboard` contenteditable은 입력창으로 취급하지 않는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [ ] 입력창 내부 자식 노드에서 이벤트가 올라와도 같은 composer로 안정적으로 resolve되는지 명시적으로 검증한다. `Gap`
-- [ ] 입력창 DOM이 제거됐을 때 열린 팝업이 정리되는지 명시적으로 검증한다. `Gap`
+- [x] 이미 열린 팝업 상태에서 입력창 DOM이 제거됐을 때 팝업이 정리되는지 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 
 ## 3. 팝업 상호작용
 
@@ -64,8 +64,8 @@
 - [x] Gemini popup이 Enter 선택을 처리할 때 host submit keydown으로 전파되지 않는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] Gemini에서 `Escape`와 `Backspace`가 trigger text를 정리하고 팝업을 닫는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] Gemini popup은 좁은 `ql-editor` 줄이 아니라 composer wrapper 기준으로 anchor된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
-- [ ] window `scroll` 시 anchor 기준으로 팝업을 재배치하는지 명시적으로 검증한다. `Gap`
-- [ ] Arrow Up/Down/Left/Right의 전체 edge behavior를 명시적으로 검증한다. `Gap`
+- [x] window `scroll` 시 anchor 기준으로 팝업을 재배치하는지 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] Arrow Up/Down/Left/Right의 전체 edge behavior를 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 
 ## 4. 실패 복구와 toast
 
