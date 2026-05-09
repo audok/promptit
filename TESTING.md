@@ -35,16 +35,18 @@ pnpm test:e2e
 - 로컬 fixture 기반 회귀 테스트를 실행한다.
 - 기본 개발 루프에서 가장 자주 돌려야 하는 테스트다.
 - 현재 커버하는 대표 항목:
-  - 옵션 페이지 CRUD, validation, storage sync
+  - 옵션 페이지 CRUD, validation, initial load draft preservation, storage sync
+  - 옵션 페이지 stale save/delete conflict와 storage 실패 UI
   - `/ ` trigger open/close/cleanup
   - insert, copy, hover, click, keyboard navigation
   - hover + keyboard navigation + list scroll 조합 회귀
-  - IME, NBSP, readonly/disabled textarea
+  - IME, IME reset, NBSP, readonly/disabled textarea
   - storage normalization/recovery
   - toast 기반 실패 복구 경로
+  - prompt read failure, composer detach stale-open regression
   - popup placement, long-list scroll
   - unsupported URL no-op
-  - content script -> runtime message -> options open
+  - content script -> runtime message -> options open, malformed runtime message no-op
   - Gemini fixture에서 초기화, `/ ` popup open, insert, cleanup, Enter no-submit host regression, Quill clipboard 무시, wrapper anchoring
 
 ### 3. 실사이트 Smoke
@@ -68,10 +70,10 @@ pnpm test:e2e:live
 
 | 파일 | 주 역할 | 상세 체크리스트 섹션 |
 | --- | --- | --- |
-| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, storage 복구/실패 UI | `옵션 페이지와 스토리지` |
+| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
 | `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `Gemini 지원` |
-| `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, insert/copy, toast, placement, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
-| `tests/e2e/platform.spec.ts` | 지원 URL 범위, runtime message 경로 | `플랫폼과 초기화` |
+| `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, insert/copy, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
+| `tests/e2e/platform.spec.ts` | 지원 URL 범위, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
 | `tests/live/live-chatgpt.spec.ts` | 실제 `chatgpt.com` / `chat.openai.com` smoke | `실사이트 smoke` |
 | `tests/live/live-gemini.spec.ts` | Gemini public-page smoke 후보. 현재 no-submit 조건을 만족하지 못해 skip | `실사이트 smoke` |
 
