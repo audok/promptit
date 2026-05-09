@@ -117,6 +117,44 @@ async function dispatchComposerInput(
   );
 }
 
+async function dispatchNestedChildComposerInput(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const child = document.createElement('span');
+    child.textContent = '/ ';
+    composer.replaceChildren(child);
+    composer.focus();
+
+    const textNode = child.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare child selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    child.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
+}
+
 type TriggerWindowState = Window & {
   __promptitPopupOpened?: boolean;
   __promptitComposerDetached?: boolean;
@@ -398,6 +436,28 @@ test('inserts the active prompt into the contenteditable fixture', async ({
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
   await openPromptPopup(page);
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe(
+    '영문으로 자연스럽게 번역해줘.',
+  );
+});
+
+test('opens from a nested contenteditable child input event and inserts the active prompt', async ({
+  extension,
+}) => {
+  await extension.setPrompts(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await dispatchNestedChildComposerInput(page);
+
+  await expect(page.locator('[data-testid="promptit-popup-host"]')).toBeVisible();
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
+
   await page.keyboard.press('Enter');
   await waitForPromptPopupToClose(page);
 

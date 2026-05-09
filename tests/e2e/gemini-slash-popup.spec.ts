@@ -38,6 +38,44 @@ const geminiPrompts = [
   }),
 ];
 
+async function dispatchNestedChildGeminiInput(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate((composerSelector) => {
+    const composer = document.querySelector(composerSelector);
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Gemini composer not found.');
+    }
+
+    const child = document.createElement('span');
+    child.textContent = '/ ';
+    composer.replaceChildren(child);
+    composer.focus();
+
+    const textNode = child.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare Gemini child selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    child.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  }, GEMINI_COMPOSER_SELECTOR);
+}
+
 test('initializes Promptit on the Gemini fixture', async ({ extension }) => {
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
@@ -72,6 +110,36 @@ test('inserts the active prompt and replaces the Gemini trigger text', async ({
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
 
   await openPromptPopup(page, GEMINI_COMPOSER_SELECTOR);
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(page.locator('[data-testid="gemini-host-submit-count"]')).toHaveText(
+    '0',
+  );
+  await expect(page.locator('[data-testid="gemini-host-submit-text"]')).toHaveText(
+    '',
+  );
+  await expect(await getComposerText(page, GEMINI_COMPOSER_SELECTOR)).toBe(
+    'Gemini에서 자연스럽게 번역해줘.',
+  );
+});
+
+test('opens from a nested Gemini child input event and inserts the active prompt', async ({
+  extension,
+}) => {
+  await extension.setPrompts(geminiPrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
+
+  await dispatchNestedChildGeminiInput(page);
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(await getPopupTitles(page)).toEqual([
+    'Gemini 번역',
+    'Gemini 요약',
+  ]);
+
   await page.keyboard.press('Enter');
   await waitForPromptPopupToClose(page);
 
