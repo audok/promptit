@@ -299,7 +299,7 @@ function registerWindowListeners(
       }
 
       if (!session.activeInput || !session.activeInput.isConnected) {
-        void closePopup(session, popup, adapter, 'dom-removed', true);
+        void closePopup(session, popup, adapter, 'dom-removed', false);
         return;
       }
 
@@ -434,7 +434,7 @@ async function resolveTriggerCheck(
 
   const observer = new MutationObserver(() => {
     if (session.status === 'open' && session.activeInput && !session.activeInput.isConnected) {
-      void closePopup(session, popup, adapter, 'dom-removed', true);
+      void closePopup(session, popup, adapter, 'dom-removed', false);
     }
   });
 
