@@ -40,7 +40,7 @@ while read -r local_ref local_oid remote_ref remote_oid; do
 
     commit_blocked_files="$(
       git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -m "$commit" \
-        | awk -F/ '$0 ~ /^\.codex\// || $NF ~ /^__/ { print }'
+        | awk -F/ '$0 ~ /^\.codex\// || $0 == "AGENTS.md" || $0 == "PLANS.md" || $NF ~ /^__/ { print }'
     )"
 
     append_blocked_files "$commit_blocked_files"
@@ -51,7 +51,7 @@ if [[ -z "$blocked_files" ]]; then
   exit 0
 fi
 
-echo "Push blocked: commits being pushed include files under '.codex/' or starting with '__'."
+echo "Push blocked: commits being pushed include local Codex files, files under '.codex/', or files starting with '__'."
 echo "Remove, rename, or rewrite these paths before pushing:"
 printf '%s\n' "$blocked_files" | awk 'NF' | sort -u
 exit 1
