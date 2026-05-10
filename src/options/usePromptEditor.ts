@@ -343,6 +343,12 @@ export function usePromptEditor(): UsePromptEditorResult {
   const conflictStateRef = useRef(conflictState);
   const isDirtyRef = useRef(isDirty);
   const bodyLoadRequestIdRef = useRef(0);
+  const savingPromptIdRef = useRef<string | null>(null);
+  const savedPromptEchoRef = useRef<{
+    promptId: string;
+    updatedAt: string;
+    bodyUpdatedAt: string;
+  } | null>(null);
 
   promptsRef.current = prompts;
   activePromptRef.current = activePrompt;
@@ -502,6 +508,21 @@ export function usePromptEditor(): UsePromptEditorResult {
         (currentPrompt.updatedAt !== currentMode.expectedUpdatedAt ||
           currentPrompt.bodyUpdatedAt !== currentMode.expectedBodyUpdatedAt)
       ) {
+        const savedPromptEcho = savedPromptEchoRef.current;
+
+        if (
+          savedPromptEcho &&
+          savedPromptEcho.promptId === currentMode.promptId &&
+          savedPromptEcho.updatedAt === currentPrompt.updatedAt &&
+          savedPromptEcho.bodyUpdatedAt === currentPrompt.bodyUpdatedAt
+        ) {
+          return;
+        }
+
+        if (savingPromptIdRef.current === currentMode.promptId) {
+          return;
+        }
+
         setConflictState({
           status: 'stale',
           reason: 'external-update',
@@ -555,6 +576,13 @@ export function usePromptEditor(): UsePromptEditorResult {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDirty || mode.kind === 'create') {
+      savingPromptIdRef.current = null;
+      savedPromptEchoRef.current = null;
+    }
+  }, [isDirty, mode]);
 
   function startCreateMode(): void {
     startTransition(() => {
@@ -629,6 +657,8 @@ export function usePromptEditor(): UsePromptEditorResult {
           });
           return;
         }
+
+        savingPromptIdRef.current = currentMode.promptId;
 
         let nextRecord = currentRecord;
         let nextPrompts = promptsRef.current;
@@ -797,6 +827,12 @@ export function usePromptEditor(): UsePromptEditorResult {
           setNotice('프롬프트를 업데이트했습니다.');
           setAlertMessage(null);
         });
+        savedPromptEchoRef.current = {
+          promptId: nextRecord.id,
+          updatedAt: nextRecord.updatedAt,
+          bodyUpdatedAt: nextRecord.bodyUpdatedAt,
+        };
+        savingPromptIdRef.current = null;
         return;
       }
 
@@ -819,6 +855,7 @@ export function usePromptEditor(): UsePromptEditorResult {
           : '프롬프트 저장 중 오류가 발생했습니다.',
       );
     } finally {
+      savingPromptIdRef.current = null;
       setSaveState({ status: 'idle' });
     }
   }

@@ -413,6 +413,16 @@ test('creates and updates prompts from the options page', async ({
         content: '회의 내용을 요약하고 액션 아이템을 정리해줘.',
       },
     ]);
+  await expect(
+    page.getByRole('alert').filter({
+      hasText:
+        '다른 창의 변경이 먼저 저장되었습니다. 현재 입력은 유지되며 저장 시 충돌이 발생할 수 있습니다.',
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('status').filter({ hasText: '충돌 감지됨' }),
+  ).toHaveCount(0);
+  await expect(page.getByText('최신 저장본')).toHaveCount(0);
 });
 
 test('appends newly created normal prompts by default', async ({
