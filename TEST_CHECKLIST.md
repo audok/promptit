@@ -91,13 +91,18 @@
 - [x] 프롬프트를 수정할 수 있다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 삭제 확인을 취소할 수 있다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 삭제 확인 후 실제로 삭제된다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] 제목/내용/order validation이 저장 대신 오류를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] blank order는 숫자 변환 전에 validation 오류를 표시하고 order field에 focus한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] 제목/내용 validation이 저장 대신 오류를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] 새 일반 프롬프트는 visible order field 없이 현재 일반 목록 끝에 append된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] 옵션 페이지 목록은 내부 `normalOrder`/`pinnedOrder` 값을 노출하지 않고, create/edit form은 `정렬 순서` input을 노출하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] production prompt body가 `chrome.storage.local`에 저장되지 않고 IndexedDB `promptBodies`에 저장된다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 정확히 `500 * 1024` UTF-8 bytes인 body는 저장되고, 1 byte 초과 body update는 truncation 없이 거부된다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] title/order/pinned 같은 metadata-only save는 `promptBodies.content`와 body timestamp를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] title/pinned 같은 metadata-only save는 `promptBodies.content`와 body timestamp를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] body save는 `promptBodies.content`, `promptBodies.updatedAt`, `promptMetas.bodyUpdatedAt`, `promptMetas.charCount`를 갱신한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] pinned prompt가 normal prompt보다 먼저 정렬되고, unpin 시 기존 normal 위치로 돌아간다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] drag handle keyboard controls로 일반 프롬프트를 일반 그룹 안에서 reorder하고 visible order와 stored meta order가 함께 바뀐다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] drag handle keyboard controls로 고정 프롬프트를 고정 그룹 안에서 reorder하고 visible order와 stored meta order가 함께 바뀐다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] drag handle keyboard movement가 고정/일반 그룹 경계를 넘으려 할 때 storage order가 바뀌지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] move prompt conflict가 발생하면 reorder success announcement를 표시하지 않고 storage record를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] initial prompt load가 지연돼도 사용자가 입력한 draft form 값을 보존한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 편집 중인 항목이 외부에서 삭제되면 create mode로 돌아간다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 두 옵션 탭에서 같은 프롬프트를 stale save하면 conflict를 표시하고 최신 저장본으로 복구한다. `Automated` via `tests/e2e/options.spec.ts`

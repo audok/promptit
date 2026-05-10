@@ -1,4 +1,9 @@
-import { expect, test as base, type Page } from '@playwright/test';
+import {
+  expect,
+  test as base,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 
 import {
   launchExtension,
@@ -135,11 +140,122 @@ async function patchRuntimeMessageFailure(
   });
 }
 
-function getPromptListButtons(page: Page) {
+async function patchRuntimeMessageResponse(
+  page: Page,
+  messageTypes: string[],
+  response: unknown,
+): Promise<void> {
+  await page.evaluate(({ mockedResponse, types }) => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (
+        typeof request === 'object' &&
+        request !== null &&
+        types.includes(String((request as { type?: unknown }).type))
+      ) {
+        return mockedResponse;
+      }
+
+      return await originalSendMessage(...args);
+    };
+  }, {
+    mockedResponse: response,
+    types: messageTypes,
+  });
+}
+
+function getPromptList(page: Page): Locator {
   return page
     .locator('article')
-    .filter({ has: page.getByRole('heading', { name: '저장된 프롬프트' }) })
-    .locator('button[aria-pressed]');
+    .filter({ has: page.getByRole('heading', { name: '저장된 프롬프트' }) });
+}
+
+function getPromptListButtons(page: Page): Locator {
+  return getPromptList(page).locator('button[aria-pressed]');
+}
+
+function getPromptCard(page: Page, title: string): Locator {
+  return getPromptListButtons(page).filter({ hasText: title }).first();
+}
+
+function getPromptDragHandle(page: Page, title: string): Locator {
+  return getPromptList(page).getByRole('button', {
+    name: `${title} 순서 변경`,
+    exact: true,
+  });
+}
+
+async function expectVisiblePromptOrder(
+  page: Page,
+  titles: string[],
+): Promise<void> {
+  const promptButtons = getPromptListButtons(page);
+
+  await expect(promptButtons).toHaveCount(titles.length);
+
+  for (const [index, title] of titles.entries()) {
+    await expect(promptButtons.nth(index)).toContainText(title);
+  }
+}
+
+async function expectStoredPromptMetaOrder(
+  extension: LoadedExtension,
+  ids: string[],
+): Promise<void> {
+  await expect
+    .poll(async () =>
+      (await extension.getPromptMetas()).map((prompt) => prompt.id),
+    )
+    .toEqual(ids);
+}
+
+async function expectPromptListToHideInternalOrderFields(
+  page: Page,
+): Promise<void> {
+  const promptList = getPromptList(page);
+
+  await expect(promptList).not.toContainText('normalOrder');
+  await expect(promptList).not.toContainText('pinnedOrder');
+}
+
+async function expectSortOrderInputToBeRemoved(page: Page): Promise<void> {
+  await expect(page.locator('form').getByLabel(/정렬 순서/)).toHaveCount(0);
+}
+
+async function createPromptFromOptions(
+  page: Page,
+  title: string,
+  content: string,
+): Promise<void> {
+  await getTitleInput(page).fill(title);
+  await getContentInput(page).fill(content);
+  await page.getByRole('button', { name: '프롬프트 추가' }).click();
+}
+
+function getTitleInput(page: Page): Locator {
+  return page.locator('form').getByRole('textbox', { name: /제목/ });
+}
+
+function getContentInput(page: Page): Locator {
+  return page.locator('form').getByRole('textbox', { name: /본문/ });
+}
+
+async function pressPromptHandleKey(
+  page: Page,
+  title: string,
+  key: 'ArrowDown' | 'ArrowUp',
+): Promise<void> {
+  const handle = getPromptDragHandle(page, title);
+
+  await expect(handle).toBeVisible();
+  await handle.focus();
+  await page.keyboard.press(key);
 }
 
 async function expectNoChromeStoragePromptBody(
@@ -225,65 +341,98 @@ test('creates and updates prompts from the options page', async ({
   await extension.setPromptRecords([]);
 
   const page = await openOptionsPage(extension);
+  await expectSortOrderInputToBeRemoved(page);
 
-  await page.getByLabel(/제목/).fill('  회의록 정리  ');
-  await page.getByRole('textbox', { name: /본문/ }).fill('대화 내용을 구조화해서 정리해줘.');
-  await page.getByLabel(/정렬 순서/).fill('3');
-  await page.getByRole('button', { name: '프롬프트 저장' }).click();
+  await createPromptFromOptions(
+    page,
+    '  회의록 정리  ',
+    '대화 내용을 구조화해서 정리해줘.',
+  );
 
   await expect(
     page.getByRole('status').filter({ hasText: '프롬프트를 저장했습니다.' }),
   ).toBeVisible();
-  await expect(page.getByLabel(/제목/)).toHaveValue('');
-  await expect(page.getByLabel(/정렬 순서/)).toHaveValue('1000003');
+  await expect(getTitleInput(page)).toHaveValue('');
+  await expectPromptListToHideInternalOrderFields(page);
 
   await expect
     .poll(async () =>
       (await extension.getPromptRecords()).map((prompt) => ({
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
       {
         title: '회의록 정리',
         content: '대화 내용을 구조화해서 정리해줘.',
-        sortOrder: 3,
       },
     ]);
 
-  await page.getByRole('button').filter({ hasText: '회의록 정리' }).click();
+  await getPromptCard(page, '회의록 정리').click();
   await expect(
     page.getByRole('heading', { name: '프롬프트 수정' }),
   ).toBeVisible();
+  await expectSortOrderInputToBeRemoved(page);
 
-  await page.getByLabel(/제목/).fill('회의록 요약');
-  await page.getByRole('textbox', { name: /본문/ }).fill('회의 내용을 요약하고 액션 아이템을 정리해줘.');
-  await page.getByLabel(/정렬 순서/).fill('1');
+  await getTitleInput(page).fill('회의록 요약');
+  await getContentInput(page).fill('회의 내용을 요약하고 액션 아이템을 정리해줘.');
   await page.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
     page.getByRole('status').filter({ hasText: '프롬프트를 업데이트했습니다.' }),
   ).toBeVisible();
-  await expect(page.getByLabel(/제목/)).toHaveValue('회의록 요약');
-  await expect(page.getByLabel(/정렬 순서/)).toHaveValue('1');
+  await expect(getTitleInput(page)).toHaveValue('회의록 요약');
 
   await expect
     .poll(async () =>
       (await extension.getPromptRecords()).map((prompt) => ({
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
       {
         title: '회의록 요약',
         content: '회의 내용을 요약하고 액션 아이템을 정리해줘.',
-        sortOrder: 1,
       },
     ]);
+});
+
+test('appends newly created normal prompts by default', async ({
+  extension,
+}) => {
+  const existingPrompt = createPromptRecord({
+    id: 'append-existing-normal',
+    title: '기존 일반',
+    content: '기존 일반 본문',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([existingPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await createPromptFromOptions(page, '새 일반', '새 일반 본문');
+
+  await expect(
+    page.getByRole('status').filter({ hasText: '프롬프트를 저장했습니다.' }),
+  ).toBeVisible();
+  await expectVisiblePromptOrder(page, ['기존 일반', '새 일반']);
+  await expectPromptListToHideInternalOrderFields(page);
+
+  const createdPrompt = (await extension.getPromptRecords()).find(
+    (prompt) => prompt.title === '새 일반',
+  );
+
+  if (!createdPrompt) {
+    throw new Error('Newly created prompt was not persisted.');
+  }
+
+  await expectStoredPromptMetaOrder(extension, [
+    existingPrompt.id,
+    createdPrompt.id,
+  ]);
 });
 
 test('creates prompt records without writing production bodies to chrome.storage.local', async ({
@@ -294,10 +443,7 @@ test('creates prompt records without writing production bodies to chrome.storage
   const page = await openOptionsPage(extension);
   const bodyText = 'IndexedDB 본문 분리 저장 검증용 본문';
 
-  await page.getByLabel(/제목/).fill('분리 저장');
-  await page.getByRole('textbox', { name: /본문/ }).fill(bodyText);
-  await page.getByLabel(/정렬 순서/).fill('2');
-  await page.getByRole('button', { name: '프롬프트 저장' }).click();
+  await createPromptFromOptions(page, '분리 저장', bodyText);
 
   await expect(
     page.getByRole('status').filter({ hasText: '프롬프트를 저장했습니다.' }),
@@ -308,7 +454,6 @@ test('creates prompt records without writing production bodies to chrome.storage
       (await extension.getPromptRecords()).map((prompt) => ({
         title: prompt.title,
         content: prompt.content,
-        normalOrder: prompt.normalOrder,
         bodyUpdatedAt: prompt.bodyUpdatedAt,
         charCount: prompt.charCount,
       })),
@@ -317,7 +462,6 @@ test('creates prompt records without writing production bodies to chrome.storage
       expect.objectContaining({
         title: '분리 저장',
         content: bodyText,
-        normalOrder: 2,
         charCount: Array.from(bodyText).length,
       }),
     ]);
@@ -339,10 +483,7 @@ test('accepts an exact 500 KiB body and rejects oversized updates without trunca
   await extension.setPromptRecords([]);
 
   const page = await openOptionsPage(extension);
-  await page.getByLabel(/제목/).fill(initialPrompt.title);
-  await page.getByRole('textbox', { name: /본문/ }).fill(exactLimitBody);
-  await page.getByLabel(/정렬 순서/).fill('1');
-  await page.getByRole('button', { name: '프롬프트 저장' }).click();
+  await createPromptFromOptions(page, initialPrompt.title, exactLimitBody);
 
   await expect(
     page.getByRole('status').filter({ hasText: '프롬프트를 저장했습니다.' }),
@@ -353,9 +494,9 @@ test('accepts an exact 500 KiB body and rejects oversized updates without trunca
   expect(createdPrompt.charCount).toBe(PROMPT_BODY_MAX_BYTES);
   await expectNoChromeStoragePromptBody(extension, exactLimitBody);
 
-  await page.getByRole('button').filter({ hasText: initialPrompt.title }).click();
-  await expect(page.getByRole('textbox', { name: /본문/ })).toHaveValue(exactLimitBody);
-  await page.getByRole('textbox', { name: /본문/ }).fill(oversizedBody);
+  await getPromptCard(page, initialPrompt.title).click();
+  await expect(getContentInput(page)).toHaveValue(exactLimitBody);
+  await getContentInput(page).fill(oversizedBody);
   await page.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(page.getByText('본문은 500KB 이하로 입력해주세요.')).toBeVisible();
@@ -382,9 +523,9 @@ test('metadata-only save does not rewrite body content or body timestamp', async
   await extension.setPromptRecords([initialPrompt]);
 
   const page = await openOptionsPage(extension);
-  await page.getByRole('button').filter({ hasText: initialPrompt.title }).click();
-  await expect(page.getByRole('textbox', { name: /본문/ })).toHaveValue(initialPrompt.content);
-  await page.getByLabel(/제목/).fill('제목만 변경');
+  await getPromptCard(page, initialPrompt.title).click();
+  await expect(getContentInput(page)).toHaveValue(initialPrompt.content);
+  await getTitleInput(page).fill('제목만 변경');
   await page.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
@@ -421,9 +562,9 @@ test('body save updates the body record, bodyUpdatedAt, and charCount', async ({
   await extension.setPromptRecords([initialPrompt]);
 
   const page = await openOptionsPage(extension);
-  await page.getByRole('button').filter({ hasText: initialPrompt.title }).click();
-  await expect(page.getByRole('textbox', { name: /본문/ })).toHaveValue(initialPrompt.content);
-  await page.getByRole('textbox', { name: /본문/ }).fill(nextBody);
+  await getPromptCard(page, initialPrompt.title).click();
+  await expect(getContentInput(page)).toHaveValue(initialPrompt.content);
+  await getContentInput(page).fill(nextBody);
   await page.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
@@ -671,16 +812,14 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
   ]);
 
   const page = await openOptionsPage(extension);
-  const promptButtons = page
-    .locator('article')
-    .filter({ has: page.getByRole('heading', { name: '저장된 프롬프트' }) })
-    .locator('button[aria-pressed]');
 
-  await expect(promptButtons).toHaveCount(4);
-  await expect(promptButtons.nth(0)).toContainText('생성일 빠른 프롬프트');
-  await expect(promptButtons.nth(1)).toContainText('같은 생성일 ID A');
-  await expect(promptButtons.nth(2)).toContainText('같은 생성일 ID B');
-  await expect(promptButtons.nth(3)).toContainText('생성일 늦은 프롬프트');
+  await expectVisiblePromptOrder(page, [
+    '생성일 빠른 프롬프트',
+    '같은 생성일 ID A',
+    '같은 생성일 ID B',
+    '생성일 늦은 프롬프트',
+  ]);
+  await expectPromptListToHideInternalOrderFields(page);
 });
 
 test('orders pinned prompts first and restores normal position when unpinned', async ({
@@ -710,12 +849,13 @@ test('orders pinned prompts first and restores normal position when unpinned', a
   await extension.setPromptRecords([normalLast, pinnedMiddle, normalFirst]);
 
   const page = await openOptionsPage(extension);
-  let promptButtons = getPromptListButtons(page);
 
-  await expect(promptButtons).toHaveCount(3);
-  await expect(promptButtons.nth(0)).toContainText('고정된 중간');
-  await expect(promptButtons.nth(1)).toContainText('일반 첫 번째');
-  await expect(promptButtons.nth(2)).toContainText('일반 마지막');
+  await expectVisiblePromptOrder(page, [
+    '고정된 중간',
+    '일반 첫 번째',
+    '일반 마지막',
+  ]);
+  await expectPromptListToHideInternalOrderFields(page);
 
   await setPromptPinnedThroughRuntime(extension, pinnedMiddle, false);
 
@@ -733,10 +873,223 @@ test('orders pinned prompts first and restores normal position when unpinned', a
       { id: 'normal-last', pinned: false, normalOrder: 3 },
     ]);
 
-  promptButtons = getPromptListButtons(page);
-  await expect(promptButtons.nth(0)).toContainText('일반 첫 번째');
-  await expect(promptButtons.nth(1)).toContainText('고정된 중간');
-  await expect(promptButtons.nth(2)).toContainText('일반 마지막');
+  await expectVisiblePromptOrder(page, [
+    '일반 첫 번째',
+    '고정된 중간',
+    '일반 마지막',
+  ]);
+});
+
+test('reorders normal prompts within the normal group using drag-handle keyboard controls', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'normal-first',
+      title: '일반 첫 번째',
+      content: '일반 첫 번째 본문',
+      sortOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'normal-second',
+      title: '일반 두 번째',
+      content: '일반 두 번째 본문',
+      sortOrder: 2,
+    }),
+    createPromptRecord({
+      id: 'normal-third',
+      title: '일반 세 번째',
+      content: '일반 세 번째 본문',
+      sortOrder: 3,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '일반 첫 번째',
+    '일반 두 번째',
+    '일반 세 번째',
+  ]);
+
+  await pressPromptHandleKey(page, '일반 세 번째', 'ArrowUp');
+
+  await expectVisiblePromptOrder(page, [
+    '일반 첫 번째',
+    '일반 세 번째',
+    '일반 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'normal-first',
+    'normal-third',
+    'normal-second',
+  ]);
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
+test('reorders pinned prompts within the pinned group using drag-handle keyboard controls', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'normal-only',
+      title: '일반 프롬프트',
+      content: '일반 프롬프트 본문',
+      sortOrder: 10,
+    }),
+    createPromptRecord({
+      id: 'pinned-first',
+      title: '고정 첫 번째',
+      content: '고정 첫 번째 본문',
+      pinned: true,
+      pinnedOrder: 1,
+      sortOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'pinned-second',
+      title: '고정 두 번째',
+      content: '고정 두 번째 본문',
+      pinned: true,
+      pinnedOrder: 2,
+      sortOrder: 2,
+    }),
+    createPromptRecord({
+      id: 'pinned-third',
+      title: '고정 세 번째',
+      content: '고정 세 번째 본문',
+      pinned: true,
+      pinnedOrder: 3,
+      sortOrder: 3,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '고정 첫 번째',
+    '고정 두 번째',
+    '고정 세 번째',
+    '일반 프롬프트',
+  ]);
+
+  await pressPromptHandleKey(page, '고정 두 번째', 'ArrowUp');
+
+  await expectVisiblePromptOrder(page, [
+    '고정 두 번째',
+    '고정 첫 번째',
+    '고정 세 번째',
+    '일반 프롬프트',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pinned-second',
+    'pinned-first',
+    'pinned-third',
+    'normal-only',
+  ]);
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
+test('keeps storage unchanged when drag-handle keyboard movement would cross groups', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'pinned-boundary',
+      title: '고정 경계',
+      content: '고정 경계 본문',
+      pinned: true,
+      pinnedOrder: 1,
+      sortOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'normal-boundary',
+      title: '일반 경계',
+      content: '일반 경계 본문',
+      sortOrder: 2,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, ['고정 경계', '일반 경계']);
+  await expectStoredPromptMetaOrder(extension, [
+    'pinned-boundary',
+    'normal-boundary',
+  ]);
+
+  await pressPromptHandleKey(page, '일반 경계', 'ArrowUp');
+
+  await expectVisiblePromptOrder(page, ['고정 경계', '일반 경계']);
+  await expectStoredPromptMetaOrder(extension, [
+    'pinned-boundary',
+    'normal-boundary',
+  ]);
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
+test('does not announce reorder success or mutate storage when move prompt conflicts', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'move-conflict-first',
+      title: '충돌 첫 번째',
+      content: '충돌 첫 번째 본문',
+      sortOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'move-conflict-second',
+      title: '충돌 두 번째',
+      content: '충돌 두 번째 본문',
+      sortOrder: 2,
+    }),
+    createPromptRecord({
+      id: 'move-conflict-third',
+      title: '충돌 세 번째',
+      content: '충돌 세 번째 본문',
+      sortOrder: 3,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+  const beforeRecords = await extension.getPromptRecords();
+  const conflictMeta =
+    (await extension.getPromptMetas()).find(
+      (prompt) => prompt.id === 'move-conflict-second',
+    ) ?? null;
+
+  if (!conflictMeta) {
+    throw new Error('Move conflict fixture prompt was not persisted.');
+  }
+
+  await expectVisiblePromptOrder(page, [
+    '충돌 첫 번째',
+    '충돌 두 번째',
+    '충돌 세 번째',
+  ]);
+  await patchRuntimeMessageResponse(page, [MOVE_PROMPT_MESSAGE], {
+    type: MOVE_PROMPT_MESSAGE,
+    ok: false,
+    status: 'conflict',
+    id: conflictMeta.id,
+    message: 'mock move conflict',
+    currentMeta: conflictMeta,
+  });
+
+  await pressPromptHandleKey(page, '충돌 두 번째', 'ArrowUp');
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'mock move conflict' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('body'),
+  ).not.toContainText('충돌 두 번째 순서를 변경했습니다.');
+  await expectVisiblePromptOrder(page, [
+    '충돌 첫 번째',
+    '충돌 두 번째',
+    '충돌 세 번째',
+  ]);
+  expect(await extension.getPromptRecords()).toEqual(beforeRecords);
 });
 
 test('preserves draft input while the initial prompt load resolves', async ({
@@ -761,41 +1114,15 @@ test('preserves draft input while the initial prompt load resolves', async ({
       .filter({ hasText: '저장된 프롬프트를 불러오는 중입니다.' }),
   ).toBeVisible();
 
-  await page.getByLabel(/제목/).fill('로딩 중 입력한 제목');
-  await page.getByRole('textbox', { name: /본문/ }).fill('로딩 중 입력한 본문');
-  await page.getByLabel(/정렬 순서/).fill('11');
+  await getTitleInput(page).fill('로딩 중 입력한 제목');
+  await getContentInput(page).fill('로딩 중 입력한 본문');
 
   await page.evaluate(() => (window as any).__releasePromptitInitialLoad?.());
 
-  await expect(
-    page.getByRole('button').filter({ hasText: '불러온 프롬프트' }),
-  ).toBeVisible();
+  await expect(getPromptCard(page, '불러온 프롬프트')).toBeVisible();
   await expect(page.getByRole('heading', { name: '새 프롬프트 추가' })).toBeVisible();
-  await expect(page.getByLabel(/제목/)).toHaveValue('로딩 중 입력한 제목');
-  await expect(page.getByRole('textbox', { name: /본문/ })).toHaveValue('로딩 중 입력한 본문');
-  await expect(page.getByLabel(/정렬 순서/)).toHaveValue('11');
-});
-
-test('rejects blank sortOrder before coercion and focuses the field', async ({
-  extension,
-}) => {
-  await extension.setPromptRecords([]);
-
-  const page = await openOptionsPage(extension);
-
-  await page.getByLabel(/제목/).fill('정렬 순서 검증');
-  await page.getByRole('textbox', { name: /본문/ }).fill('정렬 순서가 비어 있으면 저장되지 않아야 한다.');
-  await page.getByLabel(/정렬 순서/).fill('');
-  await page.getByRole('button', { name: '프롬프트 저장' }).click();
-
-  await expect(page.getByText('정렬 순서를 입력해주세요.')).toBeVisible();
-  await expect(page.getByLabel(/정렬 순서/)).toHaveAttribute('aria-invalid', 'true');
-  await expect(page.getByLabel(/정렬 순서/)).toHaveAttribute(
-    'aria-describedby',
-    /-hint.*-error/,
-  );
-  await expect(page.getByLabel(/정렬 순서/)).toBeFocused();
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
+  await expect(getTitleInput(page)).toHaveValue('로딩 중 입력한 제목');
+  await expect(getContentInput(page)).toHaveValue('로딩 중 입력한 본문');
 });
 
 test('shows validation errors instead of saving invalid prompts', async ({
@@ -805,9 +1132,9 @@ test('shows validation errors instead of saving invalid prompts', async ({
 
   const page = await openOptionsPage(extension);
 
-  await page.getByLabel(/제목/).fill('   ');
-  await page.getByRole('textbox', { name: /본문/ }).fill('   ');
-  await page.getByRole('button', { name: '프롬프트 저장' }).click();
+  await getTitleInput(page).fill('   ');
+  await getContentInput(page).fill('   ');
+  await page.getByRole('button', { name: '프롬프트 추가' }).click();
 
   await expect(
     page.getByText('제목은 1자 이상 40자 이하로 입력해주세요.'),
@@ -832,7 +1159,7 @@ test('cancels and confirms prompt deletion from edit mode', async ({
   ]);
 
   const page = await openOptionsPage(extension);
-  await page.getByRole('button').filter({ hasText: '삭제 테스트' }).click();
+  await getPromptCard(page, '삭제 테스트').click();
 
   page.once('dialog', async (dialog) => {
     await dialog.dismiss();
@@ -890,7 +1217,7 @@ test('returns to create mode when the editing prompt is deleted elsewhere', asyn
   await extension.setPromptRecords(prompts);
 
   const page = await openOptionsPage(extension);
-  await page.getByRole('button').filter({ hasText: '편집 중' }).click();
+  await getPromptCard(page, '편집 중').click();
   await expect(
     page.getByRole('heading', { name: '프롬프트 수정' }),
   ).toBeVisible();
@@ -905,8 +1232,8 @@ test('returns to create mode when the editing prompt is deleted elsewhere', asyn
   await expect(
     page.getByRole('heading', { name: '새 프롬프트 추가' }),
   ).toBeVisible();
-  await expect(page.getByLabel(/제목/)).toHaveValue('');
-  await expect(page.getByLabel(/정렬 순서/)).toHaveValue('1000005');
+  await expect(getTitleInput(page)).toHaveValue('');
+  await expect(getContentInput(page)).toHaveValue('');
 });
 
 test('surfaces a stale delete conflict when a second tab deletes an edited prompt', async ({
@@ -932,10 +1259,10 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
     });
   });
 
-  await primaryPage.getByRole('button').filter({ hasText: '삭제 충돌 대상' }).click();
-  await stalePage.getByRole('button').filter({ hasText: '삭제 충돌 대상' }).click();
+  await getPromptCard(primaryPage, '삭제 충돌 대상').click();
+  await getPromptCard(stalePage, '삭제 충돌 대상').click();
 
-  await primaryPage.getByLabel(/제목/).fill('최신 삭제 충돌 제목');
+  await getTitleInput(primaryPage).fill('최신 삭제 충돌 제목');
   await primaryPage.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
@@ -1017,8 +1344,8 @@ test('migrates valid legacy storage entries when the options page loads', async 
 
   const page = await openOptionsPage(extension);
 
-  await expect(page.getByRole('button').filter({ hasText: '먼저 프롬프트' })).toBeVisible();
-  await expect(page.getByRole('button').filter({ hasText: '나중 프롬프트' })).toBeVisible();
+  await expect(getPromptCard(page, '먼저 프롬프트')).toBeVisible();
+  await expect(getPromptCard(page, '나중 프롬프트')).toBeVisible();
   await expect(page.getByText('starter')).toHaveCount(0);
 
   await expect
@@ -1071,8 +1398,8 @@ test('keeps migrated prompts readable when the migration marker write fails afte
 
   const page = await openOptionsPage(extension);
 
-  await expect(page.getByRole('button').filter({ hasText: '마커 실패 첫 번째' })).toBeVisible();
-  await expect(page.getByRole('button').filter({ hasText: '마커 실패 두 번째' })).toBeVisible();
+  await expect(getPromptCard(page, '마커 실패 첫 번째')).toBeVisible();
+  await expect(getPromptCard(page, '마커 실패 두 번째')).toBeVisible();
   await expect
     .poll(async () =>
       (await extension.getPromptRecords()).map((prompt) => ({
@@ -1301,10 +1628,10 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
     });
   });
 
-  await primaryPage.getByRole('button').filter({ hasText: '동시 수정 대상' }).click();
-  await stalePage.getByRole('button').filter({ hasText: '동시 수정 대상' }).click();
+  await getPromptCard(primaryPage, '동시 수정 대상').click();
+  await getPromptCard(stalePage, '동시 수정 대상').click();
 
-  await primaryPage.getByLabel(/제목/).fill('첫 번째 저장');
+  await getTitleInput(primaryPage).fill('첫 번째 저장');
   await primaryPage.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
@@ -1330,7 +1657,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
       },
     ]);
 
-  await stalePage.getByLabel(/제목/).fill('두 번째 저장');
+  await getTitleInput(stalePage).fill('두 번째 저장');
   await stalePage.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
@@ -1338,7 +1665,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
       .getByRole('alert')
       .filter({ hasText: '다른 창의 변경이 먼저 저장되었습니다.' }),
   ).toBeVisible();
-  await expect(stalePage.getByLabel(/제목/)).toHaveValue('첫 번째 저장');
+  await expect(getTitleInput(stalePage)).toHaveValue('첫 번째 저장');
   await expect
     .poll(async () =>
       (await extension.getPromptRecords()).map((prompt) => ({
@@ -1381,12 +1708,12 @@ test('surfaces a conflict when two options tabs save the same body stale', async
     });
   });
 
-  await primaryPage.getByRole('button').filter({ hasText: '본문 동시 수정 대상' }).click();
-  await stalePage.getByRole('button').filter({ hasText: '본문 동시 수정 대상' }).click();
-  await expect(primaryPage.getByRole('textbox', { name: /본문/ })).toHaveValue(initialPrompt.content);
-  await expect(stalePage.getByRole('textbox', { name: /본문/ })).toHaveValue(initialPrompt.content);
+  await getPromptCard(primaryPage, '본문 동시 수정 대상').click();
+  await getPromptCard(stalePage, '본문 동시 수정 대상').click();
+  await expect(getContentInput(primaryPage)).toHaveValue(initialPrompt.content);
+  await expect(getContentInput(stalePage)).toHaveValue(initialPrompt.content);
 
-  await primaryPage.getByRole('textbox', { name: /본문/ }).fill('첫 번째 탭의 최신 본문');
+  await getContentInput(primaryPage).fill('첫 번째 탭의 최신 본문');
   await primaryPage.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
@@ -1395,7 +1722,7 @@ test('surfaces a conflict when two options tabs save the same body stale', async
       .filter({ hasText: '프롬프트를 업데이트했습니다.' }),
   ).toBeVisible();
 
-  await stalePage.getByRole('textbox', { name: /본문/ }).fill('두 번째 탭의 오래된 본문');
+  await getContentInput(stalePage).fill('두 번째 탭의 오래된 본문');
   await stalePage.getByRole('button', { name: '프롬프트 수정' }).click();
 
   await expect(
@@ -1403,7 +1730,7 @@ test('surfaces a conflict when two options tabs save the same body stale', async
       .getByRole('alert')
       .filter({ hasText: '다른 창의 변경이 먼저 저장되었습니다.' }),
   ).toBeVisible();
-  await expect(stalePage.getByRole('textbox', { name: /본문/ })).toHaveValue('첫 번째 탭의 최신 본문');
+  await expect(getContentInput(stalePage)).toHaveValue('첫 번째 탭의 최신 본문');
   await expect(await extension.getPromptBody(initialPrompt.id)).toEqual({
     id: initialPrompt.id,
     content: '첫 번째 탭의 최신 본문',
@@ -1421,10 +1748,7 @@ test('shows an error when saving fails', async ({ extension }) => {
     'mock create failure',
   );
 
-  await page.getByLabel(/제목/).fill('저장 실패');
-  await page.getByRole('textbox', { name: /본문/ }).fill('저장 실패를 검증한다.');
-  await page.getByLabel(/정렬 순서/).fill('1');
-  await page.getByRole('button', { name: '프롬프트 저장' }).click();
+  await createPromptFromOptions(page, '저장 실패', '저장 실패를 검증한다.');
 
   await expect(page.getByRole('alert').filter({ hasText: 'mock create failure' })).toBeVisible();
   await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
@@ -1444,7 +1768,7 @@ test('shows an error when deleting fails', async ({ extension }) => {
 
   const page = await openOptionsPage(extension);
 
-  await page.getByRole('button').filter({ hasText: '삭제 실패' }).click();
+  await getPromptCard(page, '삭제 실패').click();
   await patchRuntimeMessageFailure(
     page,
     ['promptit/delete-prompt'],

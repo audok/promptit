@@ -2,7 +2,10 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
+  type DragEvent,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 
@@ -12,9 +15,16 @@ import { usePromptEditor } from './usePromptEditor';
 function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString('ko-KR', {
     dateStyle: 'medium',
-    timeStyle: 'short',
+    timeStyle: 'medium',
   });
 }
+
+type DropPlacement = 'before' | 'after';
+
+type DropIndicatorState = {
+  placement: DropPlacement;
+  targetId: string;
+} | null;
 
 export default function App() {
   const {
@@ -35,21 +45,23 @@ export default function App() {
     updateField,
     submit,
     deletePromptById,
+    movePromptWithinGroup,
     clearNotice,
     clearAlertMessage,
   } = usePromptEditor();
 
   const titleInputId = useId();
   const contentInputId = useId();
-  const sortOrderInputId = useId();
   const statusRegionId = useId();
   const alertRegionId = useId();
   const conflictHintId = useId();
 
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const contentInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const sortOrderInputRef = useRef<HTMLInputElement | null>(null);
   const pendingInvalidFocusRef = useRef(false);
+  const [draggingPromptId, setDraggingPromptId] = useState<string | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<DropIndicatorState>(null);
+  const [reorderMessage, setReorderMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!pendingInvalidFocusRef.current) {
@@ -64,12 +76,6 @@ export default function App() {
 
     if (errors.content) {
       contentInputRef.current?.focus();
-      pendingInvalidFocusRef.current = false;
-      return;
-    }
-
-    if (errors.sortOrder) {
-      sortOrderInputRef.current?.focus();
       pendingInvalidFocusRef.current = false;
       return;
     }
@@ -111,6 +117,213 @@ export default function App() {
       ? prompts.find((prompt) => prompt.id === activePromptId) ?? null
       : null;
   const editorDisabled = isSaving || isEditorLoading;
+  const reorderDisabled =
+    isSaving || isEditorLoading || loadState.status !== 'ready';
+
+  function getPromptGroup(prompt: PromptMeta): 'pinned' | 'normal' {
+    return prompt.pinned ? 'pinned' : 'normal';
+  }
+
+  function getPromptGroupLabel(prompt: PromptMeta): string {
+    return prompt.pinned ? '고정됨' : '일반';
+  }
+
+  function getPromptGroupPrompts(prompt: PromptMeta): PromptMeta[] {
+    return prompts.filter((item) => item.pinned === prompt.pinned);
+  }
+
+  function getDropPlacement(event: DragEvent<HTMLElement>): DropPlacement {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const midpoint = rect.top + rect.height / 2;
+
+    return event.clientY < midpoint ? 'before' : 'after';
+  }
+
+  function isSamePositionMove(
+    draggedPrompt: PromptMeta,
+    targetPrompt: PromptMeta,
+    placement: DropPlacement,
+  ): boolean {
+    if (draggedPrompt.id === targetPrompt.id) {
+      return true;
+    }
+
+    const groupPrompts = getPromptGroupPrompts(draggedPrompt);
+    const draggedIndex = groupPrompts.findIndex(
+      (prompt) => prompt.id === draggedPrompt.id,
+    );
+    const targetIndex = groupPrompts.findIndex(
+      (prompt) => prompt.id === targetPrompt.id,
+    );
+
+    if (draggedIndex < 0 || targetIndex < 0) {
+      return true;
+    }
+
+    return placement === 'before'
+      ? draggedIndex === targetIndex - 1
+      : draggedIndex === targetIndex + 1;
+  }
+
+  async function reorderPrompt(
+    draggedPrompt: PromptMeta,
+    targetPrompt: PromptMeta,
+    placement: DropPlacement,
+  ): Promise<void> {
+    if (getPromptGroup(draggedPrompt) !== getPromptGroup(targetPrompt)) {
+      setReorderMessage(
+        '고정됨 목록과 일반 목록 사이에서는 끌어서 순서를 바꿀 수 없습니다.',
+      );
+      return;
+    }
+
+    if (isSamePositionMove(draggedPrompt, targetPrompt, placement)) {
+      return;
+    }
+
+    setReorderMessage(null);
+
+    try {
+      const didMove = await movePromptWithinGroup(
+        draggedPrompt.id,
+        targetPrompt.id,
+        placement,
+      );
+
+      if (didMove) {
+        setReorderMessage(`${draggedPrompt.title} 순서를 변경했습니다.`);
+      }
+    } catch (error) {
+      console.error('[promptit] Failed to reorder prompt in options page.', error);
+      setReorderMessage('프롬프트 순서를 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  }
+
+  function handleDragStart(
+    event: DragEvent<HTMLButtonElement>,
+    prompt: PromptMeta,
+  ): void {
+    if (reorderDisabled) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', prompt.id);
+    setDraggingPromptId(prompt.id);
+    setDropIndicator(null);
+    setReorderMessage(null);
+  }
+
+  function handleDragOver(
+    event: DragEvent<HTMLDivElement>,
+    targetPrompt: PromptMeta,
+  ): void {
+    const draggedPrompt =
+      draggingPromptId !== null
+        ? prompts.find((prompt) => prompt.id === draggingPromptId) ?? null
+        : null;
+
+    if (reorderDisabled || draggedPrompt === null) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (getPromptGroup(draggedPrompt) !== getPromptGroup(targetPrompt)) {
+      event.dataTransfer.dropEffect = 'none';
+      setDropIndicator(null);
+      return;
+    }
+
+    const placement = getDropPlacement(event);
+    const isNoopMove = isSamePositionMove(
+      draggedPrompt,
+      targetPrompt,
+      placement,
+    );
+    event.dataTransfer.dropEffect = isNoopMove ? 'none' : 'move';
+    setDropIndicator(
+      isNoopMove
+        ? null
+        : {
+            targetId: targetPrompt.id,
+            placement,
+          },
+    );
+  }
+
+  function handleDragLeave(
+    event: DragEvent<HTMLDivElement>,
+    prompt: PromptMeta,
+  ): void {
+    const relatedTarget = event.relatedTarget;
+
+    if (
+      relatedTarget instanceof Node &&
+      event.currentTarget.contains(relatedTarget)
+    ) {
+      return;
+    }
+
+    setDropIndicator((current) =>
+      current?.targetId === prompt.id ? null : current,
+    );
+  }
+
+  async function handleDrop(
+    event: DragEvent<HTMLDivElement>,
+    targetPrompt: PromptMeta,
+  ): Promise<void> {
+    event.preventDefault();
+
+    const draggedId =
+      draggingPromptId ?? event.dataTransfer.getData('text/plain') ?? null;
+    const draggedPrompt =
+      draggedId !== null
+        ? prompts.find((prompt) => prompt.id === draggedId) ?? null
+        : null;
+
+    setDropIndicator(null);
+    setDraggingPromptId(null);
+
+    if (reorderDisabled || draggedPrompt === null) {
+      return;
+    }
+
+    await reorderPrompt(draggedPrompt, targetPrompt, getDropPlacement(event));
+  }
+
+  async function handleKeyboardReorder(
+    prompt: PromptMeta,
+    direction: 'up' | 'down',
+  ): Promise<void> {
+    if (reorderDisabled) {
+      return;
+    }
+
+    const groupPrompts = getPromptGroupPrompts(prompt);
+    const promptIndex = groupPrompts.findIndex((item) => item.id === prompt.id);
+    const targetPrompt =
+      promptIndex >= 0
+        ? groupPrompts[promptIndex + (direction === 'up' ? -1 : 1)] ?? null
+        : null;
+
+    if (targetPrompt === null) {
+      setReorderMessage(
+        direction === 'up'
+          ? `${prompt.title}은 이미 ${getPromptGroupLabel(prompt)} 목록의 첫 번째입니다.`
+          : `${prompt.title}은 이미 ${getPromptGroupLabel(prompt)} 목록의 마지막입니다.`,
+      );
+      return;
+    }
+
+    await reorderPrompt(
+      prompt,
+      targetPrompt,
+      direction === 'up' ? 'before' : 'after',
+    );
+  }
 
   async function handleDelete(prompt: PromptMeta): Promise<void> {
     const shouldDelete = window.confirm(`"${prompt.title}" 프롬프트를 삭제할까요?`);
@@ -137,8 +350,8 @@ export default function App() {
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-stone-600">
                   이 페이지에서 프롬프트를 만들고 수정하면 ChatGPT의 Promptit
-                  팝업에 즉시 반영됩니다. 목록은{' '}
-                  <span className="font-semibold">고정/일반 정렬값</span> 순서입니다.
+                  팝업에 즉시 반영됩니다. 목록에서 프롬프트를 끌어 원하는 순서로
+                  정렬할 수 있습니다.
                 </p>
               </div>
             </div>
@@ -157,7 +370,7 @@ export default function App() {
         <div className="sr-only" aria-live="polite" aria-atomic="true" id={statusRegionId}>
           {loadState.status === 'loading'
             ? '저장된 프롬프트를 불러오는 중입니다.'
-            : notice}
+            : [notice, reorderMessage].filter(Boolean).join(' ')}
         </div>
         <div
           className="sr-only"
@@ -196,21 +409,75 @@ export default function App() {
               {listMessage ? <EmptyPanel message={listMessage} /> : null}
 
               {loadState.status === 'ready' && prompts.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-3" role="list">
                   {prompts.map((prompt) => {
                     const isActive = prompt.id === activePromptId;
-                    const orderLabel = getPromptOrderLabel(prompt);
+                    const showBeforeIndicator =
+                      dropIndicator?.targetId === prompt.id &&
+                      dropIndicator.placement === 'before';
+                    const showAfterIndicator =
+                      dropIndicator?.targetId === prompt.id &&
+                      dropIndicator.placement === 'after';
 
                     return (
                       <div
                         key={prompt.id}
-                        className={`rounded-[24px] border px-4 py-4 transition ${
-                          isActive
-                            ? 'border-stone-900 bg-stone-900 text-stone-50 shadow-[0_18px_34px_rgba(28,25,23,0.20)]'
-                            : 'border-stone-200 bg-stone-50 text-stone-900 hover:border-stone-300 hover:bg-stone-100'
-                        }`}
+                        role="listitem"
+                        onDragOver={(event) => {
+                          handleDragOver(event, prompt);
+                        }}
+                        onDragLeave={(event) => {
+                          handleDragLeave(event, prompt);
+                        }}
+                        onDrop={(event) => {
+                          void handleDrop(event, prompt);
+                        }}
                       >
-                        <div className="flex items-start justify-between gap-3">
+                        {showBeforeIndicator ? <InsertionIndicator /> : null}
+                        <div
+                          className={`rounded-[24px] border px-4 py-4 transition ${
+                            isActive
+                              ? 'border-stone-900 bg-stone-900 text-stone-50 shadow-[0_18px_34px_rgba(28,25,23,0.20)]'
+                              : 'border-stone-200 bg-stone-50 text-stone-900 hover:border-stone-300 hover:bg-stone-100'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <button
+                              type="button"
+                              className={`mt-1 flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border text-base leading-none transition active:cursor-grabbing ${
+                                isActive
+                                  ? 'border-white/15 bg-white/10 text-stone-200 hover:bg-white/15'
+                                  : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100'
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
+                              draggable={!reorderDisabled}
+                              onDragStart={(event) => {
+                                handleDragStart(event, prompt);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingPromptId(null);
+                                setDropIndicator(null);
+                              }}
+                              onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+                                if (
+                                  event.key !== 'ArrowUp' &&
+                                  event.key !== 'ArrowDown'
+                                ) {
+                                  return;
+                                }
+
+                                event.preventDefault();
+                                void handleKeyboardReorder(
+                                  prompt,
+                                  event.key === 'ArrowUp' ? 'up' : 'down',
+                                );
+                              }}
+                              disabled={reorderDisabled}
+                              aria-label={`${prompt.title} 순서 변경`}
+                              aria-describedby={statusRegionId}
+                              title="순서 변경"
+                            >
+                              <span aria-hidden="true">⋮⋮</span>
+                            </button>
                           <button
                             type="button"
                             className="min-w-0 flex-1 cursor-pointer text-left"
@@ -232,13 +499,6 @@ export default function App() {
                                 }`}
                               >
                                 {prompt.pinned ? '고정됨' : '일반'}
-                              </span>
-                              <span
-                                className={
-                                  isActive ? 'text-stone-300' : 'text-stone-500'
-                                }
-                              >
-                                {orderLabel}
                               </span>
                               <span
                                 className={
@@ -265,8 +525,8 @@ export default function App() {
                             >
                               <MetaLine label="수정" value={formatTimestamp(prompt.updatedAt)} />
                               <MetaLine
-                                label="본문"
-                                value={formatTimestamp(prompt.bodyUpdatedAt)}
+                                label="추가"
+                                value={formatTimestamp(prompt.createdAt)}
                               />
                             </dl>
                           </button>
@@ -286,7 +546,9 @@ export default function App() {
                           >
                             Delete
                           </button>
+                          </div>
                         </div>
+                        {showAfterIndicator ? <InsertionIndicator /> : null}
                       </div>
                     );
                   })}
@@ -444,36 +706,6 @@ export default function App() {
                 />
               </label>
 
-              <Field
-                inputId={sortOrderInputId}
-                label="정렬 순서"
-                error={errors.sortOrder}
-                hint={
-                  form.pinned
-                    ? '고정 목록 안에서 작을수록 위에 노출됩니다.'
-                    : '일반 목록 안에서 작을수록 위에 노출됩니다.'
-                }
-              >
-                <input
-                  ref={sortOrderInputRef}
-                  id={sortOrderInputId}
-                  type="number"
-                  step="1"
-                  value={form.sortOrder}
-                  onChange={(event) => {
-                    updateField('sortOrder', event.target.value);
-                  }}
-                  className="w-full rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                  disabled={editorDisabled}
-                  aria-invalid={Boolean(errors.sortOrder)}
-                  aria-describedby={getDescribedBy(sortOrderInputId, {
-                    hasError: Boolean(errors.sortOrder),
-                    includeConflictHint: conflictState.status === 'stale',
-                    conflictHintId,
-                  })}
-                />
-              </Field>
-
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
@@ -486,7 +718,7 @@ export default function App() {
                       ? '본문 불러오는 중'
                       : isEditing
                         ? '프롬프트 수정'
-                        : '프롬프트 저장'}
+                        : '프롬프트 추가'}
                 </button>
 
                 {isEditing ? (
@@ -512,14 +744,6 @@ export default function App() {
   );
 }
 
-function getPromptOrderLabel(prompt: PromptMeta): string {
-  if (prompt.pinned) {
-    return `pinnedOrder ${prompt.pinnedOrder ?? prompt.normalOrder}`;
-  }
-
-  return `normalOrder ${prompt.normalOrder}`;
-}
-
 function getDescribedBy(
   inputId: string,
   options: {
@@ -539,6 +763,21 @@ function getDescribedBy(
   }
 
   return ids.join(' ');
+}
+
+function InsertionIndicator() {
+  return (
+    <div
+      className="my-2 flex items-center gap-3 text-xs font-semibold text-stone-700"
+      aria-hidden="true"
+    >
+      <span className="h-0.5 flex-1 rounded-full bg-stone-900" />
+      <span className="rounded-full border border-stone-300 bg-white px-2 py-1">
+        여기에 놓기
+      </span>
+      <span className="h-0.5 flex-1 rounded-full bg-stone-900" />
+    </div>
+  );
 }
 
 function MetricCard(props: { label: string; value: string }) {

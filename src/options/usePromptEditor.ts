@@ -1,7 +1,6 @@
 import { startTransition, useEffect, useRef, useState } from 'react';
 
 import {
-  PROMPT_ORDER_GAP,
   hasPromptDraftErrors,
   normalizePromptDraft,
   sortPromptMetas,
@@ -9,6 +8,7 @@ import {
   type PromptDraft,
   type PromptMeta,
   type PromptMetaDraft,
+  type PromptOrderGroup,
   type PromptRecord,
 } from '../prompt/schema';
 import {
@@ -16,6 +16,7 @@ import {
   deletePrompt,
   getPromptMetas,
   getPromptRecord,
+  movePrompt,
   setPromptPinned,
   subscribeToPromptMetas,
   updatePromptBody,
@@ -30,21 +31,20 @@ const UPDATE_NOT_FOUND_MESSAGE =
   '수정할 프롬프트를 찾지 못했습니다. 새 프롬프트 작성 모드로 전환했습니다.';
 const DELETE_RECOVERY_MESSAGE =
   '편집 중인 프롬프트가 삭제되어 새 프롬프트 작성 모드로 전환했습니다.';
-const EMPTY_SORT_ORDER_MESSAGE = '정렬 순서를 입력해주세요.';
-const INVALID_SORT_ORDER_MESSAGE = '정렬 순서는 0 이상의 정수여야 합니다.';
 const EXTERNAL_CHANGE_MESSAGE =
   '다른 창의 변경이 먼저 저장되었습니다. 현재 입력은 유지되며 저장 시 충돌이 발생할 수 있습니다.';
 
 export type PromptFormState = {
   title: string;
   content: string;
-  sortOrder: string;
   pinned: boolean;
 };
 
 export type PromptFormErrors = Partial<
   Record<Exclude<keyof PromptFormState, 'pinned'>, string>
 >;
+
+export type PromptMovePlacement = 'before' | 'after';
 
 export type PromptEditorLoadState =
   | { status: 'loading' }
@@ -97,6 +97,11 @@ export type UsePromptEditorResult = {
   clearAlertMessage: () => void;
   clearNotice: () => void;
   deletePromptById: (id: string) => Promise<void>;
+  movePromptWithinGroup: (
+    id: string,
+    targetId: string,
+    placement: PromptMovePlacement,
+  ) => Promise<boolean>;
   selectPrompt: (prompt: PromptMeta) => Promise<void>;
   startCreateMode: () => void;
   submit: () => Promise<void>;
@@ -106,7 +111,6 @@ export type UsePromptEditorResult = {
 type NormalizedPromptForm = {
   title: string;
   content: string;
-  sortOrder: number;
   pinned: boolean;
 };
 
@@ -114,30 +118,17 @@ type ParsedPromptForm =
   | { ok: true; form: NormalizedPromptForm }
   | { ok: false; errors: PromptFormErrors };
 
-function getPromptDisplayOrder(prompt: PromptMeta): number {
-  return prompt.pinned ? prompt.pinnedOrder ?? prompt.normalOrder : prompt.normalOrder;
-}
+type PromptMovePlan = {
+  draggedPrompt: PromptMeta;
+  group: PromptOrderGroup;
+  previousId: string | null;
+  nextId: string | null;
+};
 
-function getNextOrder(
-  prompts: PromptMeta[],
-  pinned: boolean,
-): number {
-  const groupOrders = prompts
-    .filter((prompt) => prompt.pinned === pinned)
-    .map((prompt) => getPromptDisplayOrder(prompt));
-
-  if (groupOrders.length === 0) {
-    return PROMPT_ORDER_GAP;
-  }
-
-  return Math.max(...groupOrders) + PROMPT_ORDER_GAP;
-}
-
-function createEmptyForm(sortOrder: number): PromptFormState {
+function createEmptyForm(): PromptFormState {
   return {
     title: '',
     content: '',
-    sortOrder: String(sortOrder),
     pinned: false,
   };
 }
@@ -146,7 +137,6 @@ function createLoadingFormFromMeta(prompt: PromptMeta): PromptFormState {
   return {
     title: prompt.title,
     content: '',
-    sortOrder: String(getPromptDisplayOrder(prompt)),
     pinned: prompt.pinned,
   };
 }
@@ -155,7 +145,6 @@ function createFormFromPrompt(prompt: PromptRecord): PromptFormState {
   return {
     title: prompt.title,
     content: prompt.content,
-    sortOrder: String(getPromptDisplayOrder(prompt)),
     pinned: prompt.pinned,
   };
 }
@@ -174,25 +163,76 @@ function removePrompt(prompts: PromptMeta[], id: string): PromptMeta[] {
   return prompts.filter((prompt) => prompt.id !== id);
 }
 
+function getPromptGroup(prompt: PromptMeta): PromptOrderGroup {
+  return prompt.pinned ? 'pinned' : 'normal';
+}
+
+function buildPromptMovePlan(
+  prompts: PromptMeta[],
+  id: string,
+  targetId: string,
+  placement: PromptMovePlacement,
+): PromptMovePlan | null {
+  if (id === targetId) {
+    return null;
+  }
+
+  const sortedPrompts = sortPromptMetas(prompts);
+  const draggedPrompt =
+    sortedPrompts.find((prompt) => prompt.id === id) ?? null;
+  const targetPrompt =
+    sortedPrompts.find((prompt) => prompt.id === targetId) ?? null;
+
+  if (
+    !draggedPrompt ||
+    !targetPrompt ||
+    draggedPrompt.pinned !== targetPrompt.pinned
+  ) {
+    return null;
+  }
+
+  const groupPrompts = sortedPrompts.filter(
+    (prompt) => prompt.pinned === draggedPrompt.pinned,
+  );
+  const currentIndex = groupPrompts.findIndex((prompt) => prompt.id === id);
+  const groupWithoutDragged = groupPrompts.filter((prompt) => prompt.id !== id);
+  const targetIndex = groupWithoutDragged.findIndex(
+    (prompt) => prompt.id === targetId,
+  );
+
+  if (currentIndex < 0 || targetIndex < 0) {
+    return null;
+  }
+
+  const insertionIndex = placement === 'before' ? targetIndex : targetIndex + 1;
+  const nextGroupPrompts = [...groupWithoutDragged];
+  nextGroupPrompts.splice(insertionIndex, 0, draggedPrompt);
+
+  const nextIndex = nextGroupPrompts.findIndex((prompt) => prompt.id === id);
+
+  if (nextIndex === currentIndex) {
+    return null;
+  }
+
+  return {
+    draggedPrompt,
+    group: getPromptGroup(draggedPrompt),
+    previousId: nextGroupPrompts[nextIndex - 1]?.id ?? null,
+    nextId: nextGroupPrompts[nextIndex + 1]?.id ?? null,
+  };
+}
+
 function parsePromptForm(form: PromptFormState): ParsedPromptForm {
-  const hasEmptySortOrder = form.sortOrder.trim().length === 0;
-  const sortOrder = hasEmptySortOrder ? Number.NaN : Number(form.sortOrder);
   const normalizedDraft = normalizePromptDraft({
     title: form.title,
     content: form.content,
     pinned: form.pinned,
-    normalOrder: form.pinned ? PROMPT_ORDER_GAP : sortOrder,
-    pinnedOrder: form.pinned ? sortOrder : null,
   });
+  const draftErrors = validatePromptDraft(normalizedDraft);
   const errors: PromptFormErrors = {
-    ...validatePromptDraft(normalizedDraft),
+    title: draftErrors.title,
+    content: draftErrors.content,
   };
-
-  if (hasEmptySortOrder) {
-    errors.sortOrder = EMPTY_SORT_ORDER_MESSAGE;
-  } else if (!Number.isInteger(sortOrder) || sortOrder < 0) {
-    errors.sortOrder = INVALID_SORT_ORDER_MESSAGE;
-  }
 
   if (hasPromptDraftErrors(errors)) {
     return {
@@ -206,7 +246,6 @@ function parsePromptForm(form: PromptFormState): ParsedPromptForm {
     form: {
       title: normalizedDraft.title,
       content: normalizedDraft.content,
-      sortOrder,
       pinned: form.pinned,
     },
   };
@@ -217,19 +256,12 @@ function buildCreateDraft(form: NormalizedPromptForm): PromptDraft {
     title: form.title,
     content: form.content,
     pinned: form.pinned,
-    normalOrder: form.pinned ? PROMPT_ORDER_GAP : form.sortOrder,
-    pinnedOrder: form.pinned ? form.sortOrder : null,
   };
 }
 
-function buildMetaDraft(
-  form: NormalizedPromptForm,
-  activePrompt: PromptRecord,
-): PromptMetaDraft {
+function buildMetaDraft(form: NormalizedPromptForm): PromptMetaDraft {
   return {
     title: form.title,
-    normalOrder: form.pinned ? activePrompt.normalOrder : form.sortOrder,
-    pinnedOrder: form.pinned ? form.sortOrder : null,
   };
 }
 
@@ -237,10 +269,7 @@ function didMetaDraftChange(
   form: NormalizedPromptForm,
   activePrompt: PromptRecord,
 ): boolean {
-  return (
-    form.title !== activePrompt.title ||
-    form.sortOrder !== getPromptDisplayOrder(activePrompt)
-  );
+  return form.title !== activePrompt.title;
 }
 
 function didPinnedChange(
@@ -297,9 +326,7 @@ export function usePromptEditor(): UsePromptEditorResult {
     status: 'idle',
   });
   const [mode, setMode] = useState<PromptEditorMode>({ kind: 'create' });
-  const [form, setForm] = useState<PromptFormState>(() =>
-    createEmptyForm(PROMPT_ORDER_GAP),
-  );
+  const [form, setForm] = useState<PromptFormState>(() => createEmptyForm());
   const [errors, setErrors] = useState<PromptFormErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
@@ -331,12 +358,12 @@ export function usePromptEditor(): UsePromptEditorResult {
     setNotice(null);
   }
 
-  function moveToCreateMode(nextPrompts: PromptMeta[]): void {
+  function moveToCreateMode(): void {
     bodyLoadRequestIdRef.current += 1;
     setMode({ kind: 'create' });
     setActivePrompt(null);
     setBodyLoadState({ status: 'idle' });
-    setForm(createEmptyForm(getNextOrder(nextPrompts, false)));
+    setForm(createEmptyForm());
     setErrors({});
     setIsDirty(false);
     setConflictState({ status: 'idle' });
@@ -444,7 +471,7 @@ export function usePromptEditor(): UsePromptEditorResult {
 
       if (currentMode.kind === 'create') {
         if (!draftIsDirty) {
-          moveToCreateMode(sortedPrompts);
+          moveToCreateMode();
         }
         return;
       }
@@ -454,7 +481,7 @@ export function usePromptEditor(): UsePromptEditorResult {
         null;
 
       if (!currentPrompt) {
-        moveToCreateMode(sortedPrompts);
+        moveToCreateMode();
         setNotice(DELETE_RECOVERY_MESSAGE);
         setAlertMessage(null);
         return;
@@ -530,7 +557,7 @@ export function usePromptEditor(): UsePromptEditorResult {
 
   function startCreateMode(): void {
     startTransition(() => {
-      moveToCreateMode(promptsRef.current);
+      moveToCreateMode();
       setNotice(null);
       setAlertMessage(null);
     });
@@ -542,31 +569,21 @@ export function usePromptEditor(): UsePromptEditorResult {
 
   function updateField(field: keyof PromptFormState, value: string | boolean): void {
     if (field === 'pinned') {
-      const pinned = Boolean(value);
-      const currentPrompt = activePromptRef.current;
-      const nextOrder =
-        modeRef.current.kind === 'edit' && currentPrompt
-          ? pinned
-            ? currentPrompt.pinnedOrder ?? getNextOrder(promptsRef.current, true)
-            : currentPrompt.normalOrder
-          : getNextOrder(promptsRef.current, pinned);
-
       setForm((current) => ({
         ...current,
-        pinned,
-        sortOrder: String(nextOrder),
+        pinned: Boolean(value),
       }));
     } else {
       setForm((current) => ({
         ...current,
         [field]: String(value),
       }));
-    }
 
-    setErrors((current) => ({
-      ...current,
-      [field]: undefined,
-    }));
+      setErrors((current) => ({
+        ...current,
+        [field]: undefined,
+      }));
+    }
     setIsDirty(true);
     setNotice(null);
 
@@ -606,7 +623,7 @@ export function usePromptEditor(): UsePromptEditorResult {
 
           startTransition(() => {
             setPrompts(nextPrompts);
-            moveToCreateMode(nextPrompts);
+            moveToCreateMode();
             setAlertMessage(UPDATE_NOT_FOUND_MESSAGE);
           });
           return;
@@ -657,7 +674,7 @@ export function usePromptEditor(): UsePromptEditorResult {
 
             startTransition(() => {
               setPrompts(updatedPrompts);
-              moveToCreateMode(updatedPrompts);
+              moveToCreateMode();
               setAlertMessage(
                 `${pinnedResult.message} 새 프롬프트 작성 모드로 전환했습니다.`,
               );
@@ -671,7 +688,7 @@ export function usePromptEditor(): UsePromptEditorResult {
         if (didMetaDraftChange(parsedForm.form, nextRecord)) {
           const metaResult = await updatePromptMeta(
             currentMode.promptId,
-            buildMetaDraft(parsedForm.form, nextRecord),
+            buildMetaDraft(parsedForm.form),
             {
               expectedUpdatedAt: nextRecord.updatedAt,
             },
@@ -710,7 +727,7 @@ export function usePromptEditor(): UsePromptEditorResult {
 
             startTransition(() => {
               setPrompts(updatedPrompts);
-              moveToCreateMode(updatedPrompts);
+              moveToCreateMode();
               setAlertMessage(
                 `${metaResult.message} 새 프롬프트 작성 모드로 전환했습니다.`,
               );
@@ -762,7 +779,7 @@ export function usePromptEditor(): UsePromptEditorResult {
 
             startTransition(() => {
               setPrompts(updatedPrompts);
-              moveToCreateMode(updatedPrompts);
+              moveToCreateMode();
               setAlertMessage(
                 `${bodyResult.message} 새 프롬프트 작성 모드로 전환했습니다.`,
               );
@@ -789,7 +806,7 @@ export function usePromptEditor(): UsePromptEditorResult {
 
       startTransition(() => {
         setPrompts(nextPrompts);
-        moveToCreateMode(nextPrompts);
+        moveToCreateMode();
         setNotice('프롬프트를 저장했습니다.');
         setAlertMessage(null);
       });
@@ -800,6 +817,126 @@ export function usePromptEditor(): UsePromptEditorResult {
           ? error.message
           : '프롬프트 저장 중 오류가 발생했습니다.',
       );
+    } finally {
+      setSaveState({ status: 'idle' });
+    }
+  }
+
+  async function movePromptWithinGroup(
+    id: string,
+    targetId: string,
+    placement: PromptMovePlacement,
+  ): Promise<boolean> {
+    const movePlan = buildPromptMovePlan(
+      promptsRef.current,
+      id,
+      targetId,
+      placement,
+    );
+
+    if (!movePlan) {
+      return false;
+    }
+
+    setNotice(null);
+
+    if (conflictStateRef.current.status === 'idle') {
+      setAlertMessage(null);
+    }
+
+    setSaveState({ status: 'saving' });
+
+    try {
+      const currentMode = modeRef.current;
+      const result = await movePrompt(id, {
+        group: movePlan.group,
+        previousId: movePlan.previousId,
+        nextId: movePlan.nextId,
+        expectedUpdatedAt: movePlan.draggedPrompt.updatedAt,
+      });
+
+      if (result.ok) {
+        const nextPrompts = upsertPromptMeta(promptsRef.current, result.meta);
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+
+          if (currentMode.kind === 'edit' && currentMode.promptId === id) {
+            setActivePrompt((current) =>
+              current && current.id === id
+                ? mergeMetaIntoRecord(current, result.meta)
+                : current,
+            );
+            setMode((current) =>
+              current.kind === 'edit' && current.promptId === id
+                ? {
+                    ...current,
+                    expectedUpdatedAt: result.meta.updatedAt,
+                    expectedBodyUpdatedAt: result.meta.bodyUpdatedAt,
+                  }
+                : current,
+            );
+          }
+        });
+        return true;
+      }
+
+      if (result.status === 'conflict') {
+        const nextPrompts = upsertPromptMeta(
+          promptsRef.current,
+          result.currentMeta,
+        );
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+
+          if (currentMode.kind === 'edit' && currentMode.promptId === id) {
+            setConflictState({
+              status: 'stale',
+              reason: 'external-update',
+              promptId: id,
+              message: EXTERNAL_CHANGE_MESSAGE,
+              currentPrompt: result.currentMeta,
+            });
+            setAlertMessage(EXTERNAL_CHANGE_MESSAGE);
+            return;
+          }
+
+          setAlertMessage(
+            `${result.message} 최신 저장본을 확인한 뒤 다시 시도해주세요.`,
+          );
+        });
+        return false;
+      }
+
+      if (result.status === 'not-found') {
+        const nextPrompts = removePrompt(promptsRef.current, id);
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+
+          if (currentMode.kind === 'edit' && currentMode.promptId === id) {
+            moveToCreateMode();
+            setAlertMessage(
+              `${result.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+            );
+            return;
+          }
+
+          setAlertMessage(result.message);
+        });
+        return false;
+      }
+
+      throw new Error(result.message);
+    } catch (error) {
+      console.error('[promptit] Failed to move prompt.', error);
+      setAlertMessage(
+        error instanceof Error
+          ? error.message
+          : '프롬프트 순서 변경 중 오류가 발생했습니다.',
+      );
+      return false;
     } finally {
       setSaveState({ status: 'idle' });
     }
@@ -838,7 +975,7 @@ export function usePromptEditor(): UsePromptEditorResult {
           setPrompts(nextPrompts);
 
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
-            moveToCreateMode(nextPrompts);
+            moveToCreateMode();
           }
 
           setNotice('프롬프트를 삭제했습니다.');
@@ -880,7 +1017,7 @@ export function usePromptEditor(): UsePromptEditorResult {
           setPrompts(nextPrompts);
 
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
-            moveToCreateMode(nextPrompts);
+            moveToCreateMode();
             setAlertMessage(
               `${result.message} 새 프롬프트 작성 모드로 전환했습니다.`,
             );
@@ -923,6 +1060,7 @@ export function usePromptEditor(): UsePromptEditorResult {
     clearAlertMessage,
     clearNotice,
     deletePromptById,
+    movePromptWithinGroup,
     selectPrompt,
     startCreateMode,
     submit,

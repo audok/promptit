@@ -35,8 +35,8 @@ pnpm test:e2e
 - 로컬 fixture 기반 회귀 테스트를 실행한다.
 - 기본 개발 루프에서 가장 자주 돌려야 하는 테스트다.
 - 현재 커버하는 대표 항목:
-  - 옵션 페이지 CRUD, validation, initial load draft preservation, storage sync
-  - 옵션 페이지 stale save/delete conflict와 storage 실패 UI
+  - 옵션 페이지 CRUD, validation, append-by-default, removed sort-order form input, drag-handle keyboard reorder, initial load draft preservation, storage sync
+  - 옵션 페이지 stale save/delete/move conflict와 storage 실패 UI
   - `/ ` trigger open/close/cleanup
   - insert, copy, hover, click, keyboard navigation
   - hover + keyboard navigation + list scroll 조합 회귀
@@ -71,7 +71,7 @@ pnpm test:e2e:live
 
 | 파일 | 주 역할 | 상세 체크리스트 섹션 |
 | --- | --- | --- |
-| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
+| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, append-by-default, removed sort-order form input, drag-handle keyboard reorder, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
 | `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, child-node resolve, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `Gemini 지원` |
 | `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, child-node resolve, insert/copy, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
 | `tests/e2e/platform.spec.ts` | 지원 URL 범위, same-page duplicate initialization guard, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
