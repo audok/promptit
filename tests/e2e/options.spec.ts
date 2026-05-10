@@ -55,7 +55,16 @@ async function openOptionsPage(
   });
 
   await expect(page).toHaveTitle(/Promptit Settings/i);
-  await expect(page.getByText('Promptit Sprint 3')).toBeVisible();
+  await expect(page.getByText('Promptit')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/ChatGPT, Gemini/),
+  ).toBeVisible();
+  await expect(page.getByLabel('/ space')).toBeVisible();
+  await expect(page.locator('kbd').filter({ hasText: '/' })).toBeVisible();
+  await expect(page.locator('kbd').filter({ hasText: 'Space' })).toBeVisible();
 
   return page;
 }

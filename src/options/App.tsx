@@ -353,16 +353,25 @@ export default function App() {
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-4">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
-                Promptit Sprint 3
+                Promptit
               </p>
               <div className="space-y-3">
                 <h1 className="text-4xl font-semibold tracking-tight text-stone-900">
-                  프롬프트를 저장하고 바로 불러오세요.
+                  프롬프트를 저장하고 붙여 넣으세요.
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-stone-600">
-                  이 페이지에서 프롬프트를 만들고 수정하면 ChatGPT의 Promptit
-                  팝업에 즉시 반영됩니다. 목록에서 프롬프트를 끌어 원하는 순서로
-                  정렬할 수 있습니다.
+                  이 페이지에서 프롬프트를 저장하고 수정하세요. ChatGPT, Gemini
+                  사이트에서{' '}
+                  <span className="inline-flex items-center gap-1 align-middle" aria-label="/ space">
+                    <kbd className="inline-flex min-w-7 items-center justify-center rounded-md border border-stone-300 bg-stone-50 px-2 py-1 font-mono text-[0.82em] font-semibold leading-none text-stone-900 shadow-[inset_0_-1px_0_rgba(68,64,59,0.14)]">
+                      /
+                    </kbd>
+                    <kbd className="inline-flex items-center justify-center rounded-md border border-stone-300 bg-stone-50 px-2 py-1 font-mono text-[0.82em] font-semibold leading-none text-stone-900 shadow-[inset_0_-1px_0_rgba(68,64,59,0.14)]">
+                      Space
+                    </kbd>
+                  </span>
+                  를 입력하여 쉽게 붙여넣으세요. 목록에서 프롬프트를 끌어 순서를
+                  변경할 수 있습니다.
                 </p>
               </div>
             </div>
@@ -448,7 +457,7 @@ export default function App() {
                         <div
                           className={`rounded-[24px] border px-4 py-4 transition ${
                             isActive
-                              ? 'border-stone-900 bg-stone-900 text-stone-50 shadow-[0_18px_34px_rgba(28,25,23,0.20)]'
+                              ? 'border-[#2f2f2f] bg-[#2f2f2f] text-stone-50 shadow-[0_18px_34px_rgba(47,47,47,0.14)]'
                               : 'border-stone-200 bg-stone-50 text-stone-900 hover:border-stone-300 hover:bg-stone-100'
                           }`}
                         >
@@ -575,10 +584,10 @@ export default function App() {
 
                           <button
                             type="button"
-                            className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                            className={`rounded-full border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
                               isActive
-                                ? 'bg-white/10 text-stone-200 hover:bg-white/15'
-                                : 'bg-white text-stone-600 hover:bg-stone-200'
+                                ? 'border-rose-200/20 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25'
+                                : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
                             } disabled:cursor-not-allowed disabled:opacity-50`}
                             onClick={() => {
                               void handleDelete(prompt);
@@ -731,7 +740,7 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
-                  className="rounded-full bg-stone-900 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-500"
+                  className="rounded-full bg-[#2f2f2f] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:bg-stone-500"
                   disabled={editorDisabled || loadState.status === 'error'}
                 >
                   {isSaving
@@ -746,7 +755,7 @@ export default function App() {
                 {isEditing ? (
                   <button
                     type="button"
-                    className="rounded-full border border-stone-300 bg-white/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-700 transition hover:border-stone-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => {
                       if (activePromptMeta) {
                         void handleDelete(activePromptMeta);

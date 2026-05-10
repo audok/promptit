@@ -108,7 +108,16 @@ test('opens the options page when the content script sends the runtime message',
   await optionsPage.waitForLoadState('domcontentloaded');
 
   await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
-  await expect(optionsPage.getByText('Promptit Sprint 3')).toBeVisible();
+  await expect(optionsPage.getByText('Promptit')).toBeVisible();
+  await expect(
+    optionsPage.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
+  ).toBeVisible();
+  await expect(
+    optionsPage.getByText(/ChatGPT, Gemini/),
+  ).toBeVisible();
+  await expect(optionsPage.getByLabel('/ space')).toBeVisible();
+  await expect(optionsPage.locator('kbd').filter({ hasText: '/' })).toBeVisible();
+  await expect(optionsPage.locator('kbd').filter({ hasText: 'Space' })).toBeVisible();
 });
 
 test('ignores malformed runtime messages without opening the options page', async ({
