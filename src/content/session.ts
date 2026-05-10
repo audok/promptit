@@ -5,7 +5,7 @@ import {
 } from './launcher-items';
 
 export type SessionStatus = 'idle' | 'armed' | 'open' | 'closing';
-export type ActiveCellColumn = 'title' | 'copy';
+export type ActiveCellColumn = 'pin' | 'title' | 'copy';
 export type ActiveCellDirection = 'up' | 'down' | 'left' | 'right';
 export type PopupActiveCell = {
   rowIndex: number;
@@ -219,16 +219,22 @@ export function moveActiveCell(
   }
 
   if (direction === 'left') {
-    return {
+    const nextColumn: ActiveCellColumn =
+      baseCell.column === 'copy' ? 'title' : 'pin';
+
+    return clampActiveCell(items, {
       ...baseCell,
-      column: 'title',
-    };
+      column: nextColumn,
+    });
   }
 
   if (direction === 'right') {
+    const nextColumn: ActiveCellColumn =
+      baseCell.column === 'pin' ? 'title' : 'copy';
+
     return clampActiveCell(items, {
       ...baseCell,
-      column: 'copy',
+      column: nextColumn,
     });
   }
 

@@ -13,6 +13,7 @@ import popupStyles from './popup.css?inline';
 type PopupOptions = {
   onSelect: (item: LauncherItem) => void;
   onCopy: (item: LauncherItem) => void;
+  onTogglePinned: (item: LauncherItem) => void;
   onExit: () => void;
   onOpenOptions: () => void;
   onActiveCellChange: (activeCell: PopupActiveCell | null) => void;
@@ -44,7 +45,7 @@ function cloneActiveCell(
 function parseActiveCellColumn(
   value: string | undefined,
 ): ActiveCellColumn | null {
-  if (value === 'title' || value === 'copy') {
+  if (value === 'pin' || value === 'title' || value === 'copy') {
     return value;
   }
 
@@ -228,6 +229,11 @@ export class PromptPopup {
       }
 
       if (!isPromptLauncherItem(selectedItem)) {
+        return;
+      }
+
+      if (action === 'pin') {
+        this.options.onTogglePinned(selectedItem);
         return;
       }
 
@@ -472,6 +478,10 @@ function createLauncherRow(
   const isActiveRow = activeCell?.rowIndex === index;
   const isActiveTitleCell =
     activeCell?.rowIndex === index && activeCell.column === 'title';
+  const isActivePinCell =
+    isPromptLauncherItem(item) &&
+    activeCell?.rowIndex === index &&
+    activeCell.column === 'pin';
   const isActiveCopyCell =
     isPromptLauncherItem(item) &&
     activeCell?.rowIndex === index &&
@@ -489,15 +499,32 @@ function createLauncherRow(
 
   const leadingButton = document.createElement('button');
   leadingButton.type = 'button';
-  leadingButton.className = 'promptit-row-leading-button';
-  leadingButton.disabled = true;
+  leadingButton.className = isPromptLauncherItem(item)
+    ? `promptit-row-pin-button${isActivePinCell ? ' is-active-cell' : ''}${item.pinned ? ' is-pinned' : ''}`
+    : 'promptit-row-leading-button';
   leadingButton.tabIndex = -1;
-  leadingButton.setAttribute('aria-hidden', 'true');
+
+  if (!isPromptLauncherItem(item)) {
+    leadingButton.disabled = true;
+    leadingButton.setAttribute('aria-hidden', 'true');
+  } else {
+    leadingButton.dataset.action = 'pin';
+    leadingButton.dataset.role = 'prompt-cell';
+    leadingButton.dataset.rowIndex = String(index);
+    leadingButton.dataset.column = 'pin';
+    leadingButton.dataset.testid = 'promptit-pin-cell';
+    leadingButton.ariaLabel = item.pinned
+      ? `Unpin prompt: ${item.title}`
+      : `Pin prompt: ${item.title}`;
+    leadingButton.setAttribute('aria-pressed', String(item.pinned));
+  }
 
   const leadingBadge = document.createElement('span');
-  leadingBadge.className = 'promptit-row-leading-badge';
+  leadingBadge.className = isPromptLauncherItem(item)
+    ? 'promptit-row-action-badge promptit-row-pin-badge'
+    : 'promptit-row-leading-badge';
   leadingBadge.innerHTML = isPromptLauncherItem(item)
-    ? renderPushPinIcon()
+    ? renderPushPinIcon(item.pinned)
     : renderEmptyStateIcon();
   leadingButton.append(leadingBadge);
 
@@ -545,7 +572,7 @@ function createLauncherRow(
   }
 
   const copyBadge = document.createElement('span');
-  copyBadge.className = 'promptit-row-copy-badge';
+  copyBadge.className = 'promptit-row-action-badge promptit-row-copy-badge';
   copyBadge.innerHTML = renderCopyIcon();
   copyButton.append(copyBadge);
 
@@ -553,10 +580,14 @@ function createLauncherRow(
   return row;
 }
 
-function renderPushPinIcon(): string {
+function renderPushPinIcon(isFilled = false): string {
+  const pathData = isFilled
+    ? 'M16 12l2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Z'
+    : 'm16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Zm-7.15 2h6.3L14 12.85V5h-4v7.85ZM12 14Z';
+
   return `
     <svg viewBox="0 0 24 24" class="promptit-icon" aria-hidden="true">
-      <path d="m16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Zm-7.15 2h6.3L14 12.85V5h-4v7.85ZM12 14Z" fill="currentColor" />
+      <path d="${pathData}" fill="currentColor" />
     </svg>
   `;
 }

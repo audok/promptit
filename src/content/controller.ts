@@ -4,10 +4,14 @@ import {
   cloneTriggerContext,
 } from '../adapters/base';
 import { resolveAdapterForUrl } from '../adapters/registry';
-import { type PromptMeta } from '../prompt/schema';
+import {
+  sortPromptMetas,
+  type PromptMeta,
+} from '../prompt/schema';
 import {
   getPromptBody,
   getPromptMetas,
+  setPromptPinned,
   subscribeToPromptMetas,
 } from '../prompt/storage';
 import {
@@ -17,6 +21,7 @@ import {
 } from '../runtime/messages';
 import {
   buildLauncherItems,
+  isPromptLauncherItem,
   type LauncherItem,
 } from './launcher-items';
 import { getPopupKeyAction } from './keyboard';
@@ -95,6 +100,9 @@ export function bootstrapContentScript(): void {
     },
     onCopy: (item) => {
       void handleCopy(item, session, popup, adapter);
+    },
+    onTogglePinned: (item) => {
+      void handleTogglePinned(item, session, popup, adapter);
     },
     onExit: () => {
       void closePopup(session, popup, adapter, 'escape', true);
@@ -232,6 +240,11 @@ function registerDocumentListeners(
         const selectedItem = getSelectedPopupItem(session);
 
         if (!selectedItem) {
+          return;
+        }
+
+        if (session.activeCell?.column === 'pin') {
+          void handleTogglePinned(selectedItem, session, popup, adapter);
           return;
         }
 
@@ -625,6 +638,82 @@ async function handleCopy(
   }
 }
 
+async function handleTogglePinned(
+  item: LauncherItem,
+  session: PopupSessionState,
+  popup: PromptPopup,
+  adapter: BaseAdapter,
+): Promise<void> {
+  if (!isPromptLauncherItem(item) || session.isBusy) {
+    return;
+  }
+
+  const activeInput = session.activeInput;
+  const nextPinned = !item.pinned;
+
+  session.isBusy = true;
+  popup.setBusy(true);
+
+  try {
+    const response = await setPromptPinned(item.id, nextPinned, {
+      expectedUpdatedAt: item.updatedAt,
+    });
+
+    switch (response.status) {
+      case 'success':
+        applyPromptMetaUpdatesToPopup(
+          session,
+          popup,
+          adapter,
+          mergePromptMeta(session.items, response.meta),
+        );
+        showToast(
+          response.meta.pinned
+            ? '프롬프트를 고정했습니다.'
+            : '프롬프트 고정을 해제했습니다.',
+        );
+        break;
+      case 'conflict':
+        applyPromptMetaUpdatesToPopup(
+          session,
+          popup,
+          adapter,
+          mergePromptMeta(session.items, response.currentMeta),
+        );
+        showToast(
+          '프롬프트가 다른 곳에서 변경되었습니다. 다시 시도해 주세요.',
+          'error',
+        );
+        break;
+      case 'not-found':
+        applyPromptMetaUpdatesToPopup(
+          session,
+          popup,
+          adapter,
+          removePromptMeta(session.items, response.id),
+        );
+        showToast('고정 상태를 변경할 프롬프트를 찾지 못했습니다.', 'error');
+        break;
+      case 'error':
+        showToast(
+          response.message || '프롬프트 고정 상태를 변경하지 못했습니다.',
+          'error',
+        );
+        break;
+    }
+  } catch (error) {
+    console.error('[promptit] Failed to toggle prompt pinned state.', error);
+    showToast('프롬프트 고정 상태를 변경하지 못했습니다.', 'error');
+  } finally {
+    session.isBusy = false;
+    popup.setBusy(false);
+
+    if (activeInput?.isConnected) {
+      adapter.focusInput(activeInput);
+    }
+  }
+}
+
 async function readPromptBodyForAction(id: string): Promise<string> {
   try {
     if (IS_TEST_MODE && testControlState.failPromptBodyRead) {
@@ -774,6 +863,59 @@ function resolveNextActiveCell(
   }
 
   return clampActiveCell(nextItems, currentActiveCell);
+}
+
+function mergePromptMeta(
+  items: LauncherItem[],
+  nextMeta: PromptMeta,
+): PromptMeta[] {
+  const promptMetas = items.filter(isPromptLauncherItem);
+  const didReplace = promptMetas.some((item) => item.id === nextMeta.id);
+  const nextMetas = promptMetas.map((item) =>
+    item.id === nextMeta.id ? nextMeta : item,
+  );
+
+  if (!didReplace) {
+    nextMetas.push(nextMeta);
+  }
+
+  return sortPromptMetas(nextMetas);
+}
+
+function removePromptMeta(
+  items: LauncherItem[],
+  id: string,
+): PromptMeta[] {
+  return sortPromptMetas(
+    items.filter(isPromptLauncherItem).filter((item) => item.id !== id),
+  );
+}
+
+function applyPromptMetaUpdatesToPopup(
+  session: PopupSessionState,
+  popup: PromptPopup,
+  adapter: BaseAdapter,
+  nextUserPrompts: PromptMeta[],
+): void {
+  if (session.status !== 'open' || !session.activeInput?.isConnected) {
+    return;
+  }
+
+  const nextItems = buildLauncherItems(nextUserPrompts);
+  const nextActiveCell = resolveNextActiveCell(
+    session.items,
+    nextItems,
+    session.activeCell,
+  );
+
+  session.items = nextItems;
+  session.activeCell = nextActiveCell;
+
+  popup.update(
+    nextItems,
+    nextActiveCell,
+    adapter.getPopupAnchorRect(session.activeInput),
+  );
 }
 
 function handlePromptStorageChange(
