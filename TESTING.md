@@ -78,6 +78,20 @@ pnpm test:e2e:live
 | `tests/live/live-chatgpt.spec.ts` | 실제 `chatgpt.com` / `chat.openai.com` smoke | `실사이트 smoke` |
 | `tests/live/live-gemini.spec.ts` | Gemini public-page smoke 후보. 현재 no-submit 조건을 만족하지 못해 skip | `실사이트 smoke` |
 
+## Promptit 테스트 헬퍼
+
+Promptit production prompt data는 IndexedDB에 저장되며 `promptMetas`와 `promptBodies`로 분리되어 있다.
+
+일반 테스트 데이터는 `extension.setPromptRecords(records)`로 seed하고, 상태 확인은 `extension.getPromptMetas()`, `extension.getPromptBody(id)`, `extension.getPromptRecords()`를 사용한다.
+
+legacy `chrome.storage.local.prompts` helper는 migration/recovery 시나리오에서만 사용한다. 이 경우 `setLegacyRawPrompts(rawValue)`로 예전 저장소 값을 준비하고, `getRawChromeStorage()`로 production prompt body가 `chrome.storage.local`에 다시 쓰이지 않았는지 확인할 수 있다.
+
+Popup storage 테스트는 다음 경계를 우선 검증한다.
+
+- list open은 metadata만 읽는다.
+- insert/copy는 선택한 prompt body를 id로 읽는다.
+- body read failure는 popup이 복구 가능한 상태로 남는다.
+
 ## 권장 실행 순서
 
 릴리스 전에는 아래 순서를 권장한다.

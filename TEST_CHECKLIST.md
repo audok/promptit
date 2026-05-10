@@ -45,6 +45,9 @@
 ## 3. 팝업 상호작용
 
 - [x] 저장된 프롬프트 목록이 팝업에 표시된다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] 팝업 목록은 metadata-only로 열리고 body read 실패 hook이 켜져도 제목 목록은 표시된다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] 프롬프트 선택 시점에 최신 body를 읽어 insert한다. `Automated` via `tests/e2e/slash-popup.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] copy 액션 시점에 최신 body를 읽어 clipboard에 쓴다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 키보드로 활성 프롬프트를 insert할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 키보드로 선택한 프롬프트를 copy할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] `Escape`로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
@@ -78,6 +81,7 @@
 - [x] insert 실패 시 error toast를 띄우고 입력 포커스를 복구한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] copy 실패 시 error toast를 띄우고 팝업을 유지한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] trigger 전 prompt storage read 실패 시 error toast를 띄우고 팝업을 열지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] 프롬프트 body read 실패 시 error toast를 띄우고 팝업과 입력 포커스를 유지한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] trigger cleanup 실패 시 error toast를 띄우고 팝업을 다시 유지한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 
 ## 5. 옵션 페이지와 스토리지
@@ -87,19 +91,27 @@
 - [x] 프롬프트를 수정할 수 있다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 삭제 확인을 취소할 수 있다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 삭제 확인 후 실제로 삭제된다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] 제목/내용/sortOrder validation이 저장 대신 오류를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] blank sortOrder는 숫자 변환 전에 validation 오류를 표시하고 sortOrder field에 focus한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] 제목/내용/order validation이 저장 대신 오류를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] blank order는 숫자 변환 전에 validation 오류를 표시하고 order field에 focus한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] production prompt body가 `chrome.storage.local`에 저장되지 않고 IndexedDB `promptBodies`에 저장된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] 정확히 `500 * 1024` UTF-8 bytes인 body는 저장되고, 1 byte 초과 body update는 truncation 없이 거부된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] title/order/pinned 같은 metadata-only save는 `promptBodies.content`와 body timestamp를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] body save는 `promptBodies.content`, `promptBodies.updatedAt`, `promptMetas.bodyUpdatedAt`, `promptMetas.charCount`를 갱신한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] pinned prompt가 normal prompt보다 먼저 정렬되고, unpin 시 기존 normal 위치로 돌아간다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] initial prompt load가 지연돼도 사용자가 입력한 draft form 값을 보존한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 편집 중인 항목이 외부에서 삭제되면 create mode로 돌아간다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 두 옵션 탭에서 같은 프롬프트를 stale save하면 conflict를 표시하고 최신 저장본으로 복구한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 두 옵션 탭에서 stale delete가 발생하면 conflict를 표시하고 최신 저장본을 유지한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] 잘못된 storage 데이터는 옵션 페이지 로드 시 정규화된다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] starter prompt가 사용자 목록에서 제외되고 storage repair 대상이 된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] legacy `chrome.storage.local.prompts`는 IndexedDB가 비어 있을 때 migration 입력으로 사용된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] legacy migration은 valid prompt를 `promptMetas`/`promptBodies`로 분리하고 legacy key를 recovery용으로 유지한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] legacy migration은 invalid item과 starter prompt를 사용자 목록에서 제외한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] oversized legacy body가 있으면 migration이 abort되고 truncation하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] storage read 실패 시 오류를 표시하고 기존 storage 값을 보존한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] initial storage read 실패 시 malformed storage를 repair하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] initial storage read 실패 시 legacy/malformed storage를 repair하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 저장 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 삭제 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] sortOrder tie-break인 `createdAt`, `id` 정렬이 명시적으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] legacy-compatible `sortOrder`가 같은 경우 `createdAt`, `id` tie-break 정렬이 명시적으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] body stale save conflict가 `expectedBodyUpdatedAt` 기준으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
 
 ## 6. 실사이트 smoke
 
@@ -113,9 +125,14 @@
 
 ## 7. 릴리스 체크용 빠른 체크리스트
 
-- [ ] `pnpm typecheck`
-- [ ] `pnpm test:e2e`
-- [ ] `pnpm test:e2e:live`
+- [x] `pnpm typecheck` reported passed by core/UI/test agents for the IndexedDB migration slice
+- [x] `pnpm build:test` reported passed by core/UI/test agents for the IndexedDB migration slice
+- [x] options focused suite passed 27/27 for the IndexedDB migration slice
+- [x] slash plus Gemini focused suites passed 47/47 for the IndexedDB migration slice
+- [x] migration marker post-commit failure issue was fixed and regression-tested
+- [x] reviewer findings addressed: revision publish is best-effort after committed mutations, and runtime mutation timestamps are required except delete optional body timestamp
+- [ ] full broader `pnpm test:e2e` was not run for this slice
+- [ ] live suites were not run for this slice
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `Promptit Settings`인지 확인
 - [ ] 로그인된 ChatGPT, Gemini 전체 흐름 수동 확인
