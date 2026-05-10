@@ -83,6 +83,7 @@
 
 .promptit-header-slash {
   font-size: 12px;
+  font-weight: 600;
 }
 
 .promptit-header-text,
@@ -95,7 +96,7 @@
 
 .promptit-header-text {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .promptit-header-action,

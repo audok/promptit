@@ -380,7 +380,7 @@ export default function App() {
               <MetricCard label="저장된 프롬프트" value={`${prompts.length}`} />
               <MetricCard
                 label="편집 상태"
-                value={isEditing ? '수정 중' : '새로 작성'}
+                value={isEditing ? '수정 중' : '추가 중'}
               />
               <MetricCard label="상태" value={loadStatusLabel} />
             </div>
@@ -421,7 +421,7 @@ export default function App() {
                 onClick={startCreateMode}
                 disabled={isSaving}
               >
-                새 프롬프트
+                프롬프트 추가
               </button>
             </div>
 
@@ -618,7 +618,7 @@ export default function App() {
                   편집기
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-stone-900">
-                  {isEditing ? '프롬프트 수정' : '새 프롬프트 추가'}
+                  {isEditing ? '프롬프트 수정' : '프롬프트 추가'}
                 </h2>
               </div>
               {isEditing ? (

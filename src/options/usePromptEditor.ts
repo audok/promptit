@@ -28,9 +28,9 @@ const LOAD_ERROR_MESSAGE =
 const BODY_LOAD_ERROR_MESSAGE =
   '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.';
 const UPDATE_NOT_FOUND_MESSAGE =
-  '수정할 프롬프트를 찾지 못했습니다. 새 프롬프트 작성 모드로 전환했습니다.';
+  '수정할 프롬프트를 찾지 못했습니다. 프롬프트 추가 모드로 전환했습니다.';
 const DELETE_RECOVERY_MESSAGE =
-  '편집 중인 프롬프트가 삭제되어 새 프롬프트 작성 모드로 전환했습니다.';
+  '편집 중인 프롬프트가 삭제되어 프롬프트 추가 모드로 전환했습니다.';
 const EXTERNAL_CHANGE_MESSAGE =
   '다른 창의 변경이 먼저 저장되었습니다. 현재 입력은 유지되며 저장 시 충돌이 발생할 수 있습니다.';
 
@@ -707,7 +707,7 @@ export function usePromptEditor(): UsePromptEditorResult {
               setPrompts(updatedPrompts);
               moveToCreateMode();
               setAlertMessage(
-                `${pinnedResult.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+                `${pinnedResult.message} 프롬프트 추가 모드로 전환했습니다.`,
               );
             });
             return;
@@ -760,7 +760,7 @@ export function usePromptEditor(): UsePromptEditorResult {
               setPrompts(updatedPrompts);
               moveToCreateMode();
               setAlertMessage(
-                `${metaResult.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+                `${metaResult.message} 프롬프트 추가 모드로 전환했습니다.`,
               );
             });
             return;
@@ -812,7 +812,7 @@ export function usePromptEditor(): UsePromptEditorResult {
               setPrompts(updatedPrompts);
               moveToCreateMode();
               setAlertMessage(
-                `${bodyResult.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+                `${bodyResult.message} 프롬프트 추가 모드로 전환했습니다.`,
               );
             });
             return;
@@ -956,7 +956,7 @@ export function usePromptEditor(): UsePromptEditorResult {
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
             moveToCreateMode();
             setAlertMessage(
-              `${result.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+              `${result.message} 프롬프트 추가 모드로 전환했습니다.`,
             );
             return;
           }
@@ -1078,7 +1078,7 @@ export function usePromptEditor(): UsePromptEditorResult {
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
             moveToCreateMode();
             setAlertMessage(
-              `${result.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+              `${result.message} 프롬프트 추가 모드로 전환했습니다.`,
             );
             return;
           }
@@ -1179,7 +1179,7 @@ export function usePromptEditor(): UsePromptEditorResult {
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
             moveToCreateMode();
             setAlertMessage(
-              `${result.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+              `${result.message} 프롬프트 추가 모드로 전환했습니다.`,
             );
             return;
           }
