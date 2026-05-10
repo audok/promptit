@@ -50,6 +50,7 @@
 - [x] copy 액션 시점에 최신 body를 읽어 clipboard에 쓴다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 키보드로 활성 프롬프트를 insert할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 키보드로 선택한 프롬프트를 copy할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] 키보드로 선택한 프롬프트를 pin/unpin할 수 있고 팝업이 열린 상태로 유지된다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] `Escape`로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] `Backspace`로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 바깥 클릭으로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
@@ -63,6 +64,8 @@
 - [x] hover로 active cell이 바뀐다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] title click으로 프롬프트를 insert할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] copy button click으로 프롬프트를 복사할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] pin button click으로 프롬프트를 pin/unpin할 수 있고 저장된 pinned state와 팝업 정렬이 갱신된다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] pin/copy focus가 검은 badge border 없이 기존 active 배경/아이콘 색을 쓰고, pinned pin icon이 filled SVG path와 검정 fill로 표시되는지 검증된다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] contenteditable에서 multiline break를 보존하며 insert와 cleanup을 수행한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 항목이 많을 때 active row가 보이도록 리스트를 스크롤한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 정지한 포인터 아래로 리스트가 스크롤되더라도 키보드 active cell이 hover에 덮어써지지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
@@ -82,6 +85,7 @@
 - [x] copy 실패 시 error toast를 띄우고 팝업을 유지한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] trigger 전 prompt storage read 실패 시 error toast를 띄우고 팝업을 열지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 프롬프트 body read 실패 시 error toast를 띄우고 팝업과 입력 포커스를 유지한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] stale popup pin activation conflict 시 success toast를 띄우지 않고 외부 pinned state를 보존한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] trigger cleanup 실패 시 error toast를 띄우고 팝업을 다시 유지한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 
 ## 5. 옵션 페이지와 스토리지
@@ -99,7 +103,9 @@
 - [x] title/pinned 같은 metadata-only save는 `promptBodies.content`와 body timestamp를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] body save는 `promptBodies.content`, `promptBodies.updatedAt`, `promptMetas.bodyUpdatedAt`, `promptMetas.charCount`를 갱신한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] pinned prompt가 normal prompt보다 먼저 정렬되고, unpin 시 기존 normal 위치로 돌아간다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] 옵션 편집기 form은 pin checkbox를 노출하지 않고, 목록 pin button으로 pin/unpin하며 저장 state와 정렬을 갱신한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] drag handle keyboard controls로 일반 프롬프트를 일반 그룹 안에서 reorder하고 visible order와 stored meta order가 함께 바뀐다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] drag handle 점 6개 icon은 버튼 중앙에 정렬된다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] drag handle keyboard controls로 고정 프롬프트를 고정 그룹 안에서 reorder하고 visible order와 stored meta order가 함께 바뀐다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] drag handle keyboard movement가 고정/일반 그룹 경계를 넘으려 할 때 storage order가 바뀌지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] move prompt conflict가 발생하면 reorder success announcement를 표시하지 않고 storage record를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
@@ -133,10 +139,12 @@
 - [x] `pnpm typecheck` reported passed by core/UI/test agents for the IndexedDB migration slice
 - [x] `pnpm build:test` reported passed by core/UI/test agents for the IndexedDB migration slice
 - [x] options focused suite passed 27/27 for the IndexedDB migration slice
+- [x] options focused suite passed 33/33 after list pin toggle and drag-handle centering updates
 - [x] slash plus Gemini focused suites passed 47/47 for the IndexedDB migration slice
 - [x] migration marker post-commit failure issue was fixed and regression-tested
 - [x] reviewer findings addressed: revision publish is best-effort after committed mutations, and runtime mutation timestamps are required except delete optional body timestamp
-- [ ] full broader `pnpm test:e2e` was not run for this slice
+- [x] popup pin final validation passed: `pnpm typecheck`, `pnpm build:test`, focused slash popup `45 passed`, focused Gemini popup `8 passed`, and full `pnpm test:e2e` exit 0 with `1 flaky`, `88 passed`
+- [x] final code review found no blocking correctness issues; residual pin gaps are not-found/generic runtime error direct E2E coverage and existing-pinned-list insertion-order direct popup coverage
 - [ ] live suites were not run for this slice
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `Promptit Settings`인지 확인

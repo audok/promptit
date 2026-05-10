@@ -35,16 +35,17 @@ pnpm test:e2e
 - 로컬 fixture 기반 회귀 테스트를 실행한다.
 - 기본 개발 루프에서 가장 자주 돌려야 하는 테스트다.
 - 현재 커버하는 대표 항목:
-  - 옵션 페이지 CRUD, validation, append-by-default, removed sort-order form input, drag-handle keyboard reorder, initial load draft preservation, storage sync
+  - 옵션 페이지 CRUD, validation, append-by-default, removed sort-order form input, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load draft preservation, storage sync
   - 옵션 페이지 stale save/delete/move conflict와 storage 실패 UI
   - `/ ` trigger open/close/cleanup
-  - insert, copy, hover, click, keyboard navigation
+  - insert, copy, pin/unpin, hover, click, keyboard navigation
   - hover + keyboard navigation + list scroll 조합 회귀
   - IME, IME reset, NBSP, readonly/disabled textarea
   - storage normalization/recovery
   - toast 기반 실패 복구 경로
   - prompt read failure, composer detach stale-open regression
   - popup placement, long-list scroll
+  - popup pin action persistence, visual active state, ordering, and stale conflict handling
   - unsupported URL no-op, same-page duplicate initialization guard
   - content script -> runtime message -> options open, malformed runtime message no-op
   - ChatGPT/Gemini composer child-node event bubbling resolve
@@ -71,9 +72,9 @@ pnpm test:e2e:live
 
 | 파일 | 주 역할 | 상세 체크리스트 섹션 |
 | --- | --- | --- |
-| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, append-by-default, removed sort-order form input, drag-handle keyboard reorder, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
+| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, append-by-default, removed sort-order form input, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
 | `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, child-node resolve, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `Gemini 지원` |
-| `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, child-node resolve, insert/copy, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
+| `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, child-node resolve, insert/copy/pin, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
 | `tests/e2e/platform.spec.ts` | 지원 URL 범위, same-page duplicate initialization guard, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
 | `tests/live/live-chatgpt.spec.ts` | 실제 `chatgpt.com` / `chat.openai.com` smoke | `실사이트 smoke` |
 | `tests/live/live-gemini.spec.ts` | Gemini public-page smoke 후보. 현재 no-submit 조건을 만족하지 못해 skip | `실사이트 smoke` |
@@ -90,6 +91,7 @@ Popup storage 테스트는 다음 경계를 우선 검증한다.
 
 - list open은 metadata만 읽는다.
 - insert/copy는 선택한 prompt body를 id로 읽는다.
+- pin/unpin은 metadata mutation만 수행하고 persisted pinned state와 popup ordering을 갱신한다.
 - body read failure는 popup이 복구 가능한 상태로 남는다.
 
 ## 권장 실행 순서
@@ -125,7 +127,7 @@ pnpm test:e2e:live
 1. Promptit 확장을 로드한 브라우저에서 로그인된 ChatGPT와 Gemini 세션을 각각 연다.
 2. 각 서비스의 composer에 포커스하고 `/ `를 입력한다.
 3. Promptit popup이 열리는지 확인한다.
-4. Enter 또는 popup click으로 저장된 프롬프트 insert와 copy 흐름을 확인한다.
+4. Enter 또는 popup click으로 저장된 프롬프트 insert, copy, pin/unpin 흐름을 확인한다.
 5. `/ ` trigger cleanup이 정상 동작하고, 의도치 않게 prompt가 제출되지 않는지 확인한다.
 
 이 항목을 수동으로 두는 이유:
