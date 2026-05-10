@@ -260,7 +260,7 @@ async function createPromptFromOptions(
 ): Promise<void> {
   await getTitleInput(page).fill(title);
   await getContentInput(page).fill(content);
-  await page.getByRole('button', { name: '프롬프트 추가' }).click();
+  await getPromptSubmitButton(page, '프롬프트 추가').click();
 }
 
 function getTitleInput(page: Page): Locator {
@@ -269,6 +269,10 @@ function getTitleInput(page: Page): Locator {
 
 function getContentInput(page: Page): Locator {
   return page.locator('form').getByRole('textbox', { name: /본문/ });
+}
+
+function getPromptSubmitButton(page: Page, name: string): Locator {
+  return page.locator('form').getByRole('button', { name });
 }
 
 async function pressPromptHandleKey(
@@ -1277,7 +1281,7 @@ test('preserves draft input while the initial prompt load resolves', async ({
   await page.evaluate(() => (window as any).__releasePromptitInitialLoad?.());
 
   await expect(getPromptCard(page, '불러온 프롬프트')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '새 프롬프트 추가' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '프롬프트 추가' })).toBeVisible();
   await expect(getTitleInput(page)).toHaveValue('로딩 중 입력한 제목');
   await expect(getContentInput(page)).toHaveValue('로딩 중 입력한 본문');
 });
@@ -1291,7 +1295,7 @@ test('shows validation errors instead of saving invalid prompts', async ({
 
   await getTitleInput(page).fill('   ');
   await getContentInput(page).fill('   ');
-  await page.getByRole('button', { name: '프롬프트 추가' }).click();
+  await getPromptSubmitButton(page, '프롬프트 추가').click();
 
   await expect(
     page.getByText('제목은 1자 이상 40자 이하로 입력해주세요.'),
@@ -1341,7 +1345,7 @@ test('cancels and confirms prompt deletion from edit mode', async ({
   await expect(
     page
       .getByRole('status')
-      .filter({ hasText: '편집 중인 프롬프트가 삭제되어 새 프롬프트 작성 모드로 전환했습니다.' }),
+      .filter({ hasText: '편집 중인 프롬프트가 삭제되어 프롬프트 추가 모드로 전환했습니다.' }),
   ).toBeVisible();
   await expect(
     page.getByText(
@@ -1384,10 +1388,10 @@ test('returns to create mode when the editing prompt is deleted elsewhere', asyn
   await expect(
     page
       .getByRole('status')
-      .filter({ hasText: '편집 중인 프롬프트가 삭제되어 새 프롬프트 작성 모드로 전환했습니다.' }),
+      .filter({ hasText: '편집 중인 프롬프트가 삭제되어 프롬프트 추가 모드로 전환했습니다.' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: '새 프롬프트 추가' }),
+    page.getByRole('heading', { name: '프롬프트 추가' }),
   ).toBeVisible();
   await expect(getTitleInput(page)).toHaveValue('');
   await expect(getContentInput(page)).toHaveValue('');
