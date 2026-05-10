@@ -595,7 +595,7 @@ export default function App() {
                             disabled={isSaving}
                             aria-label="목록에서 프롬프트 삭제"
                           >
-                            Delete
+                            삭제
                           </button>
                           </div>
                         </div>
