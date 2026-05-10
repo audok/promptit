@@ -5,7 +5,7 @@ import {
   type LoadedExtension,
 } from '../playwright/extension';
 import {
-  createPromptItem,
+  createPromptRecord,
   GEMINI_COMPOSER_SELECTOR,
   getComposer,
   getComposerText,
@@ -45,8 +45,8 @@ test.describe.skip('gemini.google.com live smoke', () => {
   test('opens the popup and inserts a saved prompt', async ({
     extension,
   }) => {
-    await extension.setPrompts([
-      createPromptItem({
+    await extension.setPromptRecords([
+      createPromptRecord({
         id: 'live-gemini-insert',
         title: 'Gemini 라이브 삽입',
         content: 'Gemini 실사이트 삽입 검증용 프롬프트',

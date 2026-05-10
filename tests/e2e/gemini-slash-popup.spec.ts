@@ -3,7 +3,7 @@ import { expect, test as base } from '@playwright/test';
 import { launchExtension, type LoadedExtension } from '../playwright/extension';
 import {
   clearComposer,
-  createPromptItem,
+  createPromptRecord,
   GEMINI_COMPOSER_SELECTOR,
   GEMINI_FIXTURE_URL,
   getComposerText,
@@ -24,13 +24,13 @@ const test = base.extend<{
 });
 
 const geminiPrompts = [
-  createPromptItem({
+  createPromptRecord({
     id: 'gemini-prompt-translate',
     title: 'Gemini 번역',
     content: 'Gemini에서 자연스럽게 번역해줘.',
     sortOrder: 10,
   }),
-  createPromptItem({
+  createPromptRecord({
     id: 'gemini-prompt-summary',
     title: 'Gemini 요약',
     content: 'Gemini에서 핵심만 요약해줘.',
@@ -87,7 +87,7 @@ test('initializes Promptit on the Gemini fixture', async ({ extension }) => {
 });
 
 test('opens the slash popup from the Gemini composer', async ({ extension }) => {
-  await extension.setPrompts(geminiPrompts);
+  await extension.setPromptRecords(geminiPrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
@@ -104,7 +104,7 @@ test('opens the slash popup from the Gemini composer', async ({ extension }) => 
 test('inserts the active prompt and replaces the Gemini trigger text', async ({
   extension,
 }) => {
-  await extension.setPrompts(geminiPrompts);
+  await extension.setPromptRecords(geminiPrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
@@ -124,10 +124,45 @@ test('inserts the active prompt and replaces the Gemini trigger text', async ({
   );
 });
 
+test('reads the Gemini prompt body on selection instead of popup open', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'gemini-body-on-select',
+    title: 'Gemini 지연 본문',
+    content: 'Gemini 처음 본문',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([prompt]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
+
+  await openPromptPopup(page, GEMINI_COMPOSER_SELECTOR);
+  await extension.setPromptRecords([
+    createPromptRecord({
+      ...prompt,
+      content: 'Gemini 선택 시점 본문',
+      bodyUpdatedAt: '2026-03-29T00:12:00.000Z',
+      updatedAt: '2026-03-29T00:12:00.000Z',
+    }),
+  ]);
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(page.locator('[data-testid="gemini-host-submit-count"]')).toHaveText(
+    '0',
+  );
+  await expect(await getComposerText(page, GEMINI_COMPOSER_SELECTOR)).toBe(
+    'Gemini 선택 시점 본문',
+  );
+});
+
 test('opens from a nested Gemini child input event and inserts the active prompt', async ({
   extension,
 }) => {
-  await extension.setPrompts(geminiPrompts);
+  await extension.setPromptRecords(geminiPrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
@@ -157,7 +192,7 @@ test('opens from a nested Gemini child input event and inserts the active prompt
 test('cleans up Gemini trigger text on escape and backspace', async ({
   extension,
 }) => {
-  await extension.setPrompts(geminiPrompts);
+  await extension.setPromptRecords(geminiPrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
@@ -175,7 +210,7 @@ test('cleans up Gemini trigger text on escape and backspace', async ({
 });
 
 test('ignores Gemini ql-clipboard edits', async ({ extension }) => {
-  await extension.setPrompts(geminiPrompts);
+  await extension.setPromptRecords(geminiPrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
@@ -219,7 +254,7 @@ test('ignores Gemini ql-clipboard edits', async ({ extension }) => {
 test('anchors the Gemini popup to the composer wrapper', async ({
   extension,
 }) => {
-  await extension.setPrompts(geminiPrompts);
+  await extension.setPromptRecords(geminiPrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);

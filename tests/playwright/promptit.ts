@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import { expect, type BrowserContext, type Page } from '@playwright/test';
 
-import type { PromptItem } from '../../src/prompt/schema';
+import {
+  PROMPT_ORDER_GAP,
+  type PromptBody,
+  type PromptItem,
+  type PromptMeta,
+  type PromptRecord,
+} from '../../src/prompt/schema';
 
 export const FIXTURE_ORIGIN = 'http://127.0.0.1:4173';
 export const CONTENTEDITABLE_FIXTURE_URL =
@@ -31,7 +37,86 @@ const COMPOSER_SELECTOR = [
   GEMINI_COMPOSER_SELECTOR,
 ].join(', ');
 
-export function createPromptItem(overrides: {
+function getPromptTimestamp(overrides: {
+  createdAt?: string;
+  updatedAt?: string;
+  bodyUpdatedAt?: string;
+}): string {
+  return (
+    overrides.updatedAt ??
+    overrides.bodyUpdatedAt ??
+    overrides.createdAt ??
+    new Date('2026-03-29T00:00:00.000Z').toISOString()
+  );
+}
+
+export function createPromptMeta(overrides: {
+  title: string;
+  content?: string;
+  normalOrder?: number;
+  sortOrder?: number;
+  pinned?: boolean;
+  pinnedOrder?: number | null;
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  bodyUpdatedAt?: string;
+  charCount?: number;
+}): PromptMeta {
+  const timestamp = getPromptTimestamp(overrides);
+  const content = overrides.content ?? '';
+
+  return {
+    id: overrides.id ?? randomUUID(),
+    title: overrides.title,
+    pinned: overrides.pinned ?? false,
+    normalOrder: overrides.normalOrder ?? overrides.sortOrder ?? PROMPT_ORDER_GAP,
+    pinnedOrder: overrides.pinned ? (overrides.pinnedOrder ?? PROMPT_ORDER_GAP) : null,
+    createdAt: overrides.createdAt ?? timestamp,
+    updatedAt: overrides.updatedAt ?? timestamp,
+    bodyUpdatedAt: overrides.bodyUpdatedAt ?? timestamp,
+    charCount: overrides.charCount ?? Array.from(content).length,
+  };
+}
+
+export function createPromptBody(overrides: {
+  id: string;
+  content: string;
+  updatedAt?: string;
+  bodyUpdatedAt?: string;
+}): PromptBody {
+  return {
+    id: overrides.id,
+    content: overrides.content,
+    updatedAt:
+      overrides.updatedAt ??
+      overrides.bodyUpdatedAt ??
+      new Date('2026-03-29T00:00:00.000Z').toISOString(),
+  };
+}
+
+export function createPromptRecord(overrides: {
+  title: string;
+  content: string;
+  normalOrder?: number;
+  sortOrder?: number;
+  pinned?: boolean;
+  pinnedOrder?: number | null;
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  bodyUpdatedAt?: string;
+  charCount?: number;
+}): PromptRecord {
+  const meta = createPromptMeta(overrides);
+
+  return {
+    ...meta,
+    content: overrides.content,
+  };
+}
+
+export function createLegacyPromptItem(overrides: {
   title: string;
   content: string;
   sortOrder: number;
@@ -39,10 +124,7 @@ export function createPromptItem(overrides: {
   createdAt?: string;
   updatedAt?: string;
 }): PromptItem {
-  const timestamp =
-    overrides.updatedAt ??
-    overrides.createdAt ??
-    new Date('2026-03-29T00:00:00.000Z').toISOString();
+  const timestamp = getPromptTimestamp(overrides);
 
   return {
     id: overrides.id ?? randomUUID(),

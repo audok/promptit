@@ -5,7 +5,8 @@ import { launchExtension, type LoadedExtension } from '../playwright/extension';
 import {
   clearComposer,
   CONTENTEDITABLE_FIXTURE_URL,
-  createPromptItem,
+  createLegacyPromptItem,
+  createPromptRecord,
   dispatchPromptitTestEvent,
   getActivePopupCellLabel,
   getComposerText,
@@ -30,13 +31,13 @@ const test = base.extend<{
 });
 
 const basePrompts = [
-  createPromptItem({
+  createPromptRecord({
     id: 'prompt-translate',
     title: '번역',
     content: '영문으로 자연스럽게 번역해줘.',
     sortOrder: 10,
   }),
-  createPromptItem({
+  createPromptRecord({
     id: 'prompt-minutes',
     title: '회의록',
     content: '회의록으로 정리해줘.',
@@ -400,7 +401,7 @@ async function getPopupListScrollTop(
 test('opens the slash popup from the contenteditable fixture', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -415,7 +416,7 @@ test('opens the slash popup from the contenteditable fixture', async ({
 test('matches the ChatGPT popup width to the composer form wrapper', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -430,7 +431,7 @@ test('matches the ChatGPT popup width to the composer form wrapper', async ({
 test('inserts the active prompt into the contenteditable fixture', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -444,10 +445,69 @@ test('inserts the active prompt into the contenteditable fixture', async ({
   );
 });
 
+test('opens from metadata when body reads fail and keeps the popup open on select failure', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    failPromptBodyRead: true,
+  });
+
+  await openPromptPopup(page);
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
+
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('프롬프트 본문을 읽지 못했습니다.');
+  await expect(await getComposerText(page)).toBe('/ ');
+  await expect.poll(async () => {
+    return await page.evaluate(() => document.activeElement?.id ?? null);
+  }).toBe('prompt-textarea');
+});
+
+test('fetches the latest prompt body when selecting an already-open popup item', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'body-on-select',
+    title: '본문 지연 읽기',
+    content: '처음 열린 본문',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([prompt]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  await extension.setPromptRecords([
+    createPromptRecord({
+      ...prompt,
+      content: '선택 시점에 읽은 본문',
+      bodyUpdatedAt: '2026-03-29T00:10:00.000Z',
+      updatedAt: '2026-03-29T00:10:00.000Z',
+    }),
+  ]);
+
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe('선택 시점에 읽은 본문');
+});
+
 test('opens from a nested contenteditable child input event and inserts the active prompt', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -469,7 +529,7 @@ test('opens from a nested contenteditable child input event and inserts the acti
 test('copies the selected prompt and clears the trigger text', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
   await grantFixtureClipboardPermissions(extension.context);
 
   const page = await extension.context.newPage();
@@ -491,10 +551,46 @@ test('copies the selected prompt and clears the trigger text', async ({
   ).toBe('회의록으로 정리해줘.');
 });
 
+test('fetches the latest prompt body when copying from an already-open popup', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'body-on-copy',
+    title: '복사 지연 읽기',
+    content: '처음 열린 복사 본문',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([prompt]);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  await extension.setPromptRecords([
+    createPromptRecord({
+      ...prompt,
+      content: '복사 시점에 읽은 본문',
+      bodyUpdatedAt: '2026-03-29T00:11:00.000Z',
+      updatedAt: '2026-03-29T00:11:00.000Z',
+    }),
+  ]);
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe('');
+  await expect(
+    await page.evaluate(() => navigator.clipboard.readText()),
+  ).toBe('복사 시점에 읽은 본문');
+});
+
 test('clamps keyboard navigation at popup edges and moves between title and copy cells', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -533,7 +629,7 @@ test('clamps keyboard navigation at popup edges and moves between title and copy
 test('cleans up the trigger text on escape and backspace', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -553,7 +649,7 @@ test('cleans up the trigger text on escape and backspace', async ({
 test('closes on outside click and preserves resumed typing', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -573,7 +669,7 @@ test('closes on outside click and preserves resumed typing', async ({
 test('closes on blur and clears the trigger text', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -588,7 +684,7 @@ test('closes on blur and clears the trigger text', async ({
 test('closes on resize and clears the trigger text', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -602,19 +698,19 @@ test('closes on resize and clears the trigger text', async ({
 test('updates the open popup when prompt storage changes', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
   await openPromptPopup(page);
-  await extension.setPrompts([
+  await extension.setPromptRecords([
     basePrompts[0],
-    createPromptItem({
+    createPromptRecord({
       id: basePrompts[1].id,
       title: '회의록 업데이트',
       content: basePrompts[1].content,
-      sortOrder: basePrompts[1].sortOrder,
+      sortOrder: basePrompts[1].normalOrder,
       createdAt: basePrompts[1].createdAt,
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
@@ -625,10 +721,10 @@ test('updates the open popup when prompt storage changes', async ({
     .toEqual(['번역', '회의록 업데이트']);
 });
 
-test('normalizes invalid storage entries before rendering the popup', async ({
+test('migrates valid legacy storage entries before rendering the popup', async ({
   extension,
 }) => {
-  await extension.setRawPrompts([
+  await extension.setLegacyRawPrompts([
     {
       id: STARTER_PROMPT_ID,
       title: 'starter',
@@ -638,7 +734,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
       updatedAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
     },
     { id: 'broken', title: '', content: '', sortOrder: 'bad' },
-    createPromptItem({
+    createLegacyPromptItem({
       id: 'prompt-later',
       title: '나중 순서',
       content: '두 번째',
@@ -646,7 +742,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
       createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
-    createPromptItem({
+    createLegacyPromptItem({
       id: 'prompt-earlier',
       title: '먼저 순서',
       content: '첫 번째',
@@ -667,7 +763,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
   ]);
   await expect
     .poll(async () =>
-      (await extension.getPrompts()).map((prompt) => ({
+      (await extension.getPromptRecords()).map((prompt) => ({
         id: prompt.id,
         title: prompt.title,
       })),
@@ -681,7 +777,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
 test('opens the options page from the popup empty state', async ({
   extension,
 }) => {
-  await extension.setPrompts([]);
+  await extension.setPromptRecords([]);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -705,7 +801,7 @@ test('opens the options page from the popup empty state', async ({
 test('opens options and closes the popup when trigger cleanup fails', async ({
   extension,
 }) => {
-  await extension.setPrompts([]);
+  await extension.setPromptRecords([]);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -727,7 +823,7 @@ test('opens options and closes the popup when trigger cleanup fails', async ({
 test('shows an error toast when the background fails to open options and keeps the popup open', async ({
   extension,
 }) => {
-  await extension.setPrompts([]);
+  await extension.setPromptRecords([]);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -754,7 +850,7 @@ test('shows an error toast when the background fails to open options and keeps t
 test('updates the active cell on hover and inserts a prompt on title click', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -777,7 +873,7 @@ test('updates the active cell on hover and inserts a prompt on title click', asy
 test('shows an error toast when prompt insertion fails', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -796,7 +892,7 @@ test('shows an error toast when prompt insertion fails', async ({
 test('preserves the multiline break when inserting and cleaning up a prompt from contenteditable', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -840,7 +936,7 @@ test('preserves the multiline break when inserting and cleaning up a prompt from
 test('keeps the popup closed if the composer detaches while trigger resolution is pending', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -882,7 +978,7 @@ test('keeps the popup closed if the composer detaches while trigger resolution i
 test('closes an already-open popup when the composer is removed and does not reopen', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -923,7 +1019,7 @@ test('closes an already-open popup when the composer is removed and does not reo
 test('copies a prompt through the mouse click path', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
   await grantFixtureClipboardPermissions(extension.context);
 
   const page = await extension.context.newPage();
@@ -944,7 +1040,7 @@ test('copies a prompt through the mouse click path', async ({
 test('shows an error toast when copying fails and keeps the popup open', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -965,10 +1061,36 @@ test('shows an error toast when copying fails and keeps the popup open', async (
   }).toBe('prompt-textarea');
 });
 
+test('keeps the popup open when body read fails before copying', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    failPromptBodyRead: true,
+  });
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('프롬프트 본문을 읽지 못했습니다.');
+  await expect(await getComposerText(page)).toBe('/ ');
+  await expect(
+    await page.evaluate(() => navigator.clipboard.readText()),
+  ).toBe('');
+});
+
 test('does not open the popup when only a slash is typed', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -988,7 +1110,7 @@ test('does not open the popup when only a slash is typed', async ({
 test('shows an error toast when prompt storage cannot be read for the trigger', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -1010,7 +1132,7 @@ test('shows an error toast when prompt storage cannot be read for the trigger', 
 test('shows an error toast when trigger cleanup fails', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -1029,7 +1151,7 @@ test('shows an error toast when trigger cleanup fails', async ({
 test('does not open the popup when the selection is not collapsed', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -1051,7 +1173,7 @@ test('does not open the popup when the selection is not collapsed', async ({
 test('waits for compositionend before opening the popup', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -1099,7 +1221,7 @@ test('waits for compositionend before opening the popup', async ({
 test('resets composing state after a popup closes during IME input', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -1116,7 +1238,7 @@ test('resets composing state after a popup closes during IME input', async ({
 test('recognizes a non-breaking-space trigger in the contenteditable composer', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -1136,7 +1258,7 @@ test('recognizes a non-breaking-space trigger in the contenteditable composer', 
 test('replaces the trigger text in the textarea fallback fixture', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -1153,7 +1275,7 @@ test('replaces the trigger text in the textarea fallback fixture', async ({
 test('ignores readonly and disabled textarea composers', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -1205,9 +1327,9 @@ test('ignores readonly and disabled textarea composers', async ({
 test('scrolls the popup list to keep the active row visible', async ({
   extension,
 }) => {
-  await extension.setPrompts(
+  await extension.setPromptRecords(
     Array.from({ length: 7 }, (_, index) =>
-      createPromptItem({
+      createPromptRecord({
         id: `prompt-${index + 1}`,
         title: `프롬프트 ${index + 1}`,
         content: `내용 ${index + 1}`,
@@ -1242,9 +1364,9 @@ test('scrolls the popup list to keep the active row visible', async ({
 test('keeps keyboard navigation active while the hovered popup cell scrolls out from under a stationary pointer', async ({
   extension,
 }) => {
-  await extension.setPrompts(
+  await extension.setPromptRecords(
     Array.from({ length: 7 }, (_, index) =>
-      createPromptItem({
+      createPromptRecord({
         id: `prompt-${index + 1}`,
         title: `프롬프트 ${index + 1}`,
         content: `내용 ${index + 1}`,
@@ -1288,7 +1410,7 @@ test('keeps keyboard navigation active while the hovered popup cell scrolls out 
 test('repositions the open popup on window scroll instead of closing', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -1339,7 +1461,7 @@ test('repositions the open popup on window scroll instead of closing', async ({
 test('positions the popup above or below based on available space', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const belowPage = await extension.context.newPage();
   await belowPage.setViewportSize({ width: 1280, height: 960 });
