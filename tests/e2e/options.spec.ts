@@ -177,7 +177,7 @@ function getPromptList(page: Page): Locator {
 }
 
 function getPromptListButtons(page: Page): Locator {
-  return getPromptList(page).locator('button[aria-pressed]');
+  return getPromptList(page).locator('[data-testid="prompt-card"]');
 }
 
 function getPromptCard(page: Page, title: string): Locator {
@@ -189,6 +189,22 @@ function getPromptDragHandle(page: Page, title: string): Locator {
     name: `${title} 순서 변경`,
     exact: true,
   });
+}
+
+function getPromptPinToggle(page: Page, title: string): Locator {
+  return getPromptList(page)
+    .getByRole('button', {
+      name: new RegExp(`^${escapeRegExp(title)} 고정(?: 해제)?$`),
+    })
+    .first();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function expectPinnedEditorCheckboxRemoved(page: Page): Promise<void> {
+  await expect(page.locator('form').getByRole('checkbox', { name: /고정/ })).toHaveCount(0);
 }
 
 async function expectVisiblePromptOrder(
@@ -880,6 +896,86 @@ test('orders pinned prompts first and restores normal position when unpinned', a
   ]);
 });
 
+test('toggles pinned state from the prompt list pin button instead of the editor form', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'list-pin-first',
+    title: '목록 첫 번째',
+    content: '목록 첫 번째 본문',
+    sortOrder: 1,
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'list-pin-second',
+    title: '목록 두 번째',
+    content: '목록 두 번째 본문',
+    sortOrder: 2,
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectPinnedEditorCheckboxRemoved(page);
+  await getPromptCard(page, secondPrompt.title).click();
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expectPinnedEditorCheckboxRemoved(page);
+
+  await getPromptPinToggle(page, secondPrompt.title).click();
+
+  await expectVisiblePromptOrder(page, [secondPrompt.title, firstPrompt.title]);
+  await expect(
+    getPromptList(page).getByRole('button', {
+      name: `${secondPrompt.title} 고정 해제`,
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(async () => {
+      const prompt = (await extension.getPromptRecords()).find(
+        (record) => record.id === secondPrompt.id,
+      );
+
+      return prompt
+        ? {
+            pinned: prompt.pinned,
+            pinnedOrder: prompt.pinnedOrder,
+          }
+        : null;
+    })
+    .toEqual({
+      pinned: true,
+      pinnedOrder: expect.any(Number),
+    });
+
+  await getPromptPinToggle(page, secondPrompt.title).click();
+
+  await expectVisiblePromptOrder(page, [firstPrompt.title, secondPrompt.title]);
+  await expect(
+    getPromptList(page).getByRole('button', {
+      name: `${secondPrompt.title} 고정`,
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-pressed', 'false');
+  await expect
+    .poll(async () => {
+      const prompt = (await extension.getPromptRecords()).find(
+        (record) => record.id === secondPrompt.id,
+      );
+
+      return prompt
+        ? {
+            pinned: prompt.pinned,
+            pinnedOrder: prompt.pinnedOrder,
+          }
+        : null;
+    })
+    .toEqual({
+      pinned: false,
+      pinnedOrder: null,
+    });
+});
+
 test('reorders normal prompts within the normal group using drag-handle keyboard controls', async ({
   extension,
 }) => {
@@ -925,6 +1021,48 @@ test('reorders normal prompts within the normal group using drag-handle keyboard
     'normal-second',
   ]);
   await expectPromptListToHideInternalOrderFields(page);
+});
+
+test('centers the drag-handle dot icon inside its button', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'centered-handle',
+      title: '핸들 중앙',
+      content: '핸들 중앙 본문',
+      sortOrder: 1,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+  const handle = getPromptDragHandle(page, '핸들 중앙');
+
+  await expect(handle).toBeVisible();
+  await expect(handle.locator('svg circle')).toHaveCount(6);
+
+  const alignment = await handle.evaluate((button) => {
+    const icon = button.querySelector('svg');
+
+    if (!icon) {
+      throw new Error('Drag handle icon not found.');
+    }
+
+    const buttonRect = button.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
+
+    return {
+      horizontalOffset: Math.abs(
+        buttonRect.left + buttonRect.width / 2 - (iconRect.left + iconRect.width / 2),
+      ),
+      verticalOffset: Math.abs(
+        buttonRect.top + buttonRect.height / 2 - (iconRect.top + iconRect.height / 2),
+      ),
+    };
+  });
+
+  expect(alignment.horizontalOffset).toBeLessThan(1);
+  expect(alignment.verticalOffset).toBeLessThan(1);
 });
 
 test('reorders pinned prompts within the pinned group using drag-handle keyboard controls', async ({

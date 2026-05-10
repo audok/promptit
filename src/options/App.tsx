@@ -46,6 +46,7 @@ export default function App() {
     submit,
     deletePromptById,
     movePromptWithinGroup,
+    togglePromptPinned,
     clearNotice,
     clearAlertMessage,
   } = usePromptEditor();
@@ -117,6 +118,8 @@ export default function App() {
       ? prompts.find((prompt) => prompt.id === activePromptId) ?? null
       : null;
   const editorDisabled = isSaving || isEditorLoading;
+  const listActionDisabled =
+    isSaving || isEditorLoading || loadState.status !== 'ready';
   const reorderDisabled =
     isSaving || isEditorLoading || loadState.status !== 'ready';
 
@@ -325,6 +328,14 @@ export default function App() {
     );
   }
 
+  async function handleTogglePinned(prompt: PromptMeta): Promise<void> {
+    if (listActionDisabled) {
+      return;
+    }
+
+    await togglePromptPinned(prompt.id, !prompt.pinned);
+  }
+
   async function handleDelete(prompt: PromptMeta): Promise<void> {
     const shouldDelete = window.confirm(`"${prompt.title}" 프롬프트를 삭제할까요?`);
 
@@ -442,52 +453,83 @@ export default function App() {
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
+                            <div className="mt-1 flex shrink-0 flex-col items-center gap-2">
+                              <button
+                                type="button"
+                                className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                                  isActive
+                                    ? prompt.pinned
+                                      ? 'border-white/20 bg-white/15 text-white hover:bg-white/20'
+                                      : 'border-white/15 bg-white/10 text-stone-300 hover:bg-white/15'
+                                    : prompt.pinned
+                                      ? 'border-stone-900 bg-stone-900 text-white hover:bg-stone-800'
+                                      : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100 hover:text-stone-800'
+                                } disabled:cursor-not-allowed disabled:opacity-50`}
+                                onClick={() => {
+                                  void handleTogglePinned(prompt);
+                                }}
+                                disabled={listActionDisabled}
+                                aria-label={
+                                  prompt.pinned
+                                    ? `${prompt.title} 고정 해제`
+                                    : `${prompt.title} 고정`
+                                }
+                                aria-pressed={prompt.pinned}
+                                title={prompt.pinned ? '고정 해제' : '고정'}
+                                data-testid="prompt-pin-toggle"
+                              >
+                                <PinIcon filled={prompt.pinned} />
+                              </button>
+
+                              <button
+                                type="button"
+                                className={`flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border transition active:cursor-grabbing ${
+                                  isActive
+                                    ? 'border-white/15 bg-white/10 text-stone-200 hover:bg-white/15'
+                                    : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100'
+                                } disabled:cursor-not-allowed disabled:opacity-50`}
+                                draggable={!reorderDisabled}
+                                onDragStart={(event) => {
+                                  handleDragStart(event, prompt);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingPromptId(null);
+                                  setDropIndicator(null);
+                                }}
+                                onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+                                  if (
+                                    event.key !== 'ArrowUp' &&
+                                    event.key !== 'ArrowDown'
+                                  ) {
+                                    return;
+                                  }
+
+                                  event.preventDefault();
+                                  void handleKeyboardReorder(
+                                    prompt,
+                                    event.key === 'ArrowUp' ? 'up' : 'down',
+                                  );
+                                }}
+                                disabled={reorderDisabled}
+                                aria-label={`${prompt.title} 순서 변경`}
+                                aria-describedby={statusRegionId}
+                                title="순서 변경"
+                                data-testid="prompt-drag-handle"
+                              >
+                                <DragHandleIcon />
+                              </button>
+                            </div>
                             <button
                               type="button"
-                              className={`mt-1 flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border text-base leading-none transition active:cursor-grabbing ${
-                                isActive
-                                  ? 'border-white/15 bg-white/10 text-stone-200 hover:bg-white/15'
-                                  : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100'
-                              } disabled:cursor-not-allowed disabled:opacity-50`}
-                              draggable={!reorderDisabled}
-                              onDragStart={(event) => {
-                                handleDragStart(event, prompt);
+                              className="min-w-0 flex-1 cursor-pointer text-left"
+                              onClick={() => {
+                                selectPrompt(prompt);
                               }}
-                              onDragEnd={() => {
-                                setDraggingPromptId(null);
-                                setDropIndicator(null);
-                              }}
-                              onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
-                                if (
-                                  event.key !== 'ArrowUp' &&
-                                  event.key !== 'ArrowDown'
-                                ) {
-                                  return;
-                                }
-
-                                event.preventDefault();
-                                void handleKeyboardReorder(
-                                  prompt,
-                                  event.key === 'ArrowUp' ? 'up' : 'down',
-                                );
-                              }}
-                              disabled={reorderDisabled}
-                              aria-label={`${prompt.title} 순서 변경`}
-                              aria-describedby={statusRegionId}
-                              title="순서 변경"
+                              disabled={isSaving}
+                              aria-pressed={isActive}
+                              aria-current={isActive ? 'true' : undefined}
+                              data-testid="prompt-card"
                             >
-                              <span aria-hidden="true">⋮⋮</span>
-                            </button>
-                          <button
-                            type="button"
-                            className="min-w-0 flex-1 cursor-pointer text-left"
-                            onClick={() => {
-                              selectPrompt(prompt);
-                            }}
-                            disabled={isSaving}
-                            aria-pressed={isActive}
-                            aria-current={isActive ? 'true' : undefined}
-                          >
                             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
                               <span
                                 className={`rounded-full px-2 py-1 tracking-[0.12em] ${
@@ -686,26 +728,6 @@ export default function App() {
                 />
               </Field>
 
-              <label className="flex items-center justify-between gap-3 rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
-                <span>
-                  <span className="block text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                    고정
-                  </span>
-                  <span className="mt-1 block text-xs text-stone-500">
-                    고정한 프롬프트는 일반 프롬프트보다 위에 표시됩니다.
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={form.pinned}
-                  onChange={(event) => {
-                    updateField('pinned', event.target.checked);
-                  }}
-                  className="h-5 w-5 rounded border-stone-300 text-stone-900 focus:ring-2 focus:ring-stone-300"
-                  disabled={editorDisabled}
-                />
-              </label>
-
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
@@ -777,6 +799,41 @@ function InsertionIndicator() {
       </span>
       <span className="h-0.5 flex-1 rounded-full bg-stone-900" />
     </div>
+  );
+}
+
+function PinIcon(props: { filled: boolean }) {
+  const pathData = props.filled
+    ? 'M16 12l2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Z'
+    : 'm16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Zm-7.15 2h6.3L14 12.85V5h-4v7.85ZM12 14Z';
+
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-[18px] w-[18px]"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d={pathData} fill="currentColor" />
+    </svg>
+  );
+}
+
+function DragHandleIcon() {
+  return (
+    <svg
+      viewBox="0 0 18 18"
+      className="h-[18px] w-[18px]"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {[5, 9, 13].map((cy) => (
+        <g key={cy}>
+          <circle cx="6.5" cy={cy} r="1.35" fill="currentColor" />
+          <circle cx="11.5" cy={cy} r="1.35" fill="currentColor" />
+        </g>
+      ))}
+    </svg>
   );
 }
 

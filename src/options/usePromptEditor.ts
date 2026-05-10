@@ -105,6 +105,7 @@ export type UsePromptEditorResult = {
   selectPrompt: (prompt: PromptMeta) => Promise<void>;
   startCreateMode: () => void;
   submit: () => Promise<void>;
+  togglePromptPinned: (id: string, pinned: boolean) => Promise<boolean>;
   updateField: (field: keyof PromptFormState, value: string | boolean) => void;
 };
 
@@ -942,6 +943,128 @@ export function usePromptEditor(): UsePromptEditorResult {
     }
   }
 
+  async function togglePromptPinned(
+    id: string,
+    pinned: boolean,
+  ): Promise<boolean> {
+    const targetPrompt = promptsRef.current.find((prompt) => prompt.id === id) ?? null;
+
+    if (!targetPrompt || targetPrompt.pinned === pinned) {
+      return false;
+    }
+
+    setNotice(null);
+
+    if (conflictStateRef.current.status === 'idle') {
+      setAlertMessage(null);
+    }
+
+    setSaveState({ status: 'saving' });
+
+    try {
+      const currentMode = modeRef.current;
+      const result = await setPromptPinned(id, pinned, {
+        expectedUpdatedAt: targetPrompt.updatedAt,
+      });
+
+      if (result.ok) {
+        const nextPrompts = upsertPromptMeta(promptsRef.current, result.meta);
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+
+          if (currentMode.kind === 'edit' && currentMode.promptId === id) {
+            setActivePrompt((current) =>
+              current && current.id === id
+                ? mergeMetaIntoRecord(current, result.meta)
+                : current,
+            );
+            setForm((current) => ({
+              ...current,
+              pinned: result.meta.pinned,
+            }));
+            setMode((current) =>
+              current.kind === 'edit' && current.promptId === id
+                ? {
+                    ...current,
+                    expectedUpdatedAt: result.meta.updatedAt,
+                    expectedBodyUpdatedAt: result.meta.bodyUpdatedAt,
+                  }
+                : current,
+            );
+          }
+
+          setNotice(
+            result.meta.pinned
+              ? '프롬프트를 고정했습니다.'
+              : '프롬프트 고정을 해제했습니다.',
+          );
+          setAlertMessage(null);
+        });
+        return true;
+      }
+
+      if (result.status === 'conflict') {
+        const nextPrompts = upsertPromptMeta(
+          promptsRef.current,
+          result.currentMeta,
+        );
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+
+          if (currentMode.kind === 'edit' && currentMode.promptId === id) {
+            setConflictState({
+              status: 'stale',
+              reason: 'external-update',
+              promptId: id,
+              message: EXTERNAL_CHANGE_MESSAGE,
+              currentPrompt: result.currentMeta,
+            });
+            setAlertMessage(EXTERNAL_CHANGE_MESSAGE);
+            return;
+          }
+
+          setAlertMessage(
+            `${result.message} 최신 저장본을 확인한 뒤 다시 시도해주세요.`,
+          );
+        });
+        return false;
+      }
+
+      if (result.status === 'not-found') {
+        const nextPrompts = removePrompt(promptsRef.current, id);
+
+        startTransition(() => {
+          setPrompts(nextPrompts);
+
+          if (currentMode.kind === 'edit' && currentMode.promptId === id) {
+            moveToCreateMode();
+            setAlertMessage(
+              `${result.message} 새 프롬프트 작성 모드로 전환했습니다.`,
+            );
+            return;
+          }
+
+          setAlertMessage(result.message);
+        });
+        return false;
+      }
+
+      throw new Error(result.message);
+    } catch (error) {
+      console.error('[promptit] Failed to toggle prompt pinned state.', error);
+      setAlertMessage(
+        error instanceof Error
+          ? error.message
+          : '프롬프트 고정 상태 변경 중 오류가 발생했습니다.',
+      );
+      return false;
+    } finally {
+      setSaveState({ status: 'idle' });
+    }
+  }
+
   async function deletePromptById(id: string): Promise<void> {
     const targetPrompt = promptsRef.current.find((prompt) => prompt.id === id) ?? null;
 
@@ -1064,6 +1187,7 @@ export function usePromptEditor(): UsePromptEditorResult {
     selectPrompt,
     startCreateMode,
     submit,
+    togglePromptPinned,
     updateField,
   };
 }
