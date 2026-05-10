@@ -1,15 +1,20 @@
 import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
+  GET_PROMPT_BODY_MESSAGE,
+  LIST_PROMPT_METAS_MESSAGE,
+  MOVE_PROMPT_MESSAGE,
   OPEN_OPTIONS_PAGE_MESSAGE,
-  UPDATE_PROMPT_MESSAGE,
+  SET_PROMPT_PINNED_MESSAGE,
+  UPDATE_PROMPT_BODY_MESSAGE,
+  UPDATE_PROMPT_META_MESSAGE,
   assertNever,
   buildOpenOptionsPageErrorResponse,
   buildOpenOptionsPageSuccessResponse,
   parsePromptitRuntimeRequest,
   type OpenOptionsPageResponse,
 } from '../runtime/messages';
-import { handlePromptMutationRequest } from './prompt-mutations';
+import { handlePromptRequest } from './prompt-mutations';
 
 let backgroundHandlersRegistered = false;
 const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
@@ -63,10 +68,15 @@ export function registerBackgroundHandlers(): void {
       switch (request.type) {
         case OPEN_OPTIONS_PAGE_MESSAGE:
           return openOptionsPage();
+        case LIST_PROMPT_METAS_MESSAGE:
+        case GET_PROMPT_BODY_MESSAGE:
         case CREATE_PROMPT_MESSAGE:
-        case UPDATE_PROMPT_MESSAGE:
+        case UPDATE_PROMPT_META_MESSAGE:
+        case UPDATE_PROMPT_BODY_MESSAGE:
         case DELETE_PROMPT_MESSAGE:
-          return handlePromptMutationRequest(request);
+        case MOVE_PROMPT_MESSAGE:
+        case SET_PROMPT_PINNED_MESSAGE:
+          return handlePromptRequest(request);
       }
 
       return assertNever(request);

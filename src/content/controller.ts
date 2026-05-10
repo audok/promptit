@@ -4,8 +4,12 @@ import {
   cloneTriggerContext,
 } from '../adapters/base';
 import { resolveAdapterForUrl } from '../adapters/registry';
-import { type PromptItem } from '../prompt/schema';
-import { getPrompts, subscribeToPrompts } from '../prompt/storage';
+import { type PromptMeta } from '../prompt/schema';
+import {
+  getPromptBody,
+  getPromptMetas,
+  subscribeToPromptMetas,
+} from '../prompt/storage';
 import {
   OPEN_OPTIONS_PAGE_MESSAGE,
   buildOpenOptionsPageRequest,
@@ -47,6 +51,7 @@ const TEST_FAIL_OPEN_OPTIONS_STORAGE_KEY = 'promptit:test-fail-open-options';
 type TestControlState = {
   failClipboardWrite: boolean;
   failOpenOptions: boolean;
+  failPromptBodyRead: boolean;
   failPromptRead: boolean;
 };
 
@@ -64,8 +69,11 @@ type AdapterMutationRecord = {
 const testControlState: TestControlState = {
   failClipboardWrite: false,
   failOpenOptions: false,
+  failPromptBodyRead: false,
   failPromptRead: false,
 };
+
+const PROMPT_BODY_READ_ERROR_MESSAGE = '프롬프트 본문을 읽지 못했습니다.';
 
 type ClosePopupOptions = {
   reopenOnCleanupFailure?: boolean;
@@ -99,7 +107,7 @@ export function bootstrapContentScript(): void {
     },
   });
 
-  subscribeToPrompts((nextItems) => {
+  subscribeToPromptMetas((nextItems) => {
     handlePromptStorageChange(nextItems, session, popup, adapter);
   });
 
@@ -351,6 +359,10 @@ function registerTestListeners(): void {
       testControlState.failOpenOptions = Boolean(detail.failOpenOptions);
     }
 
+    if ('failPromptBodyRead' in detail) {
+      testControlState.failPromptBodyRead = Boolean(detail.failPromptBodyRead);
+    }
+
     if ('failPromptRead' in detail) {
       testControlState.failPromptRead = Boolean(detail.failPromptRead);
     }
@@ -451,13 +463,13 @@ async function readPromptsForTrigger(
   input: HTMLElement,
   requestId: number,
   session: PopupSessionState,
-): Promise<PromptItem[] | null> {
+): Promise<PromptMeta[] | null> {
   try {
     if (IS_TEST_MODE && testControlState.failPromptRead) {
       throw new Error('mock prompt read failure');
     }
 
-    return await getPrompts();
+    return await getPromptMetas();
   } catch (error) {
     console.error('[promptit] Failed to read prompts before opening popup.', error);
 
@@ -535,10 +547,12 @@ async function handleSelection(
       return;
     }
 
+    const content = await readPromptBodyForAction(item.id);
+
     adapter.focusInput(activeInput);
     session.isInternalChange = true;
     ensureAdapterMutation(
-      adapter.insertPrompt(activeInput, item.content, triggerContext),
+      adapter.insertPrompt(activeInput, content, triggerContext),
       'insert prompt content',
     );
 
@@ -585,7 +599,9 @@ async function handleCopy(
       throw new Error('Clipboard API is not available.');
     }
 
-    await navigator.clipboard.writeText(item.content);
+    const content = await readPromptBodyForAction(item.id);
+
+    await navigator.clipboard.writeText(content);
     const didClose = await closePopup(session, popup, adapter, 'copy', true);
 
     if (!didClose) {
@@ -600,7 +616,26 @@ async function handleCopy(
     if (session.activeInput?.isConnected) {
       adapter.focusInput(session.activeInput);
     }
-    showToast('프롬프트 복사에 실패했습니다.', 'error');
+    showToast(
+      error instanceof Error && error.message === PROMPT_BODY_READ_ERROR_MESSAGE
+        ? PROMPT_BODY_READ_ERROR_MESSAGE
+        : '프롬프트 복사에 실패했습니다.',
+      'error',
+    );
+  }
+}
+
+async function readPromptBodyForAction(id: string): Promise<string> {
+  try {
+    if (IS_TEST_MODE && testControlState.failPromptBodyRead) {
+      throw new Error('mock prompt body read failure');
+    }
+
+    const body = await getPromptBody(id);
+    return body.content;
+  } catch (error) {
+    console.error('[promptit] Failed to read prompt body for popup action.', error);
+    throw new Error(PROMPT_BODY_READ_ERROR_MESSAGE);
   }
 }
 
@@ -742,7 +777,7 @@ function resolveNextActiveCell(
 }
 
 function handlePromptStorageChange(
-  nextUserPrompts: PromptItem[],
+  nextUserPrompts: PromptMeta[],
   session: PopupSessionState,
   popup: PromptPopup,
   adapter: BaseAdapter,

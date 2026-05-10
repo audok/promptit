@@ -1,95 +1,458 @@
 import {
-  decodeStoredPrompts,
+  PROMPT_REVISION_STORAGE_KEY,
   hasPromptDraftErrors,
   isValidPromptTimestamp,
   normalizePromptDraft,
-  PROMPTS_STORAGE_KEY,
+  sortPromptMetas,
+  sortPrompts,
+  toLegacyPromptItem,
+  toPromptRecord,
   validatePromptDraft,
-  type DecodedStoredPrompts,
+  type PromptBody,
   type PromptDraft,
   type PromptItem,
+  type PromptMeta,
+  type PromptMetaDraft,
+  type PromptOrderGroup,
+  type PromptRecord,
 } from './schema';
 import {
-  CREATE_PROMPT_MESSAGE,
-  DELETE_PROMPT_MESSAGE,
-  UPDATE_PROMPT_MESSAGE,
   buildCreatePromptRequest,
-  buildDeletePromptNotFoundResponse,
   buildDeletePromptRequest,
-  buildUpdatePromptNotFoundResponse,
-  buildUpdatePromptRequest,
+  buildGetPromptBodyRequest,
+  buildListPromptMetasRequest,
+  buildMovePromptRequest,
+  buildSetPromptPinnedRequest,
+  buildUpdatePromptBodyRequest,
+  buildUpdatePromptMetaRequest,
   sendPromptitRuntimeRequest,
-  type CreatePromptRequest,
   type CreatePromptResponse,
-  type DeletePromptNotFoundResponse,
-  type DeletePromptRequest,
-  type DeletePromptResponse,
-  type UpdatePromptNotFoundResponse,
-  type UpdatePromptRequest,
-  type UpdatePromptResponse,
+  type DeletePromptResponse as RuntimeDeletePromptResponse,
+  type MovePromptResponse,
+  type SetPromptPinnedResponse,
+  type UpdatePromptBodyResponse,
+  type UpdatePromptMetaResponse,
 } from '../runtime/messages';
 
 const UPDATE_PROMPT_NOT_FOUND_MESSAGE = '수정할 프롬프트를 찾지 못했습니다.';
 const DELETE_PROMPT_NOT_FOUND_MESSAGE = '삭제할 프롬프트를 찾지 못했습니다.';
 
+type PromptRecordWithLegacyOrder = PromptRecord & {
+  sortOrder: number;
+};
+
 export type UpdatePromptOptions = {
-  expectedUpdatedAt?: string;
+  expectedUpdatedAt: string;
+};
+
+export type UpdatePromptBodyOptions = {
+  expectedBodyUpdatedAt: string;
 };
 
 export type DeletePromptOptions = {
-  expectedUpdatedAt?: string;
+  expectedUpdatedAt: string;
+  expectedBodyUpdatedAt?: string;
 };
 
-function hasStorageApi(): boolean {
-  return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local);
-}
+export type MovePromptOptions = {
+  expectedUpdatedAt: string;
+  group?: PromptOrderGroup;
+  previousId?: string | null;
+  nextId?: string | null;
+};
+
+export type SetPromptPinnedOptions = {
+  expectedUpdatedAt: string;
+};
+
+export type LegacyUpdatePromptResponse =
+  | {
+      ok: true;
+      status: 'success';
+      prompt: PromptItem;
+    }
+  | {
+      ok: false;
+      status: 'not-found';
+      id: string;
+      message: string;
+    }
+  | {
+      ok: false;
+      status: 'conflict';
+      id: string;
+      message: string;
+      currentPrompt: PromptItem;
+    }
+  | {
+      ok: false;
+      status: 'error';
+      message: string;
+    };
+
+export type DeletePromptResponse =
+  | RuntimeDeletePromptResponse
+  | {
+      ok: false;
+      status: 'conflict';
+      id: string;
+      message: string;
+      currentMeta: PromptMeta;
+      currentPrompt: PromptItem;
+    };
 
 function hasRuntimeApi(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
 }
 
-async function readStoredPrompts(): Promise<DecodedStoredPrompts> {
-  if (!hasStorageApi()) {
-    return decodeStoredPrompts([]);
-  }
-
-  try {
-    const result = await chrome.storage.local.get(PROMPTS_STORAGE_KEY);
-    return decodeStoredPrompts(result[PROMPTS_STORAGE_KEY]);
-  } catch (error) {
-    console.error('[promptit] Failed to read prompts from storage.', error);
-
-    throw error instanceof Error
-      ? error
-      : new Error('Failed to read prompts from storage.');
-  }
+function hasStorageApi(): boolean {
+  return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local);
 }
 
-async function repairStoredPrompts(prompts: PromptItem[]): Promise<void> {
-  if (!hasStorageApi()) {
-    return;
+export async function getPromptMetas(): Promise<PromptMeta[]> {
+  const response = await sendRuntimeRequest(buildListPromptMetasRequest());
+
+  if (response.type !== 'promptit/list-prompt-metas') {
+    throw new Error('Received mismatched prompt metas response.');
   }
 
-  await chrome.storage.local.set({
-    [PROMPTS_STORAGE_KEY]: prompts,
+  if (!response.ok) {
+    throw new Error(response.message);
+  }
+
+  return sortPromptMetas(response.metas);
+}
+
+export async function getPromptBody(id: string): Promise<PromptBody> {
+  const response = await sendRuntimeRequest(buildGetPromptBodyRequest(id));
+
+  if (response.type !== 'promptit/get-prompt-body') {
+    throw new Error('Received mismatched prompt body response.');
+  }
+
+  if (!response.ok) {
+    throw new Error(response.message);
+  }
+
+  return response.body;
+}
+
+export async function getPromptRecord(id: string): Promise<PromptRecord> {
+  const metas = await getPromptMetas();
+  const meta = metas.find((item) => item.id === id) ?? null;
+
+  if (!meta) {
+    throw new Error('프롬프트를 찾지 못했습니다.');
+  }
+
+  const body = await getPromptBody(id);
+  return toPromptRecord(meta, body);
+}
+
+export async function createPrompt(
+  draft: PromptDraft,
+): Promise<PromptRecordWithLegacyOrder> {
+  const validatedDraft = getValidatedDraft(draft);
+  const response = await sendRuntimeRequest(
+    buildCreatePromptRequest(validatedDraft),
+  );
+
+  if (response.type !== 'promptit/create-prompt') {
+    throw new Error('Received mismatched prompt create response.');
+  }
+
+  if (!response.ok) {
+    throw new Error(response.message);
+  }
+
+  return withLegacyOrder(response.prompt);
+}
+
+export async function updatePromptMeta(
+  id: string,
+  draft: PromptMetaDraft,
+  options: UpdatePromptOptions,
+): Promise<UpdatePromptMetaResponse> {
+  validateExpectedUpdatedAt(options.expectedUpdatedAt);
+
+  const response = await sendRuntimeRequest(
+    buildUpdatePromptMetaRequest(id, draft, options.expectedUpdatedAt),
+  );
+
+  if (response.type !== 'promptit/update-prompt-meta') {
+    throw new Error('Received mismatched prompt meta update response.');
+  }
+
+  return response;
+}
+
+export async function updatePromptBody(
+  id: string,
+  content: string,
+  options: UpdatePromptBodyOptions,
+): Promise<UpdatePromptBodyResponse> {
+  validateExpectedUpdatedAt(options.expectedBodyUpdatedAt);
+
+  const response = await sendRuntimeRequest(
+    buildUpdatePromptBodyRequest(id, content, options.expectedBodyUpdatedAt),
+  );
+
+  if (response.type !== 'promptit/update-prompt-body') {
+    throw new Error('Received mismatched prompt body update response.');
+  }
+
+  return response;
+}
+
+export async function deletePrompt(
+  id: string,
+  options: DeletePromptOptions,
+): Promise<DeletePromptResponse> {
+  validateExpectedUpdatedAt(options.expectedUpdatedAt);
+  validateExpectedUpdatedAt(options.expectedBodyUpdatedAt);
+
+  const response = await sendRuntimeRequest(
+    buildDeletePromptRequest(
+      id,
+      options.expectedUpdatedAt,
+      options.expectedBodyUpdatedAt,
+    ),
+  );
+
+  if (response.type !== 'promptit/delete-prompt') {
+    throw new Error('Received mismatched prompt delete response.');
+  }
+
+  if (response.status === 'conflict') {
+    return {
+      ...response,
+      currentPrompt: await getLegacyPromptFromMeta(response.currentMeta),
+    };
+  }
+
+  return response;
+}
+
+export async function movePrompt(
+  id: string,
+  request: MovePromptOptions,
+): Promise<MovePromptResponse> {
+  validateExpectedUpdatedAt(request.expectedUpdatedAt);
+
+  const response = await sendRuntimeRequest(
+    buildMovePromptRequest(id, request),
+  );
+
+  if (response.type !== 'promptit/move-prompt') {
+    throw new Error('Received mismatched prompt move response.');
+  }
+
+  return response;
+}
+
+export async function setPromptPinned(
+  id: string,
+  pinned: boolean,
+  options: SetPromptPinnedOptions,
+): Promise<SetPromptPinnedResponse> {
+  validateExpectedUpdatedAt(options.expectedUpdatedAt);
+
+  const response = await sendRuntimeRequest(
+    buildSetPromptPinnedRequest(id, pinned, options.expectedUpdatedAt),
+  );
+
+  if (response.type !== 'promptit/set-prompt-pinned') {
+    throw new Error('Received mismatched prompt pin response.');
+  }
+
+  return response;
+}
+
+export function subscribeToPromptMetas(
+  listener: (metas: PromptMeta[]) => void,
+): () => void {
+  if (!hasStorageApi()) {
+    return () => {};
+  }
+
+  const handleChange = (
+    changes: Record<string, chrome.storage.StorageChange>,
+    areaName: string,
+  ) => {
+    if (areaName !== 'local' || !(PROMPT_REVISION_STORAGE_KEY in changes)) {
+      return;
+    }
+
+    void getPromptMetas()
+      .then(listener)
+      .catch((error) => {
+        console.error('[promptit] Failed to refresh prompt metadata.', error);
+      });
+  };
+
+  chrome.storage.onChanged.addListener(handleChange);
+
+  return () => {
+    chrome.storage.onChanged.removeListener(handleChange);
+  };
+}
+
+export async function getPrompts(): Promise<PromptItem[]> {
+  return getLegacyPromptItems();
+}
+
+export async function getUserPrompts(): Promise<PromptItem[]> {
+  return getLegacyPromptItems();
+}
+
+export async function updatePrompt(
+  id: string,
+  draft: PromptDraft,
+  options?: UpdatePromptOptions,
+): Promise<LegacyUpdatePromptResponse> {
+  const validatedDraft = getValidatedDraft(draft);
+  const currentRecord = await getLegacyPromptRecordOrNull(id);
+
+  if (!currentRecord) {
+    return {
+      ok: false,
+      status: 'not-found',
+      id,
+      message: UPDATE_PROMPT_NOT_FOUND_MESSAGE,
+    };
+  }
+
+  const metaChanged =
+    currentRecord.title !== validatedDraft.title ||
+    (typeof validatedDraft.sortOrder === 'number' &&
+      currentRecord.normalOrder !== validatedDraft.sortOrder);
+  const bodyChanged = currentRecord.content !== validatedDraft.content;
+  let nextRecord = currentRecord;
+
+  if (metaChanged) {
+    const metaResponse = await updatePromptMeta(
+      id,
+      {
+        title: validatedDraft.title,
+        normalOrder:
+          typeof validatedDraft.sortOrder === 'number'
+            ? validatedDraft.sortOrder
+            : currentRecord.normalOrder,
+      },
+      {
+        expectedUpdatedAt: options?.expectedUpdatedAt ?? currentRecord.updatedAt,
+      },
+    );
+
+    if (metaResponse.status === 'not-found') {
+      return metaResponse;
+    }
+
+    if (metaResponse.status === 'conflict') {
+      return {
+        ok: false,
+        status: 'conflict',
+        id,
+        message: metaResponse.message,
+        currentPrompt: await getLegacyPromptFromMeta(metaResponse.currentMeta),
+      };
+    }
+
+    if (!metaResponse.ok) {
+      return {
+        ok: false,
+        status: 'error',
+        message: metaResponse.message,
+      };
+    }
+
+    nextRecord = toPromptRecord(metaResponse.meta, {
+      id,
+      content: nextRecord.content,
+      updatedAt: nextRecord.bodyUpdatedAt,
+    });
+  }
+
+  if (bodyChanged) {
+    const bodyResponse = await updatePromptBody(id, validatedDraft.content, {
+      expectedBodyUpdatedAt: currentRecord.bodyUpdatedAt,
+    });
+
+    if (bodyResponse.status === 'not-found') {
+      return bodyResponse;
+    }
+
+    if (bodyResponse.status === 'conflict') {
+      return {
+        ok: false,
+        status: 'conflict',
+        id,
+        message: bodyResponse.message,
+        currentPrompt: bodyResponse.currentRecord
+          ? toLegacyPromptItem(bodyResponse.currentRecord)
+          : await getLegacyPromptFromMeta(bodyResponse.currentMeta),
+      };
+    }
+
+    if (!bodyResponse.ok) {
+      return {
+        ok: false,
+        status: 'error',
+        message: bodyResponse.message,
+      };
+    }
+
+    nextRecord = bodyResponse.prompt;
+  }
+
+  return {
+    ok: true,
+    status: 'success',
+    prompt: toLegacyPromptItem(nextRecord),
+  };
+}
+
+export function subscribeToPrompts(
+  listener: (prompts: PromptItem[]) => void,
+): () => void {
+  return subscribeToPromptMetas(() => {
+    void getLegacyPromptItems()
+      .then(listener)
+      .catch((error) => {
+        console.error('[promptit] Failed to refresh prompts.', error);
+      });
   });
 }
 
-async function getReadablePrompts(): Promise<PromptItem[]> {
-  const decoded = await readStoredPrompts();
+async function getLegacyPromptItems(): Promise<PromptItem[]> {
+  const metas = await getPromptMetas();
+  const records = await Promise.all(
+    metas.map(async (meta) => toPromptRecord(meta, await getPromptBody(meta.id))),
+  );
 
-  if (decoded.needsRepair) {
-    try {
-      await repairStoredPrompts(decoded.prompts);
-    } catch (error) {
-      console.error(
-        '[promptit] Failed to repair malformed prompt storage after a successful read.',
-        error,
-      );
-    }
+  return sortPrompts(records.map(toLegacyPromptItem));
+}
+
+async function getLegacyPromptRecordOrNull(
+  id: string,
+): Promise<PromptRecord | null> {
+  try {
+    return await getPromptRecord(id);
+  } catch {
+    return null;
   }
+}
 
-  return decoded.prompts;
+async function getLegacyPromptFromMeta(meta: PromptMeta): Promise<PromptItem> {
+  const body = await getPromptBody(meta.id);
+  return toLegacyPromptItem(toPromptRecord(meta, body));
+}
+
+function withLegacyOrder(record: PromptRecord): PromptRecordWithLegacyOrder {
+  return {
+    ...record,
+    sortOrder: record.normalOrder,
+  };
 }
 
 function getValidatedDraft(draft: PromptDraft): PromptDraft {
@@ -107,179 +470,21 @@ function getValidatedDraft(draft: PromptDraft): PromptDraft {
   return normalizedDraft;
 }
 
-async function resolveUpdateExpectedUpdatedAt(
-  id: string,
-  expectedUpdatedAt: string | undefined,
-): Promise<string | UpdatePromptNotFoundResponse> {
-  if (typeof expectedUpdatedAt === 'string') {
-    if (!isValidPromptTimestamp(expectedUpdatedAt)) {
-      throw new Error('Invalid prompt updatedAt timestamp.');
-    }
-
-    return expectedUpdatedAt;
+function validateExpectedUpdatedAt(value: string | undefined): void {
+  if (typeof value !== 'undefined' && !isValidPromptTimestamp(value)) {
+    throw new Error('Invalid prompt updatedAt timestamp.');
   }
-
-  const currentPrompt = (await getReadablePrompts()).find(
-    (prompt) => prompt.id === id,
-  );
-
-  if (!currentPrompt) {
-    return buildUpdatePromptNotFoundResponse(id, UPDATE_PROMPT_NOT_FOUND_MESSAGE);
-  }
-
-  return currentPrompt.updatedAt;
 }
 
-async function resolveDeleteExpectedUpdatedAt(
-  id: string,
-  expectedUpdatedAt: string | undefined,
-): Promise<string | DeletePromptNotFoundResponse> {
-  if (typeof expectedUpdatedAt === 'string') {
-    if (!isValidPromptTimestamp(expectedUpdatedAt)) {
-      throw new Error('Invalid prompt updatedAt timestamp.');
-    }
-
-    return expectedUpdatedAt;
-  }
-
-  const currentPrompt = (await getReadablePrompts()).find(
-    (prompt) => prompt.id === id,
-  );
-
-  if (!currentPrompt) {
-    return buildDeletePromptNotFoundResponse(id, DELETE_PROMPT_NOT_FOUND_MESSAGE);
-  }
-
-  return currentPrompt.updatedAt;
-}
-
-export async function getPrompts(): Promise<PromptItem[]> {
-  return getReadablePrompts();
-}
-
-export async function getUserPrompts(): Promise<PromptItem[]> {
-  return getReadablePrompts();
-}
-
-export async function createPrompt(
-  draft: PromptDraft,
-): Promise<PromptItem> {
-  const validatedDraft = getValidatedDraft(draft);
-  const response = await sendPromptMutationRequest(
-    buildCreatePromptRequest(validatedDraft),
-  );
-
-  if (!response.ok) {
-    throw new Error(response.message);
-  }
-
-  return response.prompt;
-}
-
-export async function updatePrompt(
-  id: string,
-  draft: PromptDraft,
-  options: UpdatePromptOptions = {},
-): Promise<UpdatePromptResponse> {
-  const validatedDraft = getValidatedDraft(draft);
-  const expectedUpdatedAt = await resolveUpdateExpectedUpdatedAt(
-    id,
-    options.expectedUpdatedAt,
-  );
-
-  if (typeof expectedUpdatedAt !== 'string') {
-    return expectedUpdatedAt;
-  }
-
-  return sendPromptMutationRequest(
-    buildUpdatePromptRequest(id, validatedDraft, expectedUpdatedAt),
-  );
-}
-
-export async function deletePrompt(
-  id: string,
-  options: DeletePromptOptions = {},
-): Promise<DeletePromptResponse> {
-  const expectedUpdatedAt = await resolveDeleteExpectedUpdatedAt(
-    id,
-    options.expectedUpdatedAt,
-  );
-
-  if (typeof expectedUpdatedAt !== 'string') {
-    return expectedUpdatedAt;
-  }
-
-  return sendPromptMutationRequest(
-    buildDeletePromptRequest(id, expectedUpdatedAt),
-  );
-}
-
-export function subscribeToPrompts(
-  listener: (prompts: PromptItem[]) => void,
-): () => void {
-  if (!hasStorageApi()) {
-    return () => {};
-  }
-
-  const handleChange = (
-    changes: Record<string, chrome.storage.StorageChange>,
-    areaName: string,
-  ) => {
-    if (areaName !== 'local' || !(PROMPTS_STORAGE_KEY in changes)) {
-      return;
-    }
-
-    const { prompts } = decodeStoredPrompts(
-      changes[PROMPTS_STORAGE_KEY]?.newValue,
-    );
-    listener(prompts);
-  };
-
-  chrome.storage.onChanged.addListener(handleChange);
-
-  return () => {
-    chrome.storage.onChanged.removeListener(handleChange);
-  };
-}
-
-async function sendPromptMutationRequest(
-  request: CreatePromptRequest,
-): Promise<CreatePromptResponse>;
-async function sendPromptMutationRequest(
-  request: UpdatePromptRequest,
-): Promise<UpdatePromptResponse>;
-async function sendPromptMutationRequest(
-  request: DeletePromptRequest,
-): Promise<DeletePromptResponse>;
-async function sendPromptMutationRequest(
-  request: CreatePromptRequest | UpdatePromptRequest | DeletePromptRequest,
-): Promise<CreatePromptResponse | UpdatePromptResponse | DeletePromptResponse> {
+async function sendRuntimeRequest(
+  request: Parameters<typeof sendPromptitRuntimeRequest>[1],
+): ReturnType<typeof sendPromptitRuntimeRequest> {
   if (!hasRuntimeApi()) {
-    throw new Error('Prompt mutation runtime is unavailable.');
+    throw new Error('Prompt runtime is unavailable.');
   }
 
-  const response = await sendPromptitRuntimeRequest(
+  return sendPromptitRuntimeRequest(
     (nextRequest) => chrome.runtime.sendMessage(nextRequest) as Promise<unknown>,
     request,
   );
-
-  switch (request.type) {
-    case CREATE_PROMPT_MESSAGE:
-      if (response.type === CREATE_PROMPT_MESSAGE) {
-        return response;
-      }
-      break;
-    case UPDATE_PROMPT_MESSAGE:
-      if (response.type === UPDATE_PROMPT_MESSAGE) {
-        return response;
-      }
-      break;
-    case DELETE_PROMPT_MESSAGE:
-      if (response.type === DELETE_PROMPT_MESSAGE) {
-        return response;
-      }
-      break;
-  }
-
-  throw new Error('Received mismatched prompt mutation response.');
 }

@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { type PromptItem } from '../prompt/schema';
+import { type PromptMeta } from '../prompt/schema';
 import { usePromptEditor } from './usePromptEditor';
 
 function formatTimestamp(value: string): string {
@@ -22,12 +22,14 @@ export default function App() {
     errors,
     notice,
     alertMessage,
+    bodyLoadState,
     conflictState,
     loadState,
     isSaving,
     isEditing,
-    activePrompt,
+    isEditorLoading,
     prompts,
+    mode,
     startCreateMode,
     selectPrompt,
     updateField,
@@ -82,6 +84,8 @@ export default function App() {
       ? '불러오기 실패'
       : loadState.status === 'loading'
         ? '불러오는 중'
+        : isEditorLoading
+          ? '본문 불러오는 중'
         : isSaving
           ? '저장 중'
           : '대기 중';
@@ -101,7 +105,14 @@ export default function App() {
     await submit();
   }
 
-  async function handleDelete(prompt: PromptItem): Promise<void> {
+  const activePromptId = mode.kind === 'edit' ? mode.promptId : null;
+  const activePromptMeta =
+    activePromptId !== null
+      ? prompts.find((prompt) => prompt.id === activePromptId) ?? null
+      : null;
+  const editorDisabled = isSaving || isEditorLoading;
+
+  async function handleDelete(prompt: PromptMeta): Promise<void> {
     const shouldDelete = window.confirm(`"${prompt.title}" 프롬프트를 삭제할까요?`);
 
     if (!shouldDelete) {
@@ -127,7 +138,7 @@ export default function App() {
                 <p className="max-w-2xl text-sm leading-6 text-stone-600">
                   이 페이지에서 프롬프트를 만들고 수정하면 ChatGPT의 Promptit
                   팝업에 즉시 반영됩니다. 목록은{' '}
-                  <span className="font-semibold">sortOrder</span> 오름차순입니다.
+                  <span className="font-semibold">고정/일반 정렬값</span> 순서입니다.
                 </p>
               </div>
             </div>
@@ -187,7 +198,8 @@ export default function App() {
               {loadState.status === 'ready' && prompts.length > 0 ? (
                 <div className="space-y-3">
                   {prompts.map((prompt) => {
-                    const isActive = prompt.id === activePrompt?.id;
+                    const isActive = prompt.id === activePromptId;
+                    const orderLabel = getPromptOrderLabel(prompt);
 
                     return (
                       <div
@@ -209,13 +221,24 @@ export default function App() {
                             aria-pressed={isActive}
                             aria-current={isActive ? 'true' : undefined}
                           >
-                            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
+                              <span
+                                className={`rounded-full px-2 py-1 tracking-[0.12em] ${
+                                  isActive
+                                    ? 'bg-white/10 text-stone-200'
+                                    : prompt.pinned
+                                      ? 'bg-stone-900 text-stone-50'
+                                      : 'bg-white text-stone-500'
+                                }`}
+                              >
+                                {prompt.pinned ? '고정됨' : '일반'}
+                              </span>
                               <span
                                 className={
                                   isActive ? 'text-stone-300' : 'text-stone-500'
                                 }
                               >
-                                sortOrder {prompt.sortOrder}
+                                {orderLabel}
                               </span>
                               <span
                                 className={
@@ -229,19 +252,23 @@ export default function App() {
                                   isActive ? 'text-stone-300' : 'text-stone-500'
                                 }
                               >
-                                updated {formatTimestamp(prompt.updatedAt)}
+                                {prompt.charCount.toLocaleString('ko-KR')}자
                               </span>
                             </div>
                             <p className="mt-3 text-lg font-semibold tracking-tight">
                               {prompt.title}
                             </p>
-                            <p
-                              className={`mt-2 line-clamp-3 text-sm leading-6 ${
+                            <dl
+                              className={`mt-3 grid gap-2 text-xs leading-5 sm:grid-cols-2 ${
                                 isActive ? 'text-stone-300' : 'text-stone-600'
                               }`}
                             >
-                              {prompt.content}
-                            </p>
+                              <MetaLine label="수정" value={formatTimestamp(prompt.updatedAt)} />
+                              <MetaLine
+                                label="본문"
+                                value={formatTimestamp(prompt.bodyUpdatedAt)}
+                              />
+                            </dl>
                           </button>
 
                           <button
@@ -255,7 +282,7 @@ export default function App() {
                               void handleDelete(prompt);
                             }}
                             disabled={isSaving}
-                            aria-label={`${prompt.title} 프롬프트 삭제`}
+                            aria-label="목록에서 프롬프트 삭제"
                           >
                             Delete
                           </button>
@@ -326,7 +353,21 @@ export default function App() {
               </div>
             ) : null}
 
-            <form className="mt-5 space-y-5" onSubmit={(event) => void handleSubmit(event)}>
+            {bodyLoadState.status === 'loading' ? (
+              <div
+                className="mt-5 rounded-[20px] border border-stone-200 bg-white/70 px-4 py-4 text-sm text-stone-600"
+                role="status"
+                aria-live="polite"
+              >
+                선택한 프롬프트 본문을 불러오는 중입니다.
+              </div>
+            ) : null}
+
+            <form
+              className="mt-5 space-y-5"
+              onSubmit={(event) => void handleSubmit(event)}
+              aria-busy={isEditorLoading || isSaving}
+            >
               <Field
                 inputId={titleInputId}
                 label="제목"
@@ -344,7 +385,7 @@ export default function App() {
                   className="w-full rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
                   placeholder="예: 회의록 정리"
                   maxLength={40}
-                  disabled={isSaving}
+                  disabled={editorDisabled}
                   aria-invalid={Boolean(errors.title)}
                   aria-describedby={getDescribedBy(titleInputId, {
                     hasError: Boolean(errors.title),
@@ -368,8 +409,12 @@ export default function App() {
                     updateField('content', event.target.value);
                   }}
                   className="min-h-[220px] w-full rounded-[22px] border border-stone-200 bg-white px-4 py-4 text-sm leading-6 text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                  placeholder="프롬프트 내용을 입력하세요."
-                  disabled={isSaving}
+                  placeholder={
+                    isEditorLoading
+                      ? '본문을 불러오는 중입니다.'
+                      : '프롬프트 내용을 입력하세요.'
+                  }
+                  disabled={editorDisabled}
                   aria-invalid={Boolean(errors.content)}
                   aria-describedby={getDescribedBy(contentInputId, {
                     hasError: Boolean(errors.content),
@@ -379,11 +424,35 @@ export default function App() {
                 />
               </Field>
 
+              <label className="flex items-center justify-between gap-3 rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
+                <span>
+                  <span className="block text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+                    고정
+                  </span>
+                  <span className="mt-1 block text-xs text-stone-500">
+                    고정한 프롬프트는 일반 프롬프트보다 위에 표시됩니다.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={form.pinned}
+                  onChange={(event) => {
+                    updateField('pinned', event.target.checked);
+                  }}
+                  className="h-5 w-5 rounded border-stone-300 text-stone-900 focus:ring-2 focus:ring-stone-300"
+                  disabled={editorDisabled}
+                />
+              </label>
+
               <Field
                 inputId={sortOrderInputId}
                 label="정렬 순서"
                 error={errors.sortOrder}
-                hint="작을수록 위에 노출됩니다."
+                hint={
+                  form.pinned
+                    ? '고정 목록 안에서 작을수록 위에 노출됩니다.'
+                    : '일반 목록 안에서 작을수록 위에 노출됩니다.'
+                }
               >
                 <input
                   ref={sortOrderInputRef}
@@ -395,7 +464,7 @@ export default function App() {
                     updateField('sortOrder', event.target.value);
                   }}
                   className="w-full rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                  disabled={isSaving}
+                  disabled={editorDisabled}
                   aria-invalid={Boolean(errors.sortOrder)}
                   aria-describedby={getDescribedBy(sortOrderInputId, {
                     hasError: Boolean(errors.sortOrder),
@@ -409,9 +478,15 @@ export default function App() {
                 <button
                   type="submit"
                   className="rounded-full bg-stone-900 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-500"
-                  disabled={isSaving || loadState.status === 'error'}
+                  disabled={editorDisabled || loadState.status === 'error'}
                 >
-                  {isSaving ? '저장 중...' : isEditing ? '프롬프트 수정' : '프롬프트 저장'}
+                  {isSaving
+                    ? '저장 중...'
+                    : isEditorLoading
+                      ? '본문 불러오는 중'
+                      : isEditing
+                        ? '프롬프트 수정'
+                        : '프롬프트 저장'}
                 </button>
 
                 {isEditing ? (
@@ -419,11 +494,11 @@ export default function App() {
                     type="button"
                     className="rounded-full border border-stone-300 bg-white/70 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-700 transition hover:border-stone-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => {
-                      if (activePrompt) {
-                        void handleDelete(activePrompt);
+                      if (activePromptMeta) {
+                        void handleDelete(activePromptMeta);
                       }
                     }}
-                    disabled={isSaving || !activePrompt}
+                    disabled={editorDisabled || !activePromptMeta}
                   >
                     프롬프트 삭제
                   </button>
@@ -435,6 +510,14 @@ export default function App() {
       </div>
     </main>
   );
+}
+
+function getPromptOrderLabel(prompt: PromptMeta): string {
+  if (prompt.pinned) {
+    return `pinnedOrder ${prompt.pinnedOrder ?? prompt.normalOrder}`;
+  }
+
+  return `normalOrder ${prompt.normalOrder}`;
 }
 
 function getDescribedBy(
@@ -475,6 +558,15 @@ function EmptyPanel(props: { message: string }) {
   return (
     <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-sm leading-6 text-stone-600">
       {props.message}
+    </div>
+  );
+}
+
+function MetaLine(props: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <dt className="shrink-0 font-semibold">{props.label}</dt>
+      <dd className="min-w-0 truncate">{props.value}</dd>
     </div>
   );
 }
