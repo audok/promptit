@@ -1,12 +1,9 @@
+@import "../shared/fonts.css";
 @import "tailwindcss";
 
 :root {
   color-scheme: light;
-  font-family:
-    Inter,
-    "SF Pro Text",
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--promptit-font-family);
 }
 
 html,

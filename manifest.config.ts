@@ -24,6 +24,12 @@ export default defineManifest({
   },
   permissions: ['storage'],
   host_permissions: contentScriptMatches,
+  web_accessible_resources: [
+    {
+      resources: ['fonts/PretendardVariable.woff2'],
+      matches: contentScriptMatches,
+    },
+  ],
   action: {
     default_title: 'Promptit',
     default_icon: {

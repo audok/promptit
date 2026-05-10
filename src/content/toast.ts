@@ -1,3 +1,5 @@
+import { getPromptitFontStyles } from './fonts';
+
 let host: HTMLDivElement | null = null;
 let hideTimer: number | null = null;
 
@@ -29,6 +31,8 @@ function ensureToastHost(): {
         all: initial;
       }
 
+      ${getPromptitFontStyles()}
+
       .promptit-toast {
         display: inline-flex;
         align-items: center;
@@ -39,11 +43,7 @@ function ensureToastHost(): {
         background: rgba(24, 24, 27, 0.92);
         box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
         color: white;
-        font-family:
-          Inter,
-          'SF Pro Text',
-          'Segoe UI',
-          sans-serif;
+        font-family: var(--promptit-font-family);
         font-size: 13px;
         line-height: 1.35;
         opacity: 0;

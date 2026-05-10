@@ -10,11 +10,7 @@
 
 .promptit-root {
   color: #1b1b1b;
-  font-family:
-    Inter,
-    'SF Pro Text',
-    'Segoe UI',
-    sans-serif;
+  font-family: var(--promptit-font-family);
   line-height: 1.2;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

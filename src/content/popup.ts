@@ -8,6 +8,7 @@ import {
   type ActiveCellColumn,
   type PopupActiveCell,
 } from './session';
+import { getPromptitFontStyles } from './fonts';
 import popupStyles from './popup.css?inline';
 
 type PopupOptions = {
@@ -257,7 +258,7 @@ export class PromptPopup {
     const savedCountLabel = `${savedCount} saved`;
 
     this.shadowRoot.innerHTML = `
-      <style>${popupStyles}</style>
+      <style>${popupStyles}${getPromptitFontStyles()}</style>
       <div class="promptit-root">
         <section
           class="promptit-card${this.state.isBusy ? ' is-busy' : ''}"
