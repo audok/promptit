@@ -153,8 +153,23 @@ pnpm test:e2e:live
 - `pnpm typecheck`
 - `pnpm test:e2e`
 - `pnpm test:e2e:live`
+- 브라우저 테스트 후 `chrome-devtools-mcp` / 테스트용 Chrome 프로세스 정리 확인
 - 브라우저 툴바 아이콘 수동 체크
 - 로그인된 ChatGPT/Gemini 전체 흐름 수동 체크
+
+### 브라우저 프로세스 정리
+
+브라우저/DevTools/Playwright를 사용한 뒤에는 호스트 프로세스 기준으로 테스트용 브라우저가 남았는지 확인한다.
+
+```bash
+ps -ef | rg 'chrome-devtools-mcp|puppeteer_dev_chrome_profile|/opt/google/chrome/chrome'
+```
+
+테스트용 프로세스가 남아 있으면 일반 사용자 Chrome이 아닌지 확인한 뒤 종료한다.
+
+```bash
+pkill -f 'chrome-devtools-mcp|puppeteer_dev_chrome_profile'
+```
 
 ## 추천 프롬프트
 
@@ -181,6 +196,7 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - [ ] `pnpm typecheck`
 - [ ] `pnpm test:e2e`
 - [ ] `pnpm test:e2e:live`
+- [ ] 테스트용 Chrome/MCP 프로세스 정리 확인
 - [ ] 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 정상 오픈 확인
 - [ ] 로그인된 ChatGPT/Gemini 전체 흐름 확인
