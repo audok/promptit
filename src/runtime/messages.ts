@@ -1,27 +1,63 @@
 import {
   isValidPromptTimestamp,
+  parsePromptBody,
   parsePromptDraft,
-  parsePromptItem,
+  parsePromptMeta,
+  parsePromptRecord,
+  type PromptBody,
   type PromptDraft,
-  type PromptItem,
+  type PromptMeta,
+  type PromptMetaDraft,
+  type PromptOrderGroup,
+  type PromptRecord,
 } from '../prompt/schema';
 
 export const OPEN_OPTIONS_PAGE_MESSAGE = 'promptit/open-options-page';
+export const LIST_PROMPT_METAS_MESSAGE = 'promptit/list-prompt-metas';
+export const GET_PROMPT_BODY_MESSAGE = 'promptit/get-prompt-body';
 export const CREATE_PROMPT_MESSAGE = 'promptit/create-prompt';
-export const UPDATE_PROMPT_MESSAGE = 'promptit/update-prompt';
+export const UPDATE_PROMPT_META_MESSAGE = 'promptit/update-prompt-meta';
+export const UPDATE_PROMPT_BODY_MESSAGE = 'promptit/update-prompt-body';
 export const DELETE_PROMPT_MESSAGE = 'promptit/delete-prompt';
+export const MOVE_PROMPT_MESSAGE = 'promptit/move-prompt';
+export const SET_PROMPT_PINNED_MESSAGE = 'promptit/set-prompt-pinned';
 
-type PromptMutationMessageType =
+type PromptMessageType =
+  | typeof LIST_PROMPT_METAS_MESSAGE
+  | typeof GET_PROMPT_BODY_MESSAGE
   | typeof CREATE_PROMPT_MESSAGE
-  | typeof UPDATE_PROMPT_MESSAGE
-  | typeof DELETE_PROMPT_MESSAGE;
+  | typeof UPDATE_PROMPT_META_MESSAGE
+  | typeof UPDATE_PROMPT_BODY_MESSAGE
+  | typeof DELETE_PROMPT_MESSAGE
+  | typeof MOVE_PROMPT_MESSAGE
+  | typeof SET_PROMPT_PINNED_MESSAGE;
 
-type ExistingPromptMutationMessageType =
-  | typeof UPDATE_PROMPT_MESSAGE
-  | typeof DELETE_PROMPT_MESSAGE;
+type ExistingPromptMessageType =
+  | typeof GET_PROMPT_BODY_MESSAGE
+  | typeof UPDATE_PROMPT_META_MESSAGE
+  | typeof UPDATE_PROMPT_BODY_MESSAGE
+  | typeof DELETE_PROMPT_MESSAGE
+  | typeof MOVE_PROMPT_MESSAGE
+  | typeof SET_PROMPT_PINNED_MESSAGE;
+
+type PromptConflictMessageType =
+  | typeof UPDATE_PROMPT_META_MESSAGE
+  | typeof UPDATE_PROMPT_BODY_MESSAGE
+  | typeof DELETE_PROMPT_MESSAGE
+  | typeof MOVE_PROMPT_MESSAGE
+  | typeof SET_PROMPT_PINNED_MESSAGE;
 
 export type OpenOptionsPageRequest = {
   type: typeof OPEN_OPTIONS_PAGE_MESSAGE;
+};
+
+export type ListPromptMetasRequest = {
+  type: typeof LIST_PROMPT_METAS_MESSAGE;
+};
+
+export type GetPromptBodyRequest = {
+  type: typeof GET_PROMPT_BODY_MESSAGE;
+  id: string;
 };
 
 export type CreatePromptRequest = {
@@ -29,27 +65,64 @@ export type CreatePromptRequest = {
   draft: PromptDraft;
 };
 
-export type UpdatePromptRequest = {
-  type: typeof UPDATE_PROMPT_MESSAGE;
+export type UpdatePromptMetaRequest = {
+  type: typeof UPDATE_PROMPT_META_MESSAGE;
   id: string;
+  draft: PromptMetaDraft;
   expectedUpdatedAt: string;
-  draft: PromptDraft;
+};
+
+export type UpdatePromptBodyRequest = {
+  type: typeof UPDATE_PROMPT_BODY_MESSAGE;
+  id: string;
+  content: string;
+  expectedBodyUpdatedAt: string;
 };
 
 export type DeletePromptRequest = {
   type: typeof DELETE_PROMPT_MESSAGE;
   id: string;
   expectedUpdatedAt: string;
+  expectedBodyUpdatedAt?: string;
 };
+
+export type MovePromptRequest = {
+  type: typeof MOVE_PROMPT_MESSAGE;
+  id: string;
+  group?: PromptOrderGroup;
+  previousId?: string | null;
+  nextId?: string | null;
+  expectedUpdatedAt: string;
+};
+
+export type SetPromptPinnedRequest = {
+  type: typeof SET_PROMPT_PINNED_MESSAGE;
+  id: string;
+  pinned: boolean;
+  expectedUpdatedAt: string;
+};
+
+export type PromptRequest =
+  | ListPromptMetasRequest
+  | GetPromptBodyRequest
+  | CreatePromptRequest
+  | UpdatePromptMetaRequest
+  | UpdatePromptBodyRequest
+  | DeletePromptRequest
+  | MovePromptRequest
+  | SetPromptPinnedRequest;
 
 export type PromptMutationRequest =
   | CreatePromptRequest
-  | UpdatePromptRequest
-  | DeletePromptRequest;
+  | UpdatePromptMetaRequest
+  | UpdatePromptBodyRequest
+  | DeletePromptRequest
+  | MovePromptRequest
+  | SetPromptPinnedRequest;
 
 export type PromptitRuntimeRequest =
   | OpenOptionsPageRequest
-  | PromptMutationRequest;
+  | PromptRequest;
 
 export type OpenOptionsPageSuccessResponse = {
   type: typeof OPEN_OPTIONS_PAGE_MESSAGE;
@@ -69,72 +142,47 @@ export type OpenOptionsPageResponse =
   | OpenOptionsPageSuccessResponse
   | OpenOptionsPageErrorResponse;
 
-export type PromptMutationErrorCode = 'storage-failed';
+export type PromptErrorCode = 'storage-failed';
+
+export type ListPromptMetasSuccessResponse = {
+  type: typeof LIST_PROMPT_METAS_MESSAGE;
+  ok: true;
+  status: 'success';
+  metas: PromptMeta[];
+};
+
+export type GetPromptBodySuccessResponse = {
+  type: typeof GET_PROMPT_BODY_MESSAGE;
+  ok: true;
+  status: 'success';
+  body: PromptBody;
+};
 
 export type CreatePromptSuccessResponse = {
   type: typeof CREATE_PROMPT_MESSAGE;
   ok: true;
   status: 'success';
-  prompt: PromptItem;
+  prompt: PromptRecord;
 };
 
-type PromptMutationErrorResponse<T extends PromptMutationMessageType> = {
-  type: T;
-  ok: false;
-  status: 'error';
-  code: PromptMutationErrorCode;
-  message: string;
-};
-
-type ExistingPromptMutationNotFoundResponse<
-  T extends ExistingPromptMutationMessageType,
+export type PromptMetaSuccessResponse<
+  T extends
+    | typeof UPDATE_PROMPT_META_MESSAGE
+    | typeof MOVE_PROMPT_MESSAGE
+    | typeof SET_PROMPT_PINNED_MESSAGE,
 > = {
   type: T;
-  ok: false;
-  status: 'not-found';
-  id: string;
-  message: string;
-};
-
-type ExistingPromptMutationConflictResponse<
-  T extends ExistingPromptMutationMessageType,
-> = {
-  type: T;
-  ok: false;
-  status: 'conflict';
-  id: string;
-  message: string;
-  currentPrompt: PromptItem;
-};
-
-export type CreatePromptErrorResponse =
-  PromptMutationErrorResponse<typeof CREATE_PROMPT_MESSAGE>;
-
-export type CreatePromptResponse =
-  | CreatePromptSuccessResponse
-  | CreatePromptErrorResponse;
-
-export type UpdatePromptSuccessResponse = {
-  type: typeof UPDATE_PROMPT_MESSAGE;
   ok: true;
   status: 'success';
-  prompt: PromptItem;
+  meta: PromptMeta;
 };
 
-export type UpdatePromptNotFoundResponse =
-  ExistingPromptMutationNotFoundResponse<typeof UPDATE_PROMPT_MESSAGE>;
-
-export type UpdatePromptConflictResponse =
-  ExistingPromptMutationConflictResponse<typeof UPDATE_PROMPT_MESSAGE>;
-
-export type UpdatePromptErrorResponse =
-  PromptMutationErrorResponse<typeof UPDATE_PROMPT_MESSAGE>;
-
-export type UpdatePromptResponse =
-  | UpdatePromptSuccessResponse
-  | UpdatePromptNotFoundResponse
-  | UpdatePromptConflictResponse
-  | UpdatePromptErrorResponse;
+export type UpdatePromptBodySuccessResponse = {
+  type: typeof UPDATE_PROMPT_BODY_MESSAGE;
+  ok: true;
+  status: 'success';
+  prompt: PromptRecord;
+};
 
 export type DeletePromptSuccessResponse = {
   type: typeof DELETE_PROMPT_MESSAGE;
@@ -143,37 +191,115 @@ export type DeletePromptSuccessResponse = {
   id: string;
 };
 
-export type DeletePromptNotFoundResponse =
-  ExistingPromptMutationNotFoundResponse<typeof DELETE_PROMPT_MESSAGE>;
+type PromptNotFoundResponse<T extends ExistingPromptMessageType> = {
+  type: T;
+  ok: false;
+  status: 'not-found';
+  id: string;
+  message: string;
+};
 
-export type DeletePromptConflictResponse =
-  ExistingPromptMutationConflictResponse<typeof DELETE_PROMPT_MESSAGE>;
+type PromptConflictResponse<T extends PromptConflictMessageType> = {
+  type: T;
+  ok: false;
+  status: 'conflict';
+  id: string;
+  message: string;
+  currentMeta: PromptMeta;
+  currentRecord?: PromptRecord;
+};
 
-export type DeletePromptErrorResponse =
-  PromptMutationErrorResponse<typeof DELETE_PROMPT_MESSAGE>;
+type PromptErrorResponse<T extends PromptMessageType> = {
+  type: T;
+  ok: false;
+  status: 'error';
+  code: PromptErrorCode;
+  message: string;
+};
+
+export type ListPromptMetasResponse =
+  | ListPromptMetasSuccessResponse
+  | PromptErrorResponse<typeof LIST_PROMPT_METAS_MESSAGE>;
+
+export type GetPromptBodyResponse =
+  | GetPromptBodySuccessResponse
+  | PromptNotFoundResponse<typeof GET_PROMPT_BODY_MESSAGE>
+  | PromptErrorResponse<typeof GET_PROMPT_BODY_MESSAGE>;
+
+export type CreatePromptResponse =
+  | CreatePromptSuccessResponse
+  | PromptErrorResponse<typeof CREATE_PROMPT_MESSAGE>;
+
+export type UpdatePromptMetaResponse =
+  | PromptMetaSuccessResponse<typeof UPDATE_PROMPT_META_MESSAGE>
+  | PromptNotFoundResponse<typeof UPDATE_PROMPT_META_MESSAGE>
+  | PromptConflictResponse<typeof UPDATE_PROMPT_META_MESSAGE>
+  | PromptErrorResponse<typeof UPDATE_PROMPT_META_MESSAGE>;
+
+export type UpdatePromptBodyResponse =
+  | UpdatePromptBodySuccessResponse
+  | PromptNotFoundResponse<typeof UPDATE_PROMPT_BODY_MESSAGE>
+  | PromptConflictResponse<typeof UPDATE_PROMPT_BODY_MESSAGE>
+  | PromptErrorResponse<typeof UPDATE_PROMPT_BODY_MESSAGE>;
 
 export type DeletePromptResponse =
   | DeletePromptSuccessResponse
-  | DeletePromptNotFoundResponse
-  | DeletePromptConflictResponse
-  | DeletePromptErrorResponse;
+  | PromptNotFoundResponse<typeof DELETE_PROMPT_MESSAGE>
+  | PromptConflictResponse<typeof DELETE_PROMPT_MESSAGE>
+  | PromptErrorResponse<typeof DELETE_PROMPT_MESSAGE>;
+
+export type MovePromptResponse =
+  | PromptMetaSuccessResponse<typeof MOVE_PROMPT_MESSAGE>
+  | PromptNotFoundResponse<typeof MOVE_PROMPT_MESSAGE>
+  | PromptConflictResponse<typeof MOVE_PROMPT_MESSAGE>
+  | PromptErrorResponse<typeof MOVE_PROMPT_MESSAGE>;
+
+export type SetPromptPinnedResponse =
+  | PromptMetaSuccessResponse<typeof SET_PROMPT_PINNED_MESSAGE>
+  | PromptNotFoundResponse<typeof SET_PROMPT_PINNED_MESSAGE>
+  | PromptConflictResponse<typeof SET_PROMPT_PINNED_MESSAGE>
+  | PromptErrorResponse<typeof SET_PROMPT_PINNED_MESSAGE>;
+
+export type PromptResponse =
+  | ListPromptMetasResponse
+  | GetPromptBodyResponse
+  | CreatePromptResponse
+  | UpdatePromptMetaResponse
+  | UpdatePromptBodyResponse
+  | DeletePromptResponse
+  | MovePromptResponse
+  | SetPromptPinnedResponse;
 
 export type PromptMutationResponse =
   | CreatePromptResponse
-  | UpdatePromptResponse
-  | DeletePromptResponse;
+  | UpdatePromptMetaResponse
+  | UpdatePromptBodyResponse
+  | DeletePromptResponse
+  | MovePromptResponse
+  | SetPromptPinnedResponse;
 
 export type PromptitRuntimeResponse =
   | OpenOptionsPageResponse
-  | PromptMutationResponse;
+  | PromptResponse;
 
-// Backward-compatible alias for current callers while the sender/receiver
-// migration moves to PromptitRuntimeRequest.
 export type PromptitRuntimeMessage = PromptitRuntimeRequest;
 
 export function buildOpenOptionsPageRequest(): OpenOptionsPageRequest {
   return {
     type: OPEN_OPTIONS_PAGE_MESSAGE,
+  };
+}
+
+export function buildListPromptMetasRequest(): ListPromptMetasRequest {
+  return {
+    type: LIST_PROMPT_METAS_MESSAGE,
+  };
+}
+
+export function buildGetPromptBodyRequest(id: string): GetPromptBodyRequest {
+  return {
+    type: GET_PROMPT_BODY_MESSAGE,
+    id,
   };
 }
 
@@ -186,26 +312,65 @@ export function buildCreatePromptRequest(
   };
 }
 
-export function buildUpdatePromptRequest(
+export function buildUpdatePromptMetaRequest(
   id: string,
-  draft: PromptDraft,
+  draft: PromptMetaDraft,
   expectedUpdatedAt: string,
-): UpdatePromptRequest {
+): UpdatePromptMetaRequest {
   return {
-    type: UPDATE_PROMPT_MESSAGE,
+    type: UPDATE_PROMPT_META_MESSAGE,
     id,
-    expectedUpdatedAt,
     draft,
+    expectedUpdatedAt,
+  };
+}
+
+export function buildUpdatePromptBodyRequest(
+  id: string,
+  content: string,
+  expectedBodyUpdatedAt: string,
+): UpdatePromptBodyRequest {
+  return {
+    type: UPDATE_PROMPT_BODY_MESSAGE,
+    id,
+    content,
+    expectedBodyUpdatedAt,
   };
 }
 
 export function buildDeletePromptRequest(
   id: string,
   expectedUpdatedAt: string,
+  expectedBodyUpdatedAt?: string,
 ): DeletePromptRequest {
   return {
     type: DELETE_PROMPT_MESSAGE,
     id,
+    expectedUpdatedAt,
+    expectedBodyUpdatedAt,
+  };
+}
+
+export function buildMovePromptRequest(
+  id: string,
+  request: Omit<MovePromptRequest, 'type' | 'id'>,
+): MovePromptRequest {
+  return {
+    type: MOVE_PROMPT_MESSAGE,
+    id,
+    ...request,
+  };
+}
+
+export function buildSetPromptPinnedRequest(
+  id: string,
+  pinned: boolean,
+  expectedUpdatedAt: string,
+): SetPromptPinnedRequest {
+  return {
+    type: SET_PROMPT_PINNED_MESSAGE,
+    id,
+    pinned,
     expectedUpdatedAt,
   };
 }
@@ -229,8 +394,30 @@ export function buildOpenOptionsPageErrorResponse(
   };
 }
 
+export function buildListPromptMetasSuccessResponse(
+  metas: PromptMeta[],
+): ListPromptMetasSuccessResponse {
+  return {
+    type: LIST_PROMPT_METAS_MESSAGE,
+    ok: true,
+    status: 'success',
+    metas,
+  };
+}
+
+export function buildGetPromptBodySuccessResponse(
+  body: PromptBody,
+): GetPromptBodySuccessResponse {
+  return {
+    type: GET_PROMPT_BODY_MESSAGE,
+    ok: true,
+    status: 'success',
+    body,
+  };
+}
+
 export function buildCreatePromptSuccessResponse(
-  prompt: PromptItem,
+  prompt: PromptRecord,
 ): CreatePromptSuccessResponse {
   return {
     type: CREATE_PROMPT_MESSAGE,
@@ -240,90 +427,29 @@ export function buildCreatePromptSuccessResponse(
   };
 }
 
-export function buildCreatePromptErrorResponse(
-  message: string,
-  code: PromptMutationErrorCode = 'storage-failed',
-): CreatePromptErrorResponse {
-  return buildPromptMutationErrorResponse(
-    CREATE_PROMPT_MESSAGE,
-    message,
-    code,
-  );
+export function buildPromptMetaSuccessResponse<
+  T extends
+    | typeof UPDATE_PROMPT_META_MESSAGE
+    | typeof MOVE_PROMPT_MESSAGE
+    | typeof SET_PROMPT_PINNED_MESSAGE,
+>(type: T, meta: PromptMeta): PromptMetaSuccessResponse<T> {
+  return {
+    type,
+    ok: true,
+    status: 'success',
+    meta,
+  };
 }
 
-export function buildUpdatePromptSuccessResponse(
-  prompt: PromptItem,
-): UpdatePromptSuccessResponse {
+export function buildUpdatePromptBodySuccessResponse(
+  prompt: PromptRecord,
+): UpdatePromptBodySuccessResponse {
   return {
-    type: UPDATE_PROMPT_MESSAGE,
+    type: UPDATE_PROMPT_BODY_MESSAGE,
     ok: true,
     status: 'success',
     prompt,
   };
-}
-
-export function buildUpdatePromptNotFoundResponse(
-  id: string,
-  message: string,
-): UpdatePromptNotFoundResponse {
-  return buildExistingPromptMutationNotFoundResponse(
-    UPDATE_PROMPT_MESSAGE,
-    id,
-    message,
-  );
-}
-
-export function buildUpdatePromptConflictResponse(
-  id: string,
-  currentPrompt: PromptItem,
-  message: string,
-): UpdatePromptConflictResponse;
-export function buildUpdatePromptConflictResponse(
-  currentPrompt: PromptItem,
-  message: string,
-): UpdatePromptConflictResponse;
-export function buildUpdatePromptConflictResponse(
-  idOrCurrentPrompt: string | PromptItem,
-  currentPromptOrMessage: PromptItem | string,
-  message?: string,
-): UpdatePromptConflictResponse {
-  const id =
-    typeof idOrCurrentPrompt === 'string'
-      ? idOrCurrentPrompt
-      : idOrCurrentPrompt.id;
-  const currentPrompt =
-    typeof idOrCurrentPrompt === 'string'
-      ? currentPromptOrMessage
-      : idOrCurrentPrompt;
-  const resolvedMessage =
-    typeof idOrCurrentPrompt === 'string'
-      ? message
-      : currentPromptOrMessage;
-
-  if (
-    typeof resolvedMessage !== 'string' ||
-    typeof currentPrompt === 'string'
-  ) {
-    throw new Error('Invalid update prompt conflict response.');
-  }
-
-  return buildExistingPromptMutationConflictResponse(
-    UPDATE_PROMPT_MESSAGE,
-    id,
-    currentPrompt,
-    resolvedMessage,
-  );
-}
-
-export function buildUpdatePromptErrorResponse(
-  message: string,
-  code: PromptMutationErrorCode = 'storage-failed',
-): UpdatePromptErrorResponse {
-  return buildPromptMutationErrorResponse(
-    UPDATE_PROMPT_MESSAGE,
-    message,
-    code,
-  );
 }
 
 export function buildDeletePromptSuccessResponse(
@@ -337,68 +463,50 @@ export function buildDeletePromptSuccessResponse(
   };
 }
 
-export function buildDeletePromptNotFoundResponse(
+export function buildPromptNotFoundResponse<T extends ExistingPromptMessageType>(
+  type: T,
   id: string,
   message: string,
-): DeletePromptNotFoundResponse {
-  return buildExistingPromptMutationNotFoundResponse(
-    DELETE_PROMPT_MESSAGE,
+): PromptNotFoundResponse<T> {
+  return {
+    type,
+    ok: false,
+    status: 'not-found',
     id,
     message,
-  );
+  };
 }
 
-export function buildDeletePromptConflictResponse(
+export function buildPromptConflictResponse<T extends PromptConflictMessageType>(
+  type: T,
   id: string,
-  currentPrompt: PromptItem,
+  currentMeta: PromptMeta,
   message: string,
-): DeletePromptConflictResponse;
-export function buildDeletePromptConflictResponse(
-  currentPrompt: PromptItem,
-  message: string,
-): DeletePromptConflictResponse;
-export function buildDeletePromptConflictResponse(
-  idOrCurrentPrompt: string | PromptItem,
-  currentPromptOrMessage: PromptItem | string,
-  message?: string,
-): DeletePromptConflictResponse {
-  const id =
-    typeof idOrCurrentPrompt === 'string'
-      ? idOrCurrentPrompt
-      : idOrCurrentPrompt.id;
-  const currentPrompt =
-    typeof idOrCurrentPrompt === 'string'
-      ? currentPromptOrMessage
-      : idOrCurrentPrompt;
-  const resolvedMessage =
-    typeof idOrCurrentPrompt === 'string'
-      ? message
-      : currentPromptOrMessage;
-
-  if (
-    typeof resolvedMessage !== 'string' ||
-    typeof currentPrompt === 'string'
-  ) {
-    throw new Error('Invalid delete prompt conflict response.');
-  }
-
-  return buildExistingPromptMutationConflictResponse(
-    DELETE_PROMPT_MESSAGE,
+  currentRecord?: PromptRecord,
+): PromptConflictResponse<T> {
+  return {
+    type,
+    ok: false,
+    status: 'conflict',
     id,
-    currentPrompt,
-    resolvedMessage,
-  );
+    message,
+    currentMeta,
+    currentRecord,
+  };
 }
 
-export function buildDeletePromptErrorResponse(
+export function buildPromptErrorResponse<T extends PromptMessageType>(
+  type: T,
   message: string,
-  code: PromptMutationErrorCode = 'storage-failed',
-): DeletePromptErrorResponse {
-  return buildPromptMutationErrorResponse(
-    DELETE_PROMPT_MESSAGE,
-    message,
+  code: PromptErrorCode = 'storage-failed',
+): PromptErrorResponse<T> {
+  return {
+    type,
+    ok: false,
+    status: 'error',
     code,
-  );
+    message,
+  };
 }
 
 export function parsePromptitRuntimeRequest(
@@ -411,29 +519,22 @@ export function parsePromptitRuntimeRequest(
   switch (value.type) {
     case OPEN_OPTIONS_PAGE_MESSAGE:
       return buildOpenOptionsPageRequest();
-    case CREATE_PROMPT_MESSAGE:
-    case UPDATE_PROMPT_MESSAGE:
-    case DELETE_PROMPT_MESSAGE:
-      return parsePromptMutationRequest(value);
-    default:
-      return null;
-  }
-}
-
-export function parsePromptMutationRequest(
-  value: unknown,
-): PromptMutationRequest | null {
-  if (!isObjectRecord(value) || typeof value.type !== 'string') {
-    return null;
-  }
-
-  switch (value.type) {
+    case LIST_PROMPT_METAS_MESSAGE:
+      return buildListPromptMetasRequest();
+    case GET_PROMPT_BODY_MESSAGE:
+      return parseGetPromptBodyRequest(value);
     case CREATE_PROMPT_MESSAGE:
       return parseCreatePromptRequest(value);
-    case UPDATE_PROMPT_MESSAGE:
-      return parseUpdatePromptRequest(value);
+    case UPDATE_PROMPT_META_MESSAGE:
+      return parseUpdatePromptMetaRequest(value);
+    case UPDATE_PROMPT_BODY_MESSAGE:
+      return parseUpdatePromptBodyRequest(value);
     case DELETE_PROMPT_MESSAGE:
       return parseDeletePromptRequest(value);
+    case MOVE_PROMPT_MESSAGE:
+      return parseMovePromptRequest(value);
+    case SET_PROMPT_PINNED_MESSAGE:
+      return parseSetPromptPinnedRequest(value);
     default:
       return null;
   }
@@ -442,63 +543,32 @@ export function parsePromptMutationRequest(
 export function parsePromptitRuntimeResponse(
   value: unknown,
 ): PromptitRuntimeResponse | null {
-  if (!isObjectRecord(value) || typeof value.type !== 'string') {
+  if (!isObjectRecord(value)) {
     return null;
   }
 
   switch (value.type) {
     case OPEN_OPTIONS_PAGE_MESSAGE:
       return parseOpenOptionsPageResponse(value);
-    case CREATE_PROMPT_MESSAGE:
-    case UPDATE_PROMPT_MESSAGE:
-    case DELETE_PROMPT_MESSAGE:
-      return parsePromptMutationResponse(value);
-    default:
-      return null;
-  }
-}
-
-export function parsePromptMutationResponse(
-  value: unknown,
-): PromptMutationResponse | null {
-  if (!isObjectRecord(value) || typeof value.type !== 'string') {
-    return null;
-  }
-
-  switch (value.type) {
+    case LIST_PROMPT_METAS_MESSAGE:
+      return parseListPromptMetasResponse(value);
+    case GET_PROMPT_BODY_MESSAGE:
+      return parseGetPromptBodyResponse(value);
     case CREATE_PROMPT_MESSAGE:
       return parseCreatePromptResponse(value);
-    case UPDATE_PROMPT_MESSAGE:
-      return parseUpdatePromptResponse(value);
+    case UPDATE_PROMPT_META_MESSAGE:
+      return parsePromptMetaResponse(value, UPDATE_PROMPT_META_MESSAGE);
+    case UPDATE_PROMPT_BODY_MESSAGE:
+      return parseUpdatePromptBodyResponse(value);
     case DELETE_PROMPT_MESSAGE:
       return parseDeletePromptResponse(value);
+    case MOVE_PROMPT_MESSAGE:
+      return parsePromptMetaResponse(value, MOVE_PROMPT_MESSAGE);
+    case SET_PROMPT_PINNED_MESSAGE:
+      return parsePromptMetaResponse(value, SET_PROMPT_PINNED_MESSAGE);
     default:
       return null;
   }
-}
-
-export function isPromptitRuntimeRequest(
-  value: unknown,
-): value is PromptitRuntimeRequest {
-  return parsePromptitRuntimeRequest(value) !== null;
-}
-
-export function isPromptMutationRequest(
-  value: unknown,
-): value is PromptMutationRequest {
-  return parsePromptMutationRequest(value) !== null;
-}
-
-export function isPromptitRuntimeResponse(
-  value: unknown,
-): value is PromptitRuntimeResponse {
-  return parsePromptitRuntimeResponse(value) !== null;
-}
-
-export function isPromptMutationResponse(
-  value: unknown,
-): value is PromptMutationResponse {
-  return parsePromptMutationResponse(value) !== null;
 }
 
 export async function sendPromptitRuntimeRequest(
@@ -519,43 +589,103 @@ export function assertNever(value: never): never {
   throw new Error(`Unhandled Promptit runtime contract: ${String(value)}`);
 }
 
+function parseGetPromptBodyRequest(
+  value: Record<string, unknown>,
+): GetPromptBodyRequest | null {
+  const id = parsePromptId(value.id);
+  return id ? buildGetPromptBodyRequest(id) : null;
+}
+
 function parseCreatePromptRequest(
   value: Record<string, unknown>,
 ): CreatePromptRequest | null {
   const draft = parsePromptDraft(value.draft);
-
-  if (!draft) {
-    return null;
-  }
-
-  return buildCreatePromptRequest(draft);
+  return draft ? buildCreatePromptRequest(draft) : null;
 }
 
-function parseUpdatePromptRequest(
+function parseUpdatePromptMetaRequest(
   value: Record<string, unknown>,
-): UpdatePromptRequest | null {
+): UpdatePromptMetaRequest | null {
   const id = parsePromptId(value.id);
-  const expectedUpdatedAt = parseExpectedUpdatedAt(value.expectedUpdatedAt);
-  const draft = parsePromptDraft(value.draft);
+  const draft = parsePromptMetaDraft(value.draft);
+  const expectedUpdatedAt = parseRequiredTimestamp(value.expectedUpdatedAt);
 
-  if (!id || !expectedUpdatedAt || !draft) {
+  if (!id || !draft || !expectedUpdatedAt) {
     return null;
   }
 
-  return buildUpdatePromptRequest(id, draft, expectedUpdatedAt);
+  return buildUpdatePromptMetaRequest(id, draft, expectedUpdatedAt);
+}
+
+function parseUpdatePromptBodyRequest(
+  value: Record<string, unknown>,
+): UpdatePromptBodyRequest | null {
+  const id = parsePromptId(value.id);
+  const expectedBodyUpdatedAt = parseRequiredTimestamp(
+    value.expectedBodyUpdatedAt,
+  );
+
+  if (!id || typeof value.content !== 'string' || !expectedBodyUpdatedAt) {
+    return null;
+  }
+
+  return buildUpdatePromptBodyRequest(id, value.content, expectedBodyUpdatedAt);
 }
 
 function parseDeletePromptRequest(
   value: Record<string, unknown>,
 ): DeletePromptRequest | null {
   const id = parsePromptId(value.id);
-  const expectedUpdatedAt = parseExpectedUpdatedAt(value.expectedUpdatedAt);
+  const expectedUpdatedAt = parseRequiredTimestamp(value.expectedUpdatedAt);
+  const expectedBodyUpdatedAt = parseOptionalTimestamp(
+    value.expectedBodyUpdatedAt,
+  );
 
-  if (!id || !expectedUpdatedAt) {
+  if (!id || !expectedUpdatedAt || expectedBodyUpdatedAt === null) {
     return null;
   }
 
-  return buildDeletePromptRequest(id, expectedUpdatedAt);
+  return buildDeletePromptRequest(id, expectedUpdatedAt, expectedBodyUpdatedAt);
+}
+
+function parseMovePromptRequest(
+  value: Record<string, unknown>,
+): MovePromptRequest | null {
+  const id = parsePromptId(value.id);
+  const expectedUpdatedAt = parseRequiredTimestamp(value.expectedUpdatedAt);
+  const group = parseOptionalPromptOrderGroup(value.group);
+  const previousId = parseOptionalPromptId(value.previousId);
+  const nextId = parseOptionalPromptId(value.nextId);
+
+  if (
+    !id ||
+    !expectedUpdatedAt ||
+    group === null ||
+    previousId === false ||
+    nextId === false
+  ) {
+    return null;
+  }
+
+  return buildMovePromptRequest(id, {
+    expectedUpdatedAt,
+    group,
+    previousId,
+    nextId,
+  });
+}
+
+function parseSetPromptPinnedRequest(
+  value: Record<string, unknown>,
+): SetPromptPinnedRequest | null {
+  const id = parsePromptId(value.id);
+  const expectedUpdatedAt = parseRequiredTimestamp(value.expectedUpdatedAt);
+
+  if (!id || typeof value.pinned !== 'boolean' || !expectedUpdatedAt) {
+    return null;
+  }
+
+  return buildSetPromptPinnedRequest(id, value.pinned, expectedUpdatedAt);
 }
 
 function parseOpenOptionsPageResponse(
@@ -576,85 +706,83 @@ function parseOpenOptionsPageResponse(
   return null;
 }
 
+function parseListPromptMetasResponse(
+  value: Record<string, unknown>,
+): ListPromptMetasResponse | null {
+  if (value.ok === true && value.status === 'success' && Array.isArray(value.metas)) {
+    const metas = value.metas.map(parsePromptMeta);
+
+    if (metas.some((meta) => meta === null)) {
+      return null;
+    }
+
+    return buildListPromptMetasSuccessResponse(metas as PromptMeta[]);
+  }
+
+  return parsePromptErrorResponse(value, LIST_PROMPT_METAS_MESSAGE);
+}
+
+function parseGetPromptBodyResponse(
+  value: Record<string, unknown>,
+): GetPromptBodyResponse | null {
+  if (value.ok === true && value.status === 'success') {
+    const body = parsePromptBody(value.body);
+    return body ? buildGetPromptBodySuccessResponse(body) : null;
+  }
+
+  return (
+    parseNotFoundResponse(value, GET_PROMPT_BODY_MESSAGE) ??
+    parsePromptErrorResponse(value, GET_PROMPT_BODY_MESSAGE)
+  );
+}
+
 function parseCreatePromptResponse(
   value: Record<string, unknown>,
 ): CreatePromptResponse | null {
   if (value.ok === true && value.status === 'success') {
-    const prompt = parsePromptItem(value.prompt);
-
-    if (!prompt) {
-      return null;
-    }
-
-    return buildCreatePromptSuccessResponse(prompt);
+    const prompt = parsePromptRecord(value.prompt);
+    return prompt ? buildCreatePromptSuccessResponse(prompt) : null;
   }
 
-  if (
-    value.ok === false &&
-    value.status === 'error' &&
-    value.code === 'storage-failed' &&
-    typeof value.message === 'string'
-  ) {
-    return buildCreatePromptErrorResponse(value.message, value.code);
-  }
-
-  return null;
+  return parsePromptErrorResponse(value, CREATE_PROMPT_MESSAGE);
 }
 
-function parseUpdatePromptResponse(
-  value: Record<string, unknown>,
-): UpdatePromptResponse | null {
+function parsePromptMetaResponse<
+  T extends
+    | typeof UPDATE_PROMPT_META_MESSAGE
+    | typeof MOVE_PROMPT_MESSAGE
+    | typeof SET_PROMPT_PINNED_MESSAGE,
+>(value: Record<string, unknown>, type: T):
+  | PromptMetaSuccessResponse<T>
+  | PromptNotFoundResponse<T>
+  | PromptConflictResponse<T>
+  | PromptErrorResponse<T>
+  | null {
   if (value.ok === true && value.status === 'success') {
-    const prompt = parsePromptItem(value.prompt);
-
-    if (!prompt) {
-      return null;
-    }
-
-    return buildUpdatePromptSuccessResponse(prompt);
+    const meta = parsePromptMeta(value.meta);
+    return meta ? buildPromptMetaSuccessResponse(type, meta) : null;
   }
 
-  const id = parsePromptId(value.id);
+  return (
+    parseNotFoundResponse(value, type) ??
+    parseConflictResponse(value, type) ??
+    parsePromptErrorResponse(value, type)
+  );
+}
 
-  if (
-    value.ok === false &&
-    value.status === 'not-found' &&
-    id &&
-    typeof value.message === 'string'
-  ) {
-    return buildUpdatePromptNotFoundResponse(id, value.message);
+function parseUpdatePromptBodyResponse(
+  value: Record<string, unknown>,
+): UpdatePromptBodyResponse | null {
+  if (value.ok === true && value.status === 'success') {
+    const prompt = parsePromptRecord(value.prompt);
+    return prompt ? buildUpdatePromptBodySuccessResponse(prompt) : null;
   }
 
-  const currentPrompt = parsePromptItem(value.currentPrompt);
-
-  if (
-    value.ok === false &&
-    value.status === 'conflict' &&
-    id &&
-    typeof value.message === 'string' &&
-    currentPrompt
-  ) {
-    if (currentPrompt.id !== id) {
-      return null;
-    }
-
-    return buildUpdatePromptConflictResponse(
-      id,
-      currentPrompt,
-      value.message,
-    );
-  }
-
-  if (
-    value.ok === false &&
-    value.status === 'error' &&
-    value.code === 'storage-failed' &&
-    typeof value.message === 'string'
-  ) {
-    return buildUpdatePromptErrorResponse(value.message, value.code);
-  }
-
-  return null;
+  return (
+    parseNotFoundResponse(value, UPDATE_PROMPT_BODY_MESSAGE) ??
+    parseConflictResponse(value, UPDATE_PROMPT_BODY_MESSAGE) ??
+    parsePromptErrorResponse(value, UPDATE_PROMPT_BODY_MESSAGE)
+  );
 }
 
 function parseDeletePromptResponse(
@@ -666,45 +794,113 @@ function parseDeletePromptResponse(
     return buildDeletePromptSuccessResponse(id);
   }
 
+  return (
+    parseNotFoundResponse(value, DELETE_PROMPT_MESSAGE) ??
+    parseConflictResponse(value, DELETE_PROMPT_MESSAGE) ??
+    parsePromptErrorResponse(value, DELETE_PROMPT_MESSAGE)
+  );
+}
+
+function parseNotFoundResponse<T extends ExistingPromptMessageType>(
+  value: Record<string, unknown>,
+  type: T,
+): PromptNotFoundResponse<T> | null {
+  const id = parsePromptId(value.id);
+
   if (
     value.ok === false &&
     value.status === 'not-found' &&
     id &&
     typeof value.message === 'string'
   ) {
-    return buildDeletePromptNotFoundResponse(id, value.message);
+    return buildPromptNotFoundResponse(type, id, value.message);
   }
 
-  const currentPrompt = parsePromptItem(value.currentPrompt);
+  return null;
+}
+
+function parseConflictResponse<T extends PromptConflictMessageType>(
+  value: Record<string, unknown>,
+  type: T,
+): PromptConflictResponse<T> | null {
+  const id = parsePromptId(value.id);
+  const currentMeta = parsePromptMeta(value.currentMeta);
 
   if (
-    value.ok === false &&
-    value.status === 'conflict' &&
-    id &&
-    typeof value.message === 'string' &&
-    currentPrompt
+    value.ok !== false ||
+    value.status !== 'conflict' ||
+    !id ||
+    typeof value.message !== 'string' ||
+    !currentMeta
   ) {
-    if (currentPrompt.id !== id) {
-      return null;
-    }
-
-    return buildDeletePromptConflictResponse(
-      id,
-      currentPrompt,
-      value.message,
-    );
+    return null;
   }
 
+  const currentRecord =
+    typeof value.currentRecord === 'undefined'
+      ? undefined
+      : parsePromptRecord(value.currentRecord);
+
+  if (currentRecord === null) {
+    return null;
+  }
+
+  return buildPromptConflictResponse(
+    type,
+    id,
+    currentMeta,
+    value.message,
+    currentRecord,
+  );
+}
+
+function parsePromptErrorResponse<T extends PromptMessageType>(
+  value: Record<string, unknown>,
+  type: T,
+): PromptErrorResponse<T> | null {
   if (
     value.ok === false &&
     value.status === 'error' &&
     value.code === 'storage-failed' &&
     typeof value.message === 'string'
   ) {
-    return buildDeletePromptErrorResponse(value.message, value.code);
+    return buildPromptErrorResponse(type, value.message, value.code);
   }
 
   return null;
+}
+
+function parsePromptMetaDraft(value: unknown): PromptMetaDraft | null {
+  if (!isObjectRecord(value) || typeof value.title !== 'string') {
+    return null;
+  }
+
+  if (
+    typeof value.normalOrder !== 'undefined' &&
+    (typeof value.normalOrder !== 'number' ||
+      !Number.isFinite(value.normalOrder) ||
+      !Number.isInteger(value.normalOrder) ||
+      value.normalOrder < 0)
+  ) {
+    return null;
+  }
+
+  if (
+    value.pinnedOrder !== null &&
+    typeof value.pinnedOrder !== 'undefined' &&
+    (typeof value.pinnedOrder !== 'number' ||
+      !Number.isFinite(value.pinnedOrder) ||
+      !Number.isInteger(value.pinnedOrder) ||
+      value.pinnedOrder < 0)
+  ) {
+    return null;
+  }
+
+  return {
+    title: value.title,
+    normalOrder: value.normalOrder,
+    pinnedOrder: value.pinnedOrder,
+  };
 }
 
 function parsePromptId(value: unknown): string | null {
@@ -715,60 +911,38 @@ function parsePromptId(value: unknown): string | null {
   return value;
 }
 
-function parseExpectedUpdatedAt(value: unknown): string | null {
-  if (!isValidPromptTimestamp(value)) {
+function parseOptionalPromptId(value: unknown): string | null | false {
+  if (typeof value === 'undefined' || value === null) {
     return null;
   }
 
-  return value;
+  return parsePromptId(value) ?? false;
 }
 
-function buildPromptMutationErrorResponse<T extends PromptMutationMessageType>(
-  type: T,
-  message: string,
-  code: PromptMutationErrorCode = 'storage-failed',
-): PromptMutationErrorResponse<T> {
-  return {
-    type,
-    ok: false,
-    status: 'error',
-    code,
-    message,
-  };
+function parseOptionalTimestamp(value: unknown): string | undefined | null {
+  if (typeof value === 'undefined') {
+    return undefined;
+  }
+
+  return isValidPromptTimestamp(value) ? value : null;
 }
 
-function buildExistingPromptMutationNotFoundResponse<
-  T extends ExistingPromptMutationMessageType,
->(
-  type: T,
-  id: string,
-  message: string,
-): ExistingPromptMutationNotFoundResponse<T> {
-  return {
-    type,
-    ok: false,
-    status: 'not-found',
-    id,
-    message,
-  };
+function parseRequiredTimestamp(value: unknown): string | null {
+  return isValidPromptTimestamp(value) ? value : null;
 }
 
-function buildExistingPromptMutationConflictResponse<
-  T extends ExistingPromptMutationMessageType,
->(
-  type: T,
-  id: string,
-  currentPrompt: PromptItem,
-  message: string,
-): ExistingPromptMutationConflictResponse<T> {
-  return {
-    type,
-    ok: false,
-    status: 'conflict',
-    id,
-    message,
-    currentPrompt,
-  };
+function parseOptionalPromptOrderGroup(
+  value: unknown,
+): PromptOrderGroup | undefined | null {
+  if (typeof value === 'undefined') {
+    return undefined;
+  }
+
+  if (value === 'pinned' || value === 'normal') {
+    return value;
+  }
+
+  return null;
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {

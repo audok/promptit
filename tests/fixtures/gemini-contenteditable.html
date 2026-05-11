@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Promptit Gemini Contenteditable Fixture</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        background: #f6f8fb;
+        color: #1f2937;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(180deg, #f8fbff 0%, #eef3f8 100%);
+      }
+
+      .outside-target {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 20px 28px;
+        border-bottom: 1px solid rgba(31, 41, 55, 0.1);
+        background: rgba(255, 255, 255, 0.88);
+      }
+
+      .outside-target h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .outside-target p {
+        margin: 4px 0 0;
+        color: #64748b;
+        font-size: 14px;
+      }
+
+      .page-shell {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 36px 24px 96px;
+      }
+
+      .conversation {
+        min-height: 340px;
+        padding: 28px;
+        border: 1px solid rgba(31, 41, 55, 0.08);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 24px 54px rgba(31, 41, 55, 0.08);
+      }
+
+      .composer-dock {
+        position: sticky;
+        bottom: 24px;
+        margin-top: 28px;
+      }
+
+      .text-input-field {
+        width: min(760px, 100%);
+        min-height: 118px;
+        margin: 0 auto;
+        padding: 18px 20px 16px;
+        border: 1px solid rgba(31, 41, 55, 0.12);
+        border-radius: 28px;
+        background: #ffffff;
+        box-shadow: 0 18px 44px rgba(31, 41, 55, 0.12);
+      }
+
+      .text-input-field_textarea-wrapper {
+        min-height: 58px;
+      }
+
+      rich-textarea {
+        display: block;
+      }
+
+      .ql-editor.textarea {
+        width: 640px;
+        min-height: 26px;
+        outline: none;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 16px;
+        line-height: 1.55;
+      }
+
+      .ql-editor.textarea:empty::before {
+        content: "Enter a prompt for Gemini";
+        color: #94a3b8;
+      }
+
+      .ql-clipboard {
+        position: absolute;
+        left: -10000px;
+        top: 50%;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+
+      .composer-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 16px;
+      }
+
+      .host-submit-state {
+        width: min(760px, 100%);
+        margin: 12px auto 0;
+        color: #475569;
+        font-size: 13px;
+      }
+
+      .send-button {
+        width: 38px;
+        height: 38px;
+        border: 0;
+        border-radius: 50%;
+        background: #1f2937;
+        color: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <header
+      class="outside-target"
+      data-testid="outside-target"
+    >
+      <div>
+        <h1>Promptit Gemini Fixture</h1>
+        <p>Gemini-like Quill composer with clipboard and wrapper anchors.</p>
+      </div>
+      <button type="button">Outside Click Target</button>
+    </header>
+
+    <main class="page-shell">
+      <section class="conversation">
+        <p>
+          This fixture only models the Gemini composer boundary Promptit uses:
+          a text input wrapper, a rich-textarea host, a ql-editor textbox, and
+          a hidden Quill clipboard node that must not open Promptit.
+        </p>
+      </section>
+
+      <div class="composer-dock">
+        <section
+          class="text-input-field"
+          data-testid="gemini-composer-wrapper"
+        >
+          <div class="text-input-field_textarea-wrapper">
+            <rich-textarea class="text-input-field_textarea ql-container ql-bubble">
+              <div
+                class="ql-editor textarea new-input-ui"
+                contenteditable="true"
+                data-testid="gemini-composer"
+                role="textbox"
+                aria-label="Enter a prompt for Gemini"
+                aria-multiline="true"
+                spellcheck="false"
+              ></div>
+              <div
+                class="ql-clipboard"
+                contenteditable="true"
+                data-testid="gemini-clipboard"
+                tabindex="-1"
+                aria-hidden="true"
+              ></div>
+            </rich-textarea>
+          </div>
+          <div class="composer-actions">
+            <button
+              class="send-button"
+              type="button"
+              disabled
+              aria-label="Send message"
+            >
+              ^
+            </button>
+          </div>
+        </section>
+        <output
+          class="host-submit-state"
+          data-testid="gemini-host-submit-state"
+        >
+          Host submits: <span data-testid="gemini-host-submit-count">0</span>
+          <span data-testid="gemini-host-submit-text"></span>
+        </output>
+      </div>
+    </main>
+    <script>
+      (() => {
+        const composer = document.querySelector('[data-testid="gemini-composer"]');
+        const countNode = document.querySelector(
+          '[data-testid="gemini-host-submit-count"]',
+        );
+        const textNode = document.querySelector(
+          '[data-testid="gemini-host-submit-text"]',
+        );
+        let submittedCount = 0;
+
+        if (
+          !(composer instanceof HTMLElement) ||
+          !(countNode instanceof HTMLElement) ||
+          !(textNode instanceof HTMLElement)
+        ) {
+          return;
+        }
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' || event.shiftKey) {
+            return;
+          }
+
+          if (!(event.target instanceof Node) || !composer.contains(event.target)) {
+            return;
+          }
+
+          submittedCount += 1;
+          const submittedText = (composer.textContent ?? '').replace(/\u00A0/g, ' ');
+          countNode.textContent = String(submittedCount);
+          textNode.textContent = submittedText;
+          composer.textContent = '';
+          composer.dispatchEvent(
+            new InputEvent('input', {
+              bubbles: true,
+              inputType: 'deleteContentForward',
+              data: null,
+            }),
+          );
+        });
+      })();
+    </script>
+  </body>
+</html>

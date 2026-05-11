@@ -1,11 +1,12 @@
-import { expect, test as base } from '@playwright/test';
-import { STARTER_PROMPT_ID } from '../../src/prompt/schema';
+import { expect, test as base, type Page } from '@playwright/test';
+import { STARTER_PROMPT_ID, type PromptRecord } from '../../src/prompt/schema';
 
 import { launchExtension, type LoadedExtension } from '../playwright/extension';
 import {
   clearComposer,
   CONTENTEDITABLE_FIXTURE_URL,
-  createPromptItem,
+  createLegacyPromptItem,
+  createPromptRecord,
   dispatchPromptitTestEvent,
   getActivePopupCellLabel,
   getComposerText,
@@ -30,13 +31,13 @@ const test = base.extend<{
 });
 
 const basePrompts = [
-  createPromptItem({
+  createPromptRecord({
     id: 'prompt-translate',
     title: '번역',
     content: '영문으로 자연스럽게 번역해줘.',
     sortOrder: 10,
   }),
-  createPromptItem({
+  createPromptRecord({
     id: 'prompt-minutes',
     title: '회의록',
     content: '회의록으로 정리해줘.',
@@ -115,6 +116,44 @@ async function dispatchComposerInput(
       nextData: data,
     },
   );
+}
+
+async function dispatchNestedChildComposerInput(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const child = document.createElement('span');
+    child.textContent = '/ ';
+    composer.replaceChildren(child);
+    composer.focus();
+
+    const textNode = child.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare child selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    child.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
 }
 
 type TriggerWindowState = Window & {
@@ -275,25 +314,66 @@ async function getPopupPositionSnapshot(
 ): Promise<{
   popupTop: number;
   popupLeft: number;
+  popupBottom: number;
   anchorTop: number;
   anchorBottom: number;
+  viewportHeight: number;
 }> {
   return await page.evaluate(() => {
     const host = document.querySelector('[data-testid="promptit-popup-host"]');
     const composer = document.querySelector('#prompt-textarea');
     const anchor = composer?.closest('form');
+    const card = host?.shadowRoot?.querySelector(
+      '[data-testid="promptit-popup"]',
+    );
 
-    if (!(host instanceof HTMLDivElement) || !(anchor instanceof HTMLElement)) {
-      throw new Error('Popup host or anchor not found.');
+    if (
+      !(host instanceof HTMLDivElement) ||
+      !(anchor instanceof HTMLElement) ||
+      !(card instanceof HTMLElement)
+    ) {
+      throw new Error('Popup host, popup card, or anchor not found.');
     }
 
     const anchorRect = anchor.getBoundingClientRect();
+    const popupRect = card.getBoundingClientRect();
 
     return {
       popupTop: Number.parseFloat(host.style.top),
       popupLeft: Number.parseFloat(host.style.left),
+      popupBottom: popupRect.bottom,
       anchorTop: anchorRect.top,
       anchorBottom: anchorRect.bottom,
+      viewportHeight: window.innerHeight,
+    };
+  });
+}
+
+async function getPopupWidthSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  popupWidth: number;
+  formWidth: number;
+  surfaceWidth: number;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const composer = document.querySelector('#prompt-textarea');
+    const form = composer?.closest('form');
+    const surface = composer?.closest('.composer-surface');
+
+    if (
+      !(host instanceof HTMLDivElement) ||
+      !(form instanceof HTMLElement) ||
+      !(surface instanceof HTMLElement)
+    ) {
+      throw new Error('Popup host, form, or composer surface not found.');
+    }
+
+    return {
+      popupWidth: host.getBoundingClientRect().width,
+      formWidth: form.getBoundingClientRect().width,
+      surfaceWidth: surface.getBoundingClientRect().width,
     };
   });
 }
@@ -318,10 +398,174 @@ async function getPopupListScrollTop(
   });
 }
 
+function getPopupPinButton(
+  page: Page,
+  title: string,
+  options: { pinned?: boolean } = {},
+) {
+  return page.getByRole('button', {
+    name: `${options.pinned ? 'Unpin' : 'Pin'} prompt: ${title}`,
+  });
+}
+
+async function expectPopupPromptOrder(
+  page: Page,
+  titles: string[],
+): Promise<void> {
+  await expect.poll(async () => await getPopupTitles(page)).toEqual(titles);
+}
+
+async function expectStoredPromptPinned(
+  extension: LoadedExtension,
+  id: string,
+  pinned: boolean,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      return (await extension.getPromptRecords()).find(
+        (prompt) => prompt.id === id,
+      )?.pinned ?? null;
+    })
+    .toBe(pinned);
+}
+
+async function setPromptRecordsWithoutRevision(
+  extension: LoadedExtension,
+  records: PromptRecord[],
+): Promise<void> {
+  const serviceWorker =
+    extension.context.serviceWorkers()[0] ??
+    (await extension.context.waitForEvent('serviceworker'));
+
+  await serviceWorker.evaluate(async (nextRecords) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('promptit', 1);
+
+      request.onupgradeneeded = () => {
+        const nextDatabase = request.result;
+
+        if (!nextDatabase.objectStoreNames.contains('promptMetas')) {
+          nextDatabase.createObjectStore('promptMetas', { keyPath: 'id' });
+        }
+
+        if (!nextDatabase.objectStoreNames.contains('promptBodies')) {
+          nextDatabase.createObjectStore('promptBodies', { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error('Failed to open prompt IndexedDB.'));
+      };
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(
+        ['promptMetas', 'promptBodies'],
+        'readwrite',
+      );
+      const metaStore = transaction.objectStore('promptMetas');
+      const bodyStore = transaction.objectStore('promptBodies');
+
+      metaStore.clear();
+      bodyStore.clear();
+
+      for (const record of nextRecords) {
+        const { content, ...meta } = record;
+        metaStore.put(meta);
+        bodyStore.put({
+          id: record.id,
+          content,
+          updatedAt: record.bodyUpdatedAt,
+        });
+      }
+
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error ?? new Error('Failed to write prompt records.'));
+      };
+      transaction.onabort = () => {
+        database.close();
+        reject(transaction.error ?? new Error('Prompt write was aborted.'));
+      };
+    });
+  }, records);
+}
+
+async function getPopupActionVisualSnapshot(
+  page: Page,
+  action: 'pin' | 'copy',
+  title: string,
+): Promise<{
+  ariaPressed: string | null;
+  badgeBackgroundColor: string;
+  badgeBorderStyle: string;
+  badgeBorderWidth: string;
+  iconColor: string;
+  iconFillColor: string;
+  iconPathData: string;
+}> {
+  return await page.evaluate(({ nextAction, nextTitle }) => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+
+    if (!(host instanceof HTMLDivElement) || !host.shadowRoot) {
+      throw new Error('Popup host not found.');
+    }
+
+    const testId =
+      nextAction === 'pin' ? 'promptit-pin-cell' : 'promptit-copy-cell';
+    const buttons = Array.from(
+      host.shadowRoot.querySelectorAll<HTMLButtonElement>(
+        `[data-testid="${testId}"], button[data-column="${nextAction}"]`,
+      ),
+    );
+    const button = buttons.find((candidate) => {
+      const label = candidate.getAttribute('aria-label');
+      return nextAction === 'pin'
+        ? label === `Pin prompt: ${nextTitle}` ||
+            label === `Unpin prompt: ${nextTitle}`
+        : label === `Copy prompt: ${nextTitle}`;
+    });
+
+    if (!button) {
+      throw new Error(`${nextAction} button for ${nextTitle} not found.`);
+    }
+
+    const badge = button.querySelector<HTMLElement>(
+      '.promptit-row-action-badge',
+    );
+    const icon = button.querySelector<SVGElement>('.promptit-icon');
+    const iconPath = button.querySelector<SVGPathElement>('.promptit-icon path');
+
+    if (!badge || !icon || !iconPath) {
+      throw new Error(`${nextAction} visual elements for ${nextTitle} not found.`);
+    }
+
+    const badgeStyle = getComputedStyle(badge);
+    const iconStyle = getComputedStyle(icon);
+    const iconPathStyle = getComputedStyle(iconPath);
+
+    return {
+      ariaPressed: button.getAttribute('aria-pressed'),
+      badgeBackgroundColor: badgeStyle.backgroundColor,
+      badgeBorderStyle: badgeStyle.borderTopStyle,
+      badgeBorderWidth: badgeStyle.borderTopWidth,
+      iconColor: iconStyle.color,
+      iconFillColor: iconPathStyle.fill,
+      iconPathData: iconPath.getAttribute('d') ?? '',
+    };
+  }, { nextAction: action, nextTitle: title });
+}
+
 test('opens the slash popup from the contenteditable fixture', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -333,10 +577,25 @@ test('opens the slash popup from the contenteditable fixture', async ({
   await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
 });
 
+test('matches the ChatGPT popup width to the composer form wrapper', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  const snapshot = await getPopupWidthSnapshot(page);
+
+  expect(Math.abs(snapshot.popupWidth - snapshot.formWidth)).toBeLessThan(1);
+  expect(snapshot.popupWidth).toBeGreaterThan(snapshot.surfaceWidth + 80);
+});
+
 test('inserts the active prompt into the contenteditable fixture', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -350,10 +609,91 @@ test('inserts the active prompt into the contenteditable fixture', async ({
   );
 });
 
+test('opens from metadata when body reads fail and keeps the popup open on select failure', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    failPromptBodyRead: true,
+  });
+
+  await openPromptPopup(page);
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
+
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('프롬프트 본문을 읽지 못했습니다.');
+  await expect(await getComposerText(page)).toBe('/ ');
+  await expect.poll(async () => {
+    return await page.evaluate(() => document.activeElement?.id ?? null);
+  }).toBe('prompt-textarea');
+});
+
+test('fetches the latest prompt body when selecting an already-open popup item', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'body-on-select',
+    title: '본문 지연 읽기',
+    content: '처음 열린 본문',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([prompt]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  await extension.setPromptRecords([
+    createPromptRecord({
+      ...prompt,
+      content: '선택 시점에 읽은 본문',
+      bodyUpdatedAt: '2026-03-29T00:10:00.000Z',
+      updatedAt: '2026-03-29T00:10:00.000Z',
+    }),
+  ]);
+
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe('선택 시점에 읽은 본문');
+});
+
+test('opens from a nested contenteditable child input event and inserts the active prompt', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await dispatchNestedChildComposerInput(page);
+
+  await expect(page.locator('[data-testid="promptit-popup-host"]')).toBeVisible();
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
+
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe(
+    '영문으로 자연스럽게 번역해줘.',
+  );
+});
+
 test('copies the selected prompt and clears the trigger text', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
   await grantFixtureClipboardPermissions(extension.context);
 
   const page = await extension.context.newPage();
@@ -375,10 +715,187 @@ test('copies the selected prompt and clears the trigger text', async ({
   ).toBe('회의록으로 정리해줘.');
 });
 
+test('fetches the latest prompt body when copying from an already-open popup', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'body-on-copy',
+    title: '복사 지연 읽기',
+    content: '처음 열린 복사 본문',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([prompt]);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  await extension.setPromptRecords([
+    createPromptRecord({
+      ...prompt,
+      content: '복사 시점에 읽은 본문',
+      bodyUpdatedAt: '2026-03-29T00:11:00.000Z',
+      updatedAt: '2026-03-29T00:11:00.000Z',
+    }),
+  ]);
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe('');
+  await expect(
+    await page.evaluate(() => navigator.clipboard.readText()),
+  ).toBe('복사 시점에 읽은 본문');
+});
+
+test('clamps keyboard navigation at popup edges and moves between title and copy cells', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 번역',
+  );
+
+  await page.keyboard.press('ArrowUp');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 번역',
+  );
+
+  await page.keyboard.press('ArrowDown');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 회의록',
+  );
+
+  await page.keyboard.press('ArrowDown');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 회의록',
+  );
+
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Copy prompt: 회의록',
+  );
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 회의록',
+  );
+});
+
+test('keyboard navigation includes the pin cell without changing title and copy behavior', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 번역',
+  );
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe('Pin prompt: 번역');
+
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 번역',
+  );
+
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe('Copy prompt: 번역');
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 번역',
+  );
+});
+
+test('pins a prompt through keyboard activation and keeps the popup open', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe('Pin prompt: 회의록');
+
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(getPopupPinButton(page, '회의록', { pinned: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expectStoredPromptPinned(extension, 'prompt-minutes', true);
+  await expectPopupPromptOrder(page, ['회의록', '번역']);
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Unpin prompt: 회의록',
+  );
+});
+
+test('unpins a seeded pinned prompt through keyboard activation', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    basePrompts[0],
+    createPromptRecord({
+      ...basePrompts[1],
+      pinned: true,
+      pinnedOrder: 1,
+    }),
+  ]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await expectPopupPromptOrder(page, ['회의록', '번역']);
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 회의록',
+  );
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Unpin prompt: 회의록',
+  );
+
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(getPopupPinButton(page, '회의록')).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  await expectStoredPromptPinned(extension, 'prompt-minutes', false);
+  await expect
+    .poll(async () => {
+      return (await extension.getPromptRecords()).find(
+        (prompt) => prompt.id === 'prompt-minutes',
+      )?.pinnedOrder;
+    })
+    .toBeNull();
+  await expectPopupPromptOrder(page, ['번역', '회의록']);
+  await expect(await getActivePopupCellLabel(page)).toBe('Pin prompt: 회의록');
+});
+
 test('cleans up the trigger text on escape and backspace', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -398,7 +915,7 @@ test('cleans up the trigger text on escape and backspace', async ({
 test('closes on outside click and preserves resumed typing', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -418,7 +935,7 @@ test('closes on outside click and preserves resumed typing', async ({
 test('closes on blur and clears the trigger text', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -433,7 +950,7 @@ test('closes on blur and clears the trigger text', async ({
 test('closes on resize and clears the trigger text', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -447,19 +964,19 @@ test('closes on resize and clears the trigger text', async ({
 test('updates the open popup when prompt storage changes', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
   await openPromptPopup(page);
-  await extension.setPrompts([
+  await extension.setPromptRecords([
     basePrompts[0],
-    createPromptItem({
+    createPromptRecord({
       id: basePrompts[1].id,
       title: '회의록 업데이트',
       content: basePrompts[1].content,
-      sortOrder: basePrompts[1].sortOrder,
+      sortOrder: basePrompts[1].normalOrder,
       createdAt: basePrompts[1].createdAt,
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
@@ -470,10 +987,10 @@ test('updates the open popup when prompt storage changes', async ({
     .toEqual(['번역', '회의록 업데이트']);
 });
 
-test('normalizes invalid storage entries before rendering the popup', async ({
+test('migrates valid legacy storage entries before rendering the popup', async ({
   extension,
 }) => {
-  await extension.setRawPrompts([
+  await extension.setLegacyRawPrompts([
     {
       id: STARTER_PROMPT_ID,
       title: 'starter',
@@ -483,7 +1000,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
       updatedAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
     },
     { id: 'broken', title: '', content: '', sortOrder: 'bad' },
-    createPromptItem({
+    createLegacyPromptItem({
       id: 'prompt-later',
       title: '나중 순서',
       content: '두 번째',
@@ -491,7 +1008,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
       createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
-    createPromptItem({
+    createLegacyPromptItem({
       id: 'prompt-earlier',
       title: '먼저 순서',
       content: '첫 번째',
@@ -512,7 +1029,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
   ]);
   await expect
     .poll(async () =>
-      (await extension.getPrompts()).map((prompt) => ({
+      (await extension.getPromptRecords()).map((prompt) => ({
         id: prompt.id,
         title: prompt.title,
       })),
@@ -526,7 +1043,7 @@ test('normalizes invalid storage entries before rendering the popup', async ({
 test('opens the options page from the popup empty state', async ({
   extension,
 }) => {
-  await extension.setPrompts([]);
+  await extension.setPromptRecords([]);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -550,7 +1067,7 @@ test('opens the options page from the popup empty state', async ({
 test('opens options and closes the popup when trigger cleanup fails', async ({
   extension,
 }) => {
-  await extension.setPrompts([]);
+  await extension.setPromptRecords([]);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -572,7 +1089,7 @@ test('opens options and closes the popup when trigger cleanup fails', async ({
 test('shows an error toast when the background fails to open options and keeps the popup open', async ({
   extension,
 }) => {
-  await extension.setPrompts([]);
+  await extension.setPromptRecords([]);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -599,7 +1116,7 @@ test('shows an error toast when the background fails to open options and keeps t
 test('updates the active cell on hover and inserts a prompt on title click', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -622,7 +1139,7 @@ test('updates the active cell on hover and inserts a prompt on title click', asy
 test('shows an error toast when prompt insertion fails', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -641,7 +1158,7 @@ test('shows an error toast when prompt insertion fails', async ({
 test('preserves the multiline break when inserting and cleaning up a prompt from contenteditable', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -685,7 +1202,7 @@ test('preserves the multiline break when inserting and cleaning up a prompt from
 test('keeps the popup closed if the composer detaches while trigger resolution is pending', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -724,10 +1241,51 @@ test('keeps the popup closed if the composer detaches while trigger resolution i
   }).toBe(false);
 });
 
+test('closes an already-open popup when the composer is removed and does not reopen', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(1);
+
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    composer.remove();
+  });
+
+  await waitForPromptPopupToClose(page);
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(0);
+  await expect(page.getByTestId('prompt-textarea')).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.scrollBy(0, 1);
+    const marker = document.createElement('span');
+    document.body.append(marker);
+    marker.remove();
+  });
+
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(0);
+});
+
 test('copies a prompt through the mouse click path', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
   await grantFixtureClipboardPermissions(extension.context);
 
   const page = await extension.context.newPage();
@@ -745,10 +1303,159 @@ test('copies a prompt through the mouse click path', async ({
   ).toBe('영문으로 자연스럽게 번역해줘.');
 });
 
+test('toggles pin through the mouse click path while keeping the popup visible', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await getPopupPinButton(page, '회의록').click();
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(getPopupPinButton(page, '회의록', { pinned: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expectStoredPromptPinned(extension, 'prompt-minutes', true);
+  await expectPopupPromptOrder(page, ['회의록', '번역']);
+});
+
+test('renders pin focus like copy focus and uses a filled pinned icon', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  const initialSnapshot = await getPopupActionVisualSnapshot(
+    page,
+    'pin',
+    '번역',
+  );
+
+  expect(initialSnapshot.ariaPressed).toBe('false');
+  expect(initialSnapshot.iconFillColor).not.toBe('rgb(0, 0, 0)');
+  expect(initialSnapshot.iconPathData).toContain('v7.85');
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe('Pin prompt: 번역');
+  await expect
+    .poll(async () => await getPopupActionVisualSnapshot(page, 'pin', '번역'))
+    .toMatchObject({
+      badgeBackgroundColor: 'rgba(0, 0, 0, 0.06)',
+      badgeBorderStyle: 'none',
+      badgeBorderWidth: '0px',
+      iconFillColor: 'rgb(0, 0, 0)',
+    });
+  const focusedPinSnapshot = await getPopupActionVisualSnapshot(
+    page,
+    'pin',
+    '번역',
+  );
+  expect(focusedPinSnapshot.iconPathData).toBe(initialSnapshot.iconPathData);
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe('Copy prompt: 번역');
+  await expect
+    .poll(async () => await getPopupActionVisualSnapshot(page, 'copy', '번역'))
+    .toMatchObject({
+      badgeBackgroundColor: 'rgba(0, 0, 0, 0.06)',
+      badgeBorderStyle: 'none',
+      badgeBorderWidth: '0px',
+      iconFillColor: 'rgb(0, 0, 0)',
+    });
+
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe('Pin prompt: 번역');
+  await page.keyboard.press('Enter');
+  await expectStoredPromptPinned(extension, 'prompt-translate', true);
+  await expect(getPopupPinButton(page, '번역', { pinned: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  const pinnedSnapshot = await getPopupActionVisualSnapshot(
+    page,
+    'pin',
+    '번역',
+  );
+  expect(pinnedSnapshot.iconFillColor).toBe('rgb(0, 0, 0)');
+  expect(pinnedSnapshot.iconPathData).not.toBe(initialSnapshot.iconPathData);
+  expect(pinnedSnapshot.iconPathData).not.toContain('v7.85');
+});
+
+test('shows an error and preserves external pin state on stale popup activation', async ({
+  extension,
+}) => {
+  const stalePrompt = createPromptRecord({
+    id: 'stale-pin-prompt',
+    title: '고정 충돌',
+    content: '고정 충돌 본문',
+    sortOrder: 1,
+    createdAt: '2026-03-29T00:03:00.000Z',
+    updatedAt: '2026-03-29T00:03:00.000Z',
+  });
+  const externalPrompt = createPromptRecord({
+    ...stalePrompt,
+    pinned: true,
+    pinnedOrder: 1,
+    updatedAt: '2026-03-29T00:04:00.000Z',
+  });
+
+  await extension.setPromptRecords([stalePrompt]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Insert prompt: 고정 충돌',
+  );
+
+  await setPromptRecordsWithoutRevision(extension, [externalPrompt]);
+  await page.keyboard.press('ArrowLeft');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Pin prompt: 고정 충돌',
+  );
+
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toContain('다른 곳에서 변경되었습니다');
+  const conflictToastText = await getToastText(page);
+  expect(conflictToastText).toContain('다시 시도');
+  expect(conflictToastText).not.toBe('프롬프트를 고정했습니다.');
+  await expect
+    .poll(async () => {
+      const prompt = (await extension.getPromptRecords()).find(
+        (record) => record.id === stalePrompt.id,
+      );
+
+      return prompt
+        ? {
+            pinned: prompt.pinned,
+            updatedAt: prompt.updatedAt,
+          }
+        : null;
+    })
+    .toEqual({
+      pinned: true,
+      updatedAt: '2026-03-29T00:04:00.000Z',
+    });
+});
+
 test('shows an error toast when copying fails and keeps the popup open', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -769,10 +1476,36 @@ test('shows an error toast when copying fails and keeps the popup open', async (
   }).toBe('prompt-textarea');
 });
 
+test('keeps the popup open when body read fails before copying', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    failPromptBodyRead: true,
+  });
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('프롬프트 본문을 읽지 못했습니다.');
+  await expect(await getComposerText(page)).toBe('/ ');
+  await expect(
+    await page.evaluate(() => navigator.clipboard.readText()),
+  ).toBe('');
+});
+
 test('does not open the popup when only a slash is typed', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -780,20 +1513,19 @@ test('does not open the popup when only a slash is typed', async ({
   const composer = await page.getByTestId('prompt-textarea');
   await composer.click();
   await page.keyboard.type('/');
-  await page.waitForTimeout(150);
 
-  await waitForPromptPopupToClose(page);
   await expect(page.locator('html')).toHaveAttribute(
     'data-promptit-trigger-result',
     'contenteditable-no-match',
   );
+  await waitForPromptPopupToClose(page);
   await expect(await getComposerText(page)).toBe('/');
 });
 
 test('shows an error toast when prompt storage cannot be read for the trigger', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -804,19 +1536,18 @@ test('shows an error toast when prompt storage cannot be read for the trigger', 
   const composer = await page.getByTestId('prompt-textarea');
   await composer.click();
   await page.keyboard.type('/ ');
-  await page.waitForTimeout(150);
 
-  await waitForPromptPopupToClose(page);
   await expect
     .poll(async () => await getToastText(page))
     .toBe('프롬프트 목록을 읽지 못했습니다.');
+  await waitForPromptPopupToClose(page);
   await expect(await getComposerText(page)).toBe('/ ');
 });
 
 test('shows an error toast when trigger cleanup fails', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -835,7 +1566,7 @@ test('shows an error toast when trigger cleanup fails', async ({
 test('does not open the popup when the selection is not collapsed', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -847,19 +1578,17 @@ test('does not open the popup when the selection is not collapsed', async ({
   });
   await dispatchComposerInput(page, 'insertText', ' ');
 
-  await page.waitForTimeout(150);
-
-  await waitForPromptPopupToClose(page);
   await expect(page.locator('html')).toHaveAttribute(
     'data-promptit-trigger-result',
     'contenteditable-no-selection',
   );
+  await waitForPromptPopupToClose(page);
 });
 
 test('waits for compositionend before opening the popup', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -907,7 +1636,7 @@ test('waits for compositionend before opening the popup', async ({
 test('resets composing state after a popup closes during IME input', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -924,7 +1653,7 @@ test('resets composing state after a popup closes during IME input', async ({
 test('recognizes a non-breaking-space trigger in the contenteditable composer', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
@@ -944,7 +1673,7 @@ test('recognizes a non-breaking-space trigger in the contenteditable composer', 
 test('replaces the trigger text in the textarea fallback fixture', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -961,7 +1690,7 @@ test('replaces the trigger text in the textarea fallback fixture', async ({
 test('ignores readonly and disabled textarea composers', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
@@ -1013,9 +1742,9 @@ test('ignores readonly and disabled textarea composers', async ({
 test('scrolls the popup list to keep the active row visible', async ({
   extension,
 }) => {
-  await extension.setPrompts(
+  await extension.setPromptRecords(
     Array.from({ length: 7 }, (_, index) =>
-      createPromptItem({
+      createPromptRecord({
         id: `prompt-${index + 1}`,
         title: `프롬프트 ${index + 1}`,
         content: `내용 ${index + 1}`,
@@ -1050,9 +1779,9 @@ test('scrolls the popup list to keep the active row visible', async ({
 test('keeps keyboard navigation active while the hovered popup cell scrolls out from under a stationary pointer', async ({
   extension,
 }) => {
-  await extension.setPrompts(
+  await extension.setPromptRecords(
     Array.from({ length: 7 }, (_, index) =>
-      createPromptItem({
+      createPromptRecord({
         id: `prompt-${index + 1}`,
         title: `프롬프트 ${index + 1}`,
         content: `내용 ${index + 1}`,
@@ -1093,10 +1822,61 @@ test('keeps keyboard navigation active while the hovered popup cell scrolls out 
     .toBeGreaterThan(0);
 });
 
+test('repositions the open popup on window scroll instead of closing', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openFixturePage(page, TEXTAREA_FIXTURE_URL);
+
+  await page.evaluate(() => {
+    const form = document.querySelector('.composer-form');
+
+    if (!(form instanceof HTMLElement)) {
+      throw new Error('Composer form not found.');
+    }
+
+    const topSpacer = document.createElement('div');
+    topSpacer.style.height = '720px';
+    const bottomSpacer = document.createElement('div');
+    bottomSpacer.style.height = '720px';
+    form.before(topSpacer);
+    form.after(bottomSpacer);
+    window.scrollTo(0, 500);
+  });
+
+  await openPromptPopup(page);
+  const beforePosition = await getPopupPositionSnapshot(page);
+
+  await page.evaluate(() => {
+    window.scrollBy(0, 120);
+  });
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => {
+      const snapshot = await getPopupPositionSnapshot(page);
+      return Math.abs(snapshot.popupTop - beforePosition.popupTop) > 20;
+    })
+    .toBe(true);
+
+  const afterPosition = await getPopupPositionSnapshot(page);
+  const isAnchoredBelow = afterPosition.popupTop >= afterPosition.anchorBottom;
+  const isAnchoredAbove = afterPosition.popupBottom <= afterPosition.anchorTop;
+
+  expect(isAnchoredBelow || isAnchoredAbove).toBe(true);
+  expect(afterPosition.popupTop).toBeGreaterThanOrEqual(0);
+  expect(afterPosition.popupBottom).toBeLessThanOrEqual(
+    afterPosition.viewportHeight,
+  );
+});
+
 test('positions the popup above or below based on available space', async ({
   extension,
 }) => {
-  await extension.setPrompts(basePrompts);
+  await extension.setPromptRecords(basePrompts);
 
   const belowPage = await extension.context.newPage();
   await belowPage.setViewportSize({ width: 1280, height: 960 });

@@ -1,4 +1,4 @@
-import { expect, test as base } from '@playwright/test';
+import { expect, test as base, type Page } from '@playwright/test';
 
 import {
   launchExtension,
@@ -6,6 +6,7 @@ import {
 } from '../playwright/extension';
 import {
   CONTENTEDITABLE_FIXTURE_URL,
+  EDITOR_FIXTURE_URL,
   openFixturePage,
 } from '../playwright/promptit';
 
@@ -19,6 +20,12 @@ async function getServiceWorker(extension: LoadedExtension) {
   return await extension.context.waitForEvent('serviceworker');
 }
 
+type CdpExecutionContext = {
+  id: number;
+  name?: string;
+  origin: string;
+};
+
 const test = base.extend<{
   extension: LoadedExtension;
 }>({
@@ -28,6 +35,60 @@ const test = base.extend<{
     await extension.close();
   },
 });
+
+async function evaluateInPromptitContentScriptContext<T>(
+  extension: LoadedExtension,
+  page: Page,
+  expression: string,
+): Promise<T> {
+  const cdpSession = await extension.context.newCDPSession(page);
+  const contexts: CdpExecutionContext[] = [];
+
+  cdpSession.on(
+    'Runtime.executionContextCreated',
+    (event: { context: CdpExecutionContext }) => {
+      contexts.push(event.context);
+    },
+  );
+
+  await cdpSession.send('Runtime.enable');
+  await expect
+    .poll(() => {
+      return contexts.some((context) => {
+        return (
+          context.origin === `chrome-extension://${extension.extensionId}` ||
+          context.name?.includes(extension.extensionId) === true
+        );
+      });
+    })
+    .toBe(true);
+
+  const context = contexts.find((nextContext) => {
+    return (
+      nextContext.origin === `chrome-extension://${extension.extensionId}` ||
+      nextContext.name?.includes(extension.extensionId) === true
+    );
+  });
+
+  if (!context) {
+    await cdpSession.detach();
+    throw new Error('Promptit content script execution context not found.');
+  }
+
+  const result = await cdpSession.send('Runtime.evaluate', {
+    awaitPromise: true,
+    contextId: context.id,
+    expression,
+    returnByValue: true,
+  });
+  await cdpSession.detach();
+
+  if (result.exceptionDetails) {
+    throw new Error('Promptit content script evaluation failed.');
+  }
+
+  return result.result.value as T;
+}
 
 test('opens the options page when the content script sends the runtime message', async ({
   extension,
@@ -47,7 +108,16 @@ test('opens the options page when the content script sends the runtime message',
   await optionsPage.waitForLoadState('domcontentloaded');
 
   await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
-  await expect(optionsPage.getByText('Promptit Sprint 3')).toBeVisible();
+  await expect(optionsPage.getByText('Promptit')).toBeVisible();
+  await expect(
+    optionsPage.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
+  ).toBeVisible();
+  await expect(
+    optionsPage.getByText(/ChatGPT, Gemini/),
+  ).toBeVisible();
+  await expect(optionsPage.getByLabel('/ space')).toBeVisible();
+  await expect(optionsPage.locator('kbd').filter({ hasText: '/' })).toBeVisible();
+  await expect(optionsPage.locator('kbd').filter({ hasText: 'Space' })).toBeVisible();
 });
 
 test('ignores malformed runtime messages without opening the options page', async ({
@@ -83,6 +153,117 @@ test('does not initialize Promptit on unsupported URLs', async ({
 }) => {
   const page = await extension.context.newPage();
   await page.goto('about:blank');
+  await page.waitForTimeout(150);
+
+  await expect
+    .poll(async () => {
+      return await page.evaluate(() => {
+        return {
+          initialized:
+            '__promptitContentInitialized__' in window &&
+            Object.prototype.hasOwnProperty.call(
+              window,
+              '__promptitContentInitialized__',
+            ),
+          readyAttribute:
+            document.documentElement.getAttribute('data-promptit-ready'),
+        };
+      });
+    })
+    .toEqual({
+      initialized: false,
+      readyAttribute: null,
+    });
+});
+
+test('does not register duplicate content script listeners on same-page reinjection', async ({
+  extension,
+}) => {
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await expect(page.locator('#prompt-textarea')).toBeVisible();
+
+  const duplicateInitResult =
+    await evaluateInPromptitContentScriptContext<{
+      afterReadyAttribute: string | null;
+      beforeReadyAttribute: string | null;
+      initialized: boolean;
+      popupHosts: number;
+    }>(
+      extension,
+      page,
+      `(
+        async () => {
+          const manifest = chrome.runtime.getManifest();
+          const resources = (manifest.web_accessible_resources ?? [])
+            .flatMap((entry) => entry.resources ?? []);
+          const contentScriptResource = resources.find((resource) => {
+            return (
+              resource.startsWith('assets/content-script.ts-') &&
+              resource.endsWith('.js')
+            );
+          });
+
+          if (!contentScriptResource) {
+            throw new Error('Promptit content script resource not found.');
+          }
+
+          const beforeReadyAttribute =
+            document.documentElement.getAttribute('data-promptit-ready');
+          document.documentElement.removeAttribute('data-promptit-ready');
+
+          await import(
+            chrome.runtime.getURL(contentScriptResource) +
+              '?promptit-duplicate-guard=' +
+              Date.now()
+          );
+
+          return {
+            afterReadyAttribute:
+              document.documentElement.getAttribute('data-promptit-ready'),
+            beforeReadyAttribute,
+            initialized: window.__promptitContentInitialized__ === true,
+            popupHosts: document.querySelectorAll(
+              '[data-testid="promptit-popup-host"]',
+            ).length,
+          };
+        }
+      )()`,
+    );
+
+  expect(duplicateInitResult).toEqual({
+    afterReadyAttribute: null,
+    beforeReadyAttribute: 'true',
+    initialized: true,
+    popupHosts: 0,
+  });
+
+  await page.locator('#prompt-textarea').click();
+  await page.keyboard.type('/ ');
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+
+  await expect
+    .poll(async () => {
+      return await page.evaluate(() => {
+        return {
+          popupHosts: document.querySelectorAll(
+            '[data-testid="promptit-popup-host"]',
+          ).length,
+        };
+      });
+    })
+    .toEqual({
+      popupHosts: 1,
+    });
+});
+
+test('does not initialize Promptit on unsupported localhost fixtures', async ({
+  extension,
+}) => {
+  const page = await extension.context.newPage();
+  await page.goto(EDITOR_FIXTURE_URL, {
+    waitUntil: 'domcontentloaded',
+  });
   await page.waitForTimeout(150);
 
   await expect

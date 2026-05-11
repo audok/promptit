@@ -5,7 +5,7 @@ import {
   type LoadedExtension,
 } from '../playwright/extension';
 import {
-  createPromptItem,
+  createPromptRecord,
   getComposer,
   getComposerText,
   getPopupTitles,
@@ -48,8 +48,8 @@ test.describe('chatgpt.com live smoke', () => {
   test('opens the popup and inserts a saved prompt', async ({
     extension,
   }) => {
-    await extension.setPrompts([
-      createPromptItem({
+    await extension.setPromptRecords([
+      createPromptRecord({
         id: 'live-insert',
         title: '라이브 삽입',
         content: '실사이트 삽입 검증용 프롬프트',
@@ -76,14 +76,14 @@ test.describe('chatgpt.com live smoke', () => {
       ['clipboard-read', 'clipboard-write'],
       { origin: CHATGPT_ORIGIN },
     );
-    await extension.setPrompts([
-      createPromptItem({
+    await extension.setPromptRecords([
+      createPromptRecord({
         id: 'live-copy-1',
         title: '라이브 번역',
         content: '실사이트 복사 검증용 프롬프트',
         sortOrder: 1,
       }),
-      createPromptItem({
+      createPromptRecord({
         id: 'live-copy-2',
         title: '라이브 복사',
         content: '클립보드로 복사되는 프롬프트',
@@ -109,7 +109,7 @@ test.describe('chatgpt.com live smoke', () => {
   test('opens the options page from the empty state on chatgpt.com', async ({
     extension,
   }) => {
-    await extension.setPrompts([]);
+    await extension.setPromptRecords([]);
 
     const page = await extension.context.newPage();
     await openLiveChatGPT(page);
@@ -133,8 +133,8 @@ test.describe('chatgpt.com live smoke', () => {
   test('initializes Promptit when navigating from chat.openai.com', async ({
     extension,
   }) => {
-    await extension.setPrompts([
-      createPromptItem({
+    await extension.setPromptRecords([
+      createPromptRecord({
         id: 'legacy-host',
         title: '레거시 호스트',
         content: '레거시 호스트 검증용 프롬프트',

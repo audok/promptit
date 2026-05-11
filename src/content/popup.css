@@ -10,11 +10,7 @@
 
 .promptit-root {
   color: #1b1b1b;
-  font-family:
-    Inter,
-    'SF Pro Text',
-    'Segoe UI',
-    sans-serif;
+  font-family: var(--promptit-font-family);
   line-height: 1.2;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -87,6 +83,7 @@
 
 .promptit-header-slash {
   font-size: 12px;
+  font-weight: 600;
 }
 
 .promptit-header-text,
@@ -99,7 +96,7 @@
 
 .promptit-header-text {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .promptit-header-action,
@@ -199,6 +196,7 @@
 
 .promptit-row-leading-button,
 .promptit-row-title-button,
+.promptit-row-pin-button,
 .promptit-row-copy-button {
   position: relative;
   display: flex;
@@ -216,6 +214,7 @@
 }
 
 .promptit-row-leading-button,
+.promptit-row-pin-button,
 .promptit-row-copy-button {
   justify-content: center;
 }
@@ -236,6 +235,7 @@
 }
 
 .promptit-row-leading-button:disabled,
+.promptit-row-pin-button:disabled,
 .promptit-row-copy-button:disabled {
   opacity: 1;
   cursor: default;
@@ -293,6 +293,7 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+.promptit-row-pin-button.is-active-cell,
 .promptit-row-copy-button.is-active-cell {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -311,11 +312,16 @@
   line-height: 1.3;
 }
 
+.promptit-row-pin-button,
 .promptit-row-copy-button {
   color: rgba(0, 0, 0, 0.3);
 }
 
-.promptit-row-copy-badge {
+.promptit-row-pin-button.is-pinned {
+  color: #000;
+}
+
+.promptit-row-action-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -328,18 +334,26 @@
     background-color 120ms ease;
 }
 
+.promptit-row-pin-button:not(:disabled),
 .promptit-row-copy-button:not(:disabled) {
   cursor: pointer;
 }
 
+.promptit-row:hover .promptit-row-pin-button:not(:disabled),
 .promptit-row:hover .promptit-row-copy-button:not(:disabled) {
   color: rgba(0, 0, 0, 0.5);
 }
 
-.promptit-row:hover .promptit-row-copy-button:not(:disabled) .promptit-row-copy-badge {
+.promptit-row:hover .promptit-row-pin-button.is-pinned:not(:disabled) {
+  color: #000;
+}
+
+.promptit-row:hover .promptit-row-pin-button:not(:disabled) .promptit-row-action-badge,
+.promptit-row:hover .promptit-row-copy-button:not(:disabled) .promptit-row-action-badge {
   background: rgba(0, 0, 0, 0.03);
 }
 
+.promptit-row-pin-button:disabled,
 .promptit-row-copy-button:disabled {
   color: rgba(0, 0, 0, 0.2);
 }
@@ -348,15 +362,22 @@
   visibility: hidden;
 }
 
+.promptit-row.is-active-row .promptit-row-pin-button:not(:disabled),
 .promptit-row.is-active-row .promptit-row-copy-button:not(:disabled) {
   color: rgba(0, 0, 0, 0.5);
 }
 
-.promptit-row-copy-button.is-active-cell:not(:disabled) {
+.promptit-row.is-active-row .promptit-row-pin-button.is-pinned:not(:disabled) {
+  color: #000;
+}
+
+.promptit-row-pin-button.is-active-cell,
+.promptit-row-copy-button.is-active-cell {
   color: rgba(0, 0, 0, 0.5);
 }
 
-.promptit-row-copy-button.is-active-cell:not(:disabled) .promptit-row-copy-badge {
+.promptit-row-pin-button.is-active-cell .promptit-row-action-badge,
+.promptit-row-copy-button.is-active-cell .promptit-row-action-badge {
   background: rgba(0, 0, 0, 0.06);
   color: #000;
 }
@@ -371,6 +392,11 @@
 }
 
 .promptit-row-leading-badge .promptit-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.promptit-row-pin-badge .promptit-icon {
   width: 18px;
   height: 18px;
 }
