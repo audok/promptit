@@ -85,7 +85,7 @@ Promptit production prompt data는 IndexedDB에 저장되며 `promptMetas`와 `p
 
 일반 테스트 데이터는 `extension.setPromptRecords(records)`로 seed하고, 상태 확인은 `extension.getPromptMetas()`, `extension.getPromptBody(id)`, `extension.getPromptRecords()`를 사용한다.
 
-legacy `chrome.storage.local.prompts` helper는 migration/recovery 시나리오에서만 사용한다. 이 경우 `setLegacyRawPrompts(rawValue)`로 예전 저장소 값을 준비하고, `getRawChromeStorage()`로 production prompt body가 `chrome.storage.local`에 다시 쓰이지 않았는지 확인할 수 있다.
+legacy `chrome.storage.local.prompts` helper는 migration/recovery 시나리오에서만 사용한다. 이 경우 `setLegacyRawPrompts(rawValue)`로 예전 저장소 값을 준비하고, `getChromeStorageLocalSnapshot()`로 production prompt body가 `chrome.storage.local`에 다시 쓰이지 않았는지 확인할 수 있다.
 
 Popup storage 테스트는 다음 경계를 우선 검증한다.
 
