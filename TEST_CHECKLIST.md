@@ -41,6 +41,7 @@
 - [x] trigger resolution이 끝나기 전에 composer DOM이 제거되면 stale popup을 열지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 입력창 내부 자식 노드에서 이벤트가 올라와도 같은 composer로 안정적으로 resolve되는지 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] 이미 열린 팝업 상태에서 입력창 DOM이 제거됐을 때 팝업이 정리되는지 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] contenteditable block 경계를 넘어 `/ ` trigger를 만들면 팝업이 열리지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 
 ## 3. 팝업 상호작용
 
@@ -51,6 +52,8 @@
 - [x] 키보드로 활성 프롬프트를 insert할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 키보드로 선택한 프롬프트를 copy할 수 있다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 키보드로 선택한 프롬프트를 pin/unpin할 수 있고 팝업이 열린 상태로 유지된다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] IME composing 중 `Enter`, `Escape`, `Backspace`가 popup command로 소비되지 않는다. `Automated` via `tests/e2e/slash-popup.spec.ts`
+- [x] prompt body read가 pending인 busy 상태에서 외부 input event가 popup을 닫지 않고 final insert가 한 번만 이어진다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] `Escape`로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] `Backspace`로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] 바깥 클릭으로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup.spec.ts`
@@ -116,7 +119,11 @@
 - [x] legacy `chrome.storage.local.prompts`는 IndexedDB가 비어 있을 때 migration 입력으로 사용된다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] legacy migration은 valid prompt를 `promptMetas`/`promptBodies`로 분리하고 legacy key를 recovery용으로 유지한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] legacy migration은 invalid item과 starter prompt를 사용자 목록에서 제외한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] migration complete marker가 있으면 IndexedDB가 비어 있고 legacy prompt가 남아 있어도 재수입하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] marker가 없고 stale legacy key가 남은 상태에서 marker repair가 실패하면 마지막 migrated prompt 삭제를 커밋하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] oversized legacy body가 있으면 migration이 abort되고 truncation하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] selected prompt body load 실패 시 dirty create draft를 유지한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] selected prompt body load 실패 시 edit save를 차단한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] storage read 실패 시 오류를 표시하고 기존 storage 값을 보존한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] initial storage read 실패 시 legacy/malformed storage를 repair하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 저장 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
@@ -136,6 +143,7 @@
 
 ## 7. 릴리스 체크용 빠른 체크리스트
 
+- [x] `pnpm test` is the deterministic local gate: `pnpm typecheck`, production build/manifest check, fixture-based `pnpm test:e2e`, and final production build/manifest check
 - [x] `pnpm typecheck` reported passed by core/UI/test agents for the IndexedDB migration slice
 - [x] `pnpm build:test` reported passed by core/UI/test agents for the IndexedDB migration slice
 - [x] options focused suite passed 27/27 for the IndexedDB migration slice
@@ -143,7 +151,8 @@
 - [x] slash plus Gemini focused suites passed 47/47 for the IndexedDB migration slice
 - [x] migration marker post-commit failure issue was fixed and regression-tested
 - [x] reviewer findings addressed: revision publish is best-effort after committed mutations, and runtime mutation timestamps are required except delete optional body timestamp
-- [x] popup pin final validation passed: `pnpm typecheck`, `pnpm build:test`, focused slash popup `45 passed`, focused Gemini popup `8 passed`, and full `pnpm test:e2e` exit 0 with `1 flaky`, `88 passed`
+- [x] F1-F8 deterministic validation passed through `pnpm typecheck`, production/test builds, targeted affected specs, and full `pnpm test:e2e` with `120 passed`
+- [x] production manifest policy check rejects `host_permissions` and test-only localhost matches in `dist/manifest.json`
 - [x] final code review found no blocking correctness issues; residual pin gaps are not-found/generic runtime error direct E2E coverage and existing-pinned-list insertion-order direct popup coverage
 - [ ] live suites were not run for this slice
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭
