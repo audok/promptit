@@ -34,8 +34,15 @@ import {
   type UpdatePromptMetaResponse,
 } from '../runtime/messages';
 
+declare global {
+  interface Window {
+    __promptitTestGetPrompts?: () => Promise<PromptItem[]>;
+  }
+}
+
 const UPDATE_PROMPT_NOT_FOUND_MESSAGE = '수정할 프롬프트를 찾지 못했습니다.';
 const DELETE_PROMPT_NOT_FOUND_MESSAGE = '삭제할 프롬프트를 찾지 못했습니다.';
+const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
 
 type PromptRecordWithLegacyOrder = PromptRecord & {
   sortOrder: number;
@@ -426,9 +433,18 @@ export function subscribeToPrompts(
 
 async function getLegacyPromptItems(): Promise<PromptItem[]> {
   const metas = await getPromptMetas();
-  const records = await Promise.all(
-    metas.map(async (meta) => toPromptRecord(meta, await getPromptBody(meta.id))),
-  );
+  const records: PromptRecord[] = [];
+
+  for (const meta of metas) {
+    try {
+      records.push(toPromptRecord(meta, await getPromptBody(meta.id)));
+    } catch (error) {
+      console.warn(
+        `[promptit] Skipping legacy prompt compatibility record with unreadable body: ${meta.id}`,
+        error,
+      );
+    }
+  }
 
   return sortPrompts(records.map(toLegacyPromptItem));
 }
@@ -487,4 +503,8 @@ async function sendRuntimeRequest(
     (nextRequest) => chrome.runtime.sendMessage(nextRequest) as Promise<unknown>,
     request,
   );
+}
+
+if (IS_TEST_MODE && typeof window !== 'undefined') {
+  window.__promptitTestGetPrompts = getPrompts;
 }

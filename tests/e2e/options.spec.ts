@@ -22,6 +22,7 @@ import {
 import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
+  GET_PROMPT_BODY_MESSAGE,
   MOVE_PROMPT_MESSAGE,
   SET_PROMPT_PINNED_MESSAGE,
   UPDATE_PROMPT_BODY_MESSAGE,
@@ -187,6 +188,13 @@ function getPromptList(page: Page): Locator {
 
 function getPromptListButtons(page: Page): Locator {
   return getPromptList(page).locator('[data-testid="prompt-card"]');
+}
+
+function getPromptListCreateButton(page: Page): Locator {
+  return getPromptList(page).getByRole('button', {
+    name: '프롬프트 추가',
+    exact: true,
+  });
 }
 
 function getPromptCard(page: Page, title: string): Locator {
@@ -1286,6 +1294,354 @@ test('preserves draft input while the initial prompt load resolves', async ({
   await expect(getContentInput(page)).toHaveValue('로딩 중 입력한 본문');
 });
 
+test('keeps dirty create draft when starting create mode is dismissed', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([]);
+
+  const page = await openOptionsPage(extension);
+
+  await expect(page.getByRole('heading', { name: '프롬프트 추가' })).toBeVisible();
+  await getTitleInput(page).fill('저장 전 생성 제목');
+  await getContentInput(page).fill('저장 전 생성 본문');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+    );
+    await dialog.dismiss();
+  });
+  await getPromptListCreateButton(page).click();
+
+  await expect(page.getByRole('heading', { name: '프롬프트 추가' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue('저장 전 생성 제목');
+  await expect(getContentInput(page)).toHaveValue('저장 전 생성 본문');
+});
+
+test('keeps dirty edit draft when selecting another prompt is dismissed', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'dirty-select-first',
+    title: '첫 번째 선택 대상',
+    content: '첫 번째 원래 본문',
+    sortOrder: 1,
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'dirty-select-second',
+    title: '두 번째 선택 대상',
+    content: '두 번째 원래 본문',
+    sortOrder: 2,
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await getPromptCard(page, firstPrompt.title).click();
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(firstPrompt.title);
+  await expect(getContentInput(page)).toHaveValue(firstPrompt.content);
+
+  await getTitleInput(page).fill('저장 전 수정 제목');
+  await getContentInput(page).fill('저장 전 수정 본문');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+    );
+    await dialog.dismiss();
+  });
+  await getPromptCard(page, secondPrompt.title).click();
+
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue('저장 전 수정 제목');
+  await expect(getContentInput(page)).toHaveValue('저장 전 수정 본문');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+    );
+    await dialog.accept();
+  });
+  await getPromptCard(page, secondPrompt.title).click();
+
+  await expect(getTitleInput(page)).toHaveValue(secondPrompt.title);
+  await expect(getContentInput(page)).toHaveValue(secondPrompt.content);
+});
+
+test('keeps dirty edit draft when edit cancel is dismissed', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'dirty-cancel-prompt',
+    title: '취소 확인 대상',
+    content: '취소 확인 원래 본문',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([prompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await getPromptCard(page, prompt.title).click();
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(prompt.title);
+  await expect(getContentInput(page)).toHaveValue(prompt.content);
+
+  await getTitleInput(page).fill('취소 전 수정 제목');
+  await getContentInput(page).fill('취소 전 수정 본문');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+    );
+    await dialog.dismiss();
+  });
+  await page.getByRole('button', { name: '편집 취소', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue('취소 전 수정 제목');
+  await expect(getContentInput(page)).toHaveValue('취소 전 수정 본문');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+    );
+    await dialog.accept();
+  });
+  await page.getByRole('button', { name: '편집 취소', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: '프롬프트 추가' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue('');
+  await expect(getContentInput(page)).toHaveValue('');
+});
+
+test('preserves dirty create draft when selected prompt body load fails', async ({
+  extension,
+}) => {
+  const targetPrompt = createPromptRecord({
+    id: 'dirty-create-body-load-failure',
+    title: '본문 로드 실패 대상',
+    content: '이 본문은 실패 응답 때문에 편집기에 들어오면 안 된다.',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([targetPrompt]);
+
+  const page = await openOptionsPage(extension);
+  await getTitleInput(page).fill('작성 중인 제목');
+  await getContentInput(page).fill('작성 중인 본문');
+  await patchRuntimeMessageFailure(
+    page,
+    [GET_PROMPT_BODY_MESSAGE],
+    'mock selected body load failure',
+  );
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+    );
+    await dialog.accept();
+  });
+  await getPromptCard(page, targetPrompt.title).click();
+
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '프롬프트 추가' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue('작성 중인 제목');
+  await expect(getContentInput(page)).toHaveValue('작성 중인 본문');
+  expect(await extension.getPromptRecords()).toEqual([targetPrompt]);
+});
+
+test('uses prompt-specific accessible names for list delete buttons', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'list-delete-accessible-name',
+    title: '목록 삭제 접근성 첫 번째',
+    content: '첫 번째 목록 삭제 버튼 이름을 검증한다.',
+    sortOrder: 1,
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'list-delete-accessible-name-second',
+    title: '목록 삭제 접근성 두 번째',
+    content: '두 번째 목록 삭제 버튼 이름을 검증한다.',
+    sortOrder: 2,
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await expect(
+    getPromptList(page).getByRole('button', {
+      name: `${firstPrompt.title} 삭제`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    getPromptList(page).getByRole('button', {
+      name: `${secondPrompt.title} 삭제`,
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
+test('selects prompt cards by keyboard with specific edit names', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'keyboard-card-first',
+    title: '키보드 카드 첫 번째',
+    content: '첫 번째 카드 본문',
+    sortOrder: 1,
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'keyboard-card-second',
+    title: '키보드 카드 두 번째',
+    content: '두 번째 카드 본문',
+    sortOrder: 2,
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+  const firstCard = getPromptList(page).getByRole('button', {
+    name: `${firstPrompt.title} 편집`,
+    exact: true,
+  });
+  const secondCard = getPromptList(page).getByRole('button', {
+    name: `${secondPrompt.title} 편집`,
+    exact: true,
+  });
+
+  await expect(firstCard).toBeVisible();
+  await expect(secondCard).toBeVisible();
+  await expect(firstCard).not.toHaveAttribute('aria-pressed', /.*/);
+  await expect(secondCard).not.toHaveAttribute('aria-pressed', /.*/);
+
+  await secondCard.focus();
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(secondPrompt.title);
+  await expect(secondCard).toHaveAttribute('aria-current', 'true');
+
+  await firstCard.focus();
+  await page.keyboard.press('Space');
+
+  await expect(getTitleInput(page)).toHaveValue(firstPrompt.title);
+  await expect(firstCard).toHaveAttribute('aria-current', 'true');
+});
+
+test('blocks save when dirty edit discard is followed by selected body load failure', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'dirty-edit-failed-select-first',
+    title: '기존 편집 대상',
+    content: '기존 편집 본문',
+    sortOrder: 1,
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'dirty-edit-failed-select-second',
+    title: '실패 선택 대상',
+    content: '선택 실패 대상 본문',
+    sortOrder: 2,
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+  await getPromptCard(page, firstPrompt.title).click();
+  await expect(getTitleInput(page)).toHaveValue(firstPrompt.title);
+  await expect(getContentInput(page)).toHaveValue(firstPrompt.content);
+
+  await getTitleInput(page).fill('버리기로 승인한 수정 제목');
+  await getContentInput(page).fill('버리기로 승인한 수정 본문');
+  await patchRuntimeMessageFailure(
+    page,
+    [GET_PROMPT_BODY_MESSAGE],
+    'mock selected body load failure',
+  );
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+    );
+    await dialog.accept();
+  });
+  await getPromptCard(page, secondPrompt.title).click();
+
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(secondPrompt.title);
+  await expect(getContentInput(page)).toHaveValue('');
+  await expect(
+    getPromptSubmitButton(page, '프롬프트 수정'),
+  ).toBeDisabled();
+  await expect(
+    page.locator('form').getByRole('button', {
+      name: '프롬프트 삭제',
+      exact: true,
+    }),
+  ).toBeEnabled();
+
+  await page.locator('form').evaluate((form) => {
+    (form as HTMLFormElement).requestSubmit();
+  });
+
+  expect(await extension.getPromptRecords()).toEqual([firstPrompt, secondPrompt]);
+});
+
+test('disables save when selected prompt body did not load', async ({
+  extension,
+}) => {
+  const targetPrompt = createPromptRecord({
+    id: 'disabled-save-body-load-failure',
+    title: '저장 차단 대상',
+    content: '본문 로드 실패 뒤 빈 본문으로 저장되면 안 된다.',
+    sortOrder: 1,
+  });
+
+  await extension.setPromptRecords([targetPrompt]);
+
+  const page = await openOptionsPage(extension);
+  await patchRuntimeMessageFailure(
+    page,
+    [GET_PROMPT_BODY_MESSAGE],
+    'mock selected body load failure',
+  );
+
+  await getPromptCard(page, targetPrompt.title).click();
+
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
+    }),
+  ).toBeVisible();
+  await expect(
+    getPromptSubmitButton(page, '프롬프트 수정'),
+  ).toBeDisabled();
+  await page.locator('form').evaluate((form) => {
+    (form as HTMLFormElement).requestSubmit();
+  });
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
+    }),
+  ).toBeVisible();
+  expect(await extension.getPromptRecords()).toEqual([targetPrompt]);
+});
+
 test('shows validation errors instead of saving invalid prompts', async ({
   extension,
 }) => {
@@ -1531,6 +1887,169 @@ test('migrates valid legacy storage entries when the options page loads', async 
     ]);
 });
 
+test('does not reimport legacy prompts after migration is complete', async ({
+  extension,
+}) => {
+  const legacyPrompt = createLegacyPromptItem({
+    id: 'completed-migration-legacy',
+    title: '완료된 마이그레이션 레거시',
+    content: '마이그레이션 완료 뒤 다시 가져오면 안 된다.',
+    sortOrder: 1,
+    createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+    updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+  });
+
+  await extension.setLegacyRawPrompts([legacyPrompt]);
+  await extension.setPromptMigrationCompleteMarker();
+
+  const page = await openOptionsPage(extension);
+
+  await expect(
+    page.getByText(
+      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
+    ),
+  ).toBeVisible();
+  await expect(getPromptCard(page, legacyPrompt.title)).toHaveCount(0);
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
+  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual([
+    legacyPrompt,
+  ]);
+});
+
+test('does not resurrect stale legacy prompts after deleting every migrated prompt', async ({
+  extension,
+}) => {
+  const legacyPrompts = [
+    createLegacyPromptItem({
+      id: 'delete-all-legacy-first',
+      title: '전체 삭제 첫 번째',
+      content: '삭제 후 되살아나면 안 된다.',
+      sortOrder: 1,
+      createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+      updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+    }),
+    createLegacyPromptItem({
+      id: 'delete-all-legacy-second',
+      title: '전체 삭제 두 번째',
+      content: 'stale legacy key는 남아 있어도 import input이 아니다.',
+      sortOrder: 2,
+      createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
+      updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
+    }),
+  ];
+
+  await extension.setLegacyRawPrompts(legacyPrompts);
+
+  const page = await openOptionsPage(extension);
+  await expect(getPromptCard(page, '전체 삭제 첫 번째')).toBeVisible();
+  await expect(getPromptCard(page, '전체 삭제 두 번째')).toBeVisible();
+
+  const migratedPrompts = await extension.getPromptRecords();
+
+  for (const prompt of migratedPrompts) {
+    const deleteResponse = await extension.sendRuntimeMessage({
+      type: DELETE_PROMPT_MESSAGE,
+      id: prompt.id,
+      expectedUpdatedAt: prompt.updatedAt,
+      expectedBodyUpdatedAt: prompt.bodyUpdatedAt,
+    });
+
+    expect(deleteResponse).toEqual(
+      expect.objectContaining({
+        type: DELETE_PROMPT_MESSAGE,
+        ok: true,
+        status: 'success',
+        id: prompt.id,
+      }),
+    );
+  }
+
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
+  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual(
+    legacyPrompts,
+  );
+  expect(await extension.getPromptMigrationMarker()).toEqual(
+    expect.objectContaining({
+      status: 'complete',
+      completedAt: expect.any(String),
+    }),
+  );
+
+  const freshPage = await openOptionsPage(extension);
+
+  await expect(
+    freshPage.getByText(
+      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
+    ),
+  ).toBeVisible();
+  await expect(getPromptCard(freshPage, '전체 삭제 첫 번째')).toHaveCount(0);
+  await expect(getPromptCard(freshPage, '전체 삭제 두 번째')).toHaveCount(0);
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
+});
+
+test('does not commit the final migrated delete when migration marker repair fails', async ({
+  extension,
+}) => {
+  const legacyPrompt = createLegacyPromptItem({
+    id: 'delete-all-marker-failure',
+    title: '마커 실패 마지막 삭제',
+    content: '마커가 없으면 삭제 성공으로 처리하면 안 된다.',
+    sortOrder: 1,
+    createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+    updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+  });
+
+  await extension.setLegacyRawPrompts([legacyPrompt]);
+  await extension.failPromptStorageKeyWritesOnce(
+    [PROMPT_IDB_MIGRATION_STORAGE_KEY],
+    'mock initial migration marker write failure',
+  );
+
+  const page = await openOptionsPage(extension);
+
+  await expect(getPromptCard(page, legacyPrompt.title)).toBeVisible();
+  expect(await extension.getPromptMigrationMarker()).toBeUndefined();
+
+  const migratedPrompt = await getRequiredPromptRecord(
+    extension,
+    legacyPrompt.id,
+  );
+
+  await extension.failPromptStorageKeyWritesOnce(
+    [PROMPT_IDB_MIGRATION_STORAGE_KEY],
+    'mock final delete marker repair failure',
+  );
+
+  const deleteResponse = await extension.sendRuntimeMessage({
+    type: DELETE_PROMPT_MESSAGE,
+    id: migratedPrompt.id,
+    expectedUpdatedAt: migratedPrompt.updatedAt,
+    expectedBodyUpdatedAt: migratedPrompt.bodyUpdatedAt,
+  });
+
+  expect(deleteResponse).toEqual(
+    expect.objectContaining({
+      type: DELETE_PROMPT_MESSAGE,
+      ok: false,
+      status: 'error',
+    }),
+  );
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
+    migratedPrompt,
+  ]);
+  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual([
+    legacyPrompt,
+  ]);
+  expect(await extension.getPromptMigrationMarker()).toBeUndefined();
+
+  const freshPage = await openOptionsPage(extension);
+
+  await expect(getPromptCard(freshPage, legacyPrompt.title)).toBeVisible();
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
+    migratedPrompt,
+  ]);
+});
+
 test('keeps migrated prompts readable when the migration marker write fails after IDB commit', async ({
   extension,
 }) => {
@@ -1606,6 +2125,12 @@ test('keeps migrated prompts readable when the migration marker write fails afte
       status: 'success',
     }),
   );
+  expect(await extension.getPromptMigrationMarker()).toEqual(
+    expect.objectContaining({
+      status: 'complete',
+      completedAt: expect.any(String),
+    }),
+  );
   await expect
     .poll(async () =>
       (await extension.getPromptRecords()).map((prompt) => prompt.title),
@@ -1637,6 +2162,61 @@ test('handles malformed legacy storage without creating prompt records', async (
   await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
   await expect.poll(async () => await extension.getLegacyPrompts()).toEqual(
     malformedLegacyValue,
+  );
+});
+
+test('legacy compatibility list skips records with missing bodies', async ({
+  extension,
+}) => {
+  const validPrompt = createPromptRecord({
+    id: 'legacy-compatible-valid-body',
+    title: '호환 목록 정상 본문',
+    content: '호환 목록에 남아야 한다.',
+    sortOrder: 1,
+  });
+  const missingBodyPrompt = createPromptRecord({
+    id: 'legacy-compatible-missing-body',
+    title: '호환 목록 본문 없음',
+    content: '이 본문 record는 테스트에서 삭제된다.',
+    sortOrder: 2,
+  });
+
+  await extension.setPromptRecords([validPrompt, missingBodyPrompt]);
+  await extension.deletePromptBody(missingBodyPrompt.id);
+
+  const page = await openOptionsPage(extension);
+
+  const legacyItems = await page.evaluate(async () => {
+    const getPrompts = window.__promptitTestGetPrompts;
+
+    if (!getPrompts) {
+      throw new Error('Legacy prompt compatibility test hook is unavailable.');
+    }
+
+    return await getPrompts();
+  });
+
+  expect(legacyItems).toEqual([
+    expect.objectContaining({
+      id: validPrompt.id,
+      title: validPrompt.title,
+      content: validPrompt.content,
+      sortOrder: validPrompt.normalOrder,
+    }),
+  ]);
+
+  const directBodyResponse = await extension.sendRuntimeMessage({
+    type: GET_PROMPT_BODY_MESSAGE,
+    id: missingBodyPrompt.id,
+  });
+
+  expect(directBodyResponse).toEqual(
+    expect.objectContaining({
+      type: GET_PROMPT_BODY_MESSAGE,
+      ok: false,
+      status: 'not-found',
+      id: missingBodyPrompt.id,
+    }),
   );
 });
 

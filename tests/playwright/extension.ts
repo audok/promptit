@@ -52,6 +52,9 @@ export type LoadedExtension = {
   setPromptRecords: (records: PromptRecord[]) => Promise<void>;
   getLegacyPrompts: () => Promise<unknown>;
   setLegacyRawPrompts: (rawValue: unknown) => Promise<void>;
+  setPromptMigrationCompleteMarker: () => Promise<void>;
+  getPromptMigrationMarker: () => Promise<unknown>;
+  deletePromptBody: (id: string) => Promise<void>;
   getPromptStorageRevision: () => Promise<unknown>;
   getChromeStorageLocalSnapshot: () => Promise<Record<string, unknown>>;
   failPromptStorageRevisionWrites: (message?: string) => Promise<void>;
@@ -70,6 +73,7 @@ const PROMPT_DATABASE_NAME = 'promptit';
 const PROMPT_DATABASE_VERSION = 1;
 const PROMPT_META_STORE_NAME = 'promptMetas';
 const PROMPT_BODY_STORE_NAME = 'promptBodies';
+const PROMPT_IDB_MIGRATION_STORAGE_KEY = 'promptit:idbMigration';
 
 function assertBuiltExtension(): void {
   if (fs.existsSync(extensionManifestPath)) {
@@ -184,7 +188,12 @@ export async function launchExtension(): Promise<LoadedExtension> {
   }
 
   async function evaluatePromptDatabase<T>(
-    action: 'get-metas' | 'get-body' | 'get-records' | 'set-records',
+    action:
+      | 'delete-body'
+      | 'get-metas'
+      | 'get-body'
+      | 'get-records'
+      | 'set-records',
     payload?: unknown,
   ): Promise<T> {
     const serviceWorker = await getServiceWorker();
@@ -311,6 +320,44 @@ export async function launchExtension(): Promise<LoadedExtension> {
         });
       }
 
+      async function deletePromptBody(
+        database: IDBDatabase,
+        options: PromptDatabaseOptions,
+        id: string,
+      ): Promise<void> {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction(
+            options.bodyStoreName,
+            'readwrite',
+          );
+          const deleteRequest = transaction
+            .objectStore(options.bodyStoreName)
+            .delete(id);
+
+          deleteRequest.onerror = () => {
+            reject(
+              deleteRequest.error ??
+                new Error(`Failed to delete prompt body for ${id}.`),
+            );
+          };
+          transaction.oncomplete = () => {
+            resolve();
+          };
+          transaction.onerror = () => {
+            reject(
+              transaction.error ??
+                new Error(`Failed to delete prompt body for ${id}.`),
+            );
+          };
+          transaction.onabort = () => {
+            reject(
+              transaction.error ??
+                new Error(`Prompt body delete was aborted for ${id}.`),
+            );
+          };
+        });
+      }
+
       function sortPromptMetas<TRecord extends PromptMeta>(
         records: TRecord[],
       ): TRecord[] {
@@ -341,6 +388,13 @@ export async function launchExtension(): Promise<LoadedExtension> {
       const database = await openPromptDatabase(request.options);
 
       switch (request.action) {
+        case 'delete-body':
+          await deletePromptBody(
+            database,
+            request.options,
+            request.payload as string,
+          );
+          return undefined;
         case 'get-metas':
           return sortPromptMetas(await getAllRecords<PromptMeta>(
             database,
@@ -474,13 +528,38 @@ export async function launchExtension(): Promise<LoadedExtension> {
         });
         await chrome.storage.local.remove([
           request.revisionKey,
-          'promptit:idbMigration',
+          request.migrationKey,
         ]);
       }, {
         legacyPromptsKey: LEGACY_PROMPTS_STORAGE_KEY,
+        migrationKey: PROMPT_IDB_MIGRATION_STORAGE_KEY,
         rawValue,
         revisionKey: PROMPT_REVISION_STORAGE_KEY,
       });
+    },
+    async setPromptMigrationCompleteMarker() {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async (migrationKey) => {
+        await chrome.storage.local.set({
+          [migrationKey]: {
+            status: 'complete',
+            completedAt: new Date().toISOString(),
+          },
+        });
+      }, PROMPT_IDB_MIGRATION_STORAGE_KEY);
+    },
+    async getPromptMigrationMarker() {
+      const serviceWorker = await getServiceWorker();
+
+      return await serviceWorker.evaluate(async (migrationKey) => {
+        const result = await chrome.storage.local.get(migrationKey);
+        return result[migrationKey] as unknown;
+      }, PROMPT_IDB_MIGRATION_STORAGE_KEY);
+    },
+    async deletePromptBody(id) {
+      await evaluatePromptDatabase<void>('delete-body', id);
+      await publishPromptStorageRevision();
     },
     async getPromptStorageRevision() {
       const serviceWorker = await getServiceWorker();
