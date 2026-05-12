@@ -15,7 +15,7 @@ export default defineManifest({
   manifest_version: 3,
   name: 'Promptit',
   version: '0.0.1',
-  description: 'Load saved prompts into supported AI sites with a slash trigger.',
+  description: 'Load saved prompts into ChatGPT and Gemini with a slash trigger.',
   icons: {
     16: 'icons/icon16.png',
     32: 'icons/icon32.png',
@@ -23,7 +23,6 @@ export default defineManifest({
     128: 'icons/icon128.png',
   },
   permissions: ['storage'],
-  host_permissions: contentScriptMatches,
   web_accessible_resources: [
     {
       resources: ['fonts/PretendardVariable.woff2'],

@@ -4,7 +4,8 @@ Promptit은 ChatGPT와 Gemini 입력창에서 `/ `를 입력해 저장해 둔 �
 자주 쓰는 프롬프트를 옵션 페이지에 저장해 두고, 지원되는 AI 사이트의 입력 흐름 안에서 삽입하거나 복사할 수 있습니다.
 
 ## 지원 사이트
-- [ChatGPT](https://chatgpt.com/)
+- [ChatGPT](https://chatgpt.com/) - 기본 지원 사이트
+- [ChatGPT legacy host](https://chat.openai.com/) - 기존 접속 경로 호환
 - [Gemini](https://gemini.google.com/)
 
 ## 주요 기능
