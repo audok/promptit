@@ -28,8 +28,11 @@ import { getPopupKeyAction } from './keyboard';
 import { PromptPopup } from './popup';
 import {
   clampActiveCell,
+  captureOpenPopupActionToken,
   createSessionState,
   getInitialActiveCell,
+  invalidatePopupActionContinuations,
+  isCurrentPopupActionToken,
   isSameActiveCell,
   moveActiveCell,
   resetSessionState,
@@ -51,13 +54,17 @@ const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
 const TEST_READY_ATTRIBUTE = 'data-promptit-ready';
 const TEST_OPEN_OPTIONS_EVENT = 'promptit:test-open-options-page';
 const TEST_SET_CONTROLS_EVENT = 'promptit:test-set-controls';
+const TEST_PROMPT_BODY_READ_PENDING_EVENT = 'promptit:test-prompt-body-read-pending';
+const TEST_RELEASE_PROMPT_BODY_READ_EVENT = 'promptit:test-release-prompt-body-read';
 const TEST_FAIL_OPEN_OPTIONS_STORAGE_KEY = 'promptit:test-fail-open-options';
 
 type TestControlState = {
+  deferPromptBodyRead: boolean;
   failClipboardWrite: boolean;
   failOpenOptions: boolean;
   failPromptBodyRead: boolean;
   failPromptRead: boolean;
+  promptBodyReadRelease: (() => void) | null;
 };
 
 type AdapterMutationRecord = {
@@ -72,13 +79,16 @@ type AdapterMutationRecord = {
 };
 
 const testControlState: TestControlState = {
+  deferPromptBodyRead: false,
   failClipboardWrite: false,
   failOpenOptions: false,
   failPromptBodyRead: false,
   failPromptRead: false,
+  promptBodyReadRelease: null,
 };
 
 const PROMPT_BODY_READ_ERROR_MESSAGE = '프롬프트 본문을 읽지 못했습니다.';
+const IME_PROCESS_KEY = 'Process';
 
 type ClosePopupOptions = {
   reopenOnCleanupFailure?: boolean;
@@ -163,7 +173,10 @@ function registerDocumentListeners(
       }
 
       session.isComposing = false;
-      scheduleTriggerCheck(input, session, popup, adapter);
+
+      if (canScheduleTriggerCheck(input, session)) {
+        scheduleTriggerCheck(input, session, popup, adapter);
+      }
     },
     true,
   );
@@ -181,12 +194,16 @@ function registerDocumentListeners(
         return;
       }
 
-      if (session.status === 'open') {
-        void closePopup(session, popup, adapter, 'typing', false);
+      if (
+        session.isBusy ||
+        session.isComposing ||
+        event instanceof InputEvent && event.isComposing
+      ) {
         return;
       }
 
-      if (session.isComposing) {
+      if (session.status === 'open') {
+        void closePopup(session, popup, adapter, 'typing', false);
         return;
       }
 
@@ -202,6 +219,14 @@ function registerDocumentListeners(
         return;
       }
 
+      if (
+        session.isComposing ||
+        event.isComposing ||
+        event.key === IME_PROCESS_KEY
+      ) {
+        return;
+      }
+
       const action = getPopupKeyAction(event);
       const isHandledPopupKey = action.type !== 'none' || action.preventDefault;
 
@@ -209,7 +234,10 @@ function registerDocumentListeners(
         return;
       }
 
-      consumePopupKeyEvent(event, action.preventDefault || session.isBusy);
+      consumePopupKeyEvent(
+        event,
+        action.preventDefault || (session.isBusy && event.key !== 'Tab'),
+      );
 
       if (session.isBusy) {
         return;
@@ -364,6 +392,14 @@ function registerTestListeners(): void {
       return;
     }
 
+    if ('deferPromptBodyRead' in detail) {
+      testControlState.deferPromptBodyRead = Boolean(detail.deferPromptBodyRead);
+
+      if (!testControlState.deferPromptBodyRead) {
+        releaseDeferredPromptBodyRead();
+      }
+    }
+
     if ('failClipboardWrite' in detail) {
       testControlState.failClipboardWrite = Boolean(detail.failClipboardWrite);
     }
@@ -379,6 +415,11 @@ function registerTestListeners(): void {
     if ('failPromptRead' in detail) {
       testControlState.failPromptRead = Boolean(detail.failPromptRead);
     }
+  });
+
+  document.addEventListener(TEST_RELEASE_PROMPT_BODY_READ_EVENT, () => {
+    testControlState.deferPromptBodyRead = false;
+    releaseDeferredPromptBodyRead();
   });
 }
 
@@ -412,10 +453,26 @@ function scheduleTriggerCheck(
   popup: PromptPopup,
   adapter: BaseAdapter,
 ): void {
+  if (!canScheduleTriggerCheck(input, session)) {
+    return;
+  }
+
   session.activeInput = input;
   armTrigger(session, (requestId) => {
     void resolveTriggerCheck(input, requestId, session, popup, adapter);
   });
+}
+
+function canScheduleTriggerCheck(
+  input: HTMLElement,
+  session: PopupSessionState,
+): boolean {
+  return (
+    input.isConnected &&
+    !session.isBusy &&
+    !session.isComposing &&
+    (session.status === 'idle' || session.status === 'armed')
+  );
 }
 
 async function resolveTriggerCheck(
@@ -551,6 +608,12 @@ async function handleSelection(
     return;
   }
 
+  const actionToken = captureOpenPopupActionToken(session);
+
+  if (!actionToken) {
+    return;
+  }
+
   session.isBusy = true;
   popup.setBusy(true);
 
@@ -562,6 +625,10 @@ async function handleSelection(
 
     const content = await readPromptBodyForAction(item.id);
 
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
+
     adapter.focusInput(activeInput);
     session.isInternalChange = true;
     ensureAdapterMutation(
@@ -571,6 +638,10 @@ async function handleSelection(
 
     await closePopup(session, popup, adapter, 'insert', false);
   } catch (error) {
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
+
     console.error('[promptit] Failed to handle popup selection.', error);
     session.isBusy = false;
     popup.setBusy(false);
@@ -600,6 +671,12 @@ async function handleCopy(
     return;
   }
 
+  const actionToken = captureOpenPopupActionToken(session);
+
+  if (!actionToken) {
+    return;
+  }
+
   session.isBusy = true;
   popup.setBusy(true);
 
@@ -614,7 +691,16 @@ async function handleCopy(
 
     const content = await readPromptBodyForAction(item.id);
 
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
+
     await navigator.clipboard.writeText(content);
+
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
+
     const didClose = await closePopup(session, popup, adapter, 'copy', true);
 
     if (!didClose) {
@@ -623,6 +709,10 @@ async function handleCopy(
 
     showToast('프롬프트를 복사했습니다.');
   } catch (error) {
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
+
     console.error('[promptit] Failed to copy prompt content.', error);
     session.isBusy = false;
     popup.setBusy(false);
@@ -650,6 +740,11 @@ async function handleTogglePinned(
 
   const activeInput = session.activeInput;
   const nextPinned = !item.pinned;
+  const actionToken = captureOpenPopupActionToken(session);
+
+  if (!actionToken) {
+    return;
+  }
 
   session.isBusy = true;
   popup.setBusy(true);
@@ -658,6 +753,10 @@ async function handleTogglePinned(
     const response = await setPromptPinned(item.id, nextPinned, {
       expectedUpdatedAt: item.updatedAt,
     });
+
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
 
     switch (response.status) {
       case 'success':
@@ -702,9 +801,17 @@ async function handleTogglePinned(
         break;
     }
   } catch (error) {
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
+
     console.error('[promptit] Failed to toggle prompt pinned state.', error);
     showToast('프롬프트 고정 상태를 변경하지 못했습니다.', 'error');
   } finally {
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return;
+    }
+
     session.isBusy = false;
     popup.setBusy(false);
 
@@ -720,12 +827,36 @@ async function readPromptBodyForAction(id: string): Promise<string> {
       throw new Error('mock prompt body read failure');
     }
 
+    await waitForDeferredPromptBodyRead();
+
     const body = await getPromptBody(id);
     return body.content;
   } catch (error) {
     console.error('[promptit] Failed to read prompt body for popup action.', error);
     throw new Error(PROMPT_BODY_READ_ERROR_MESSAGE);
   }
+}
+
+function releaseDeferredPromptBodyRead(): void {
+  const release = testControlState.promptBodyReadRelease;
+
+  if (!release) {
+    return;
+  }
+
+  testControlState.promptBodyReadRelease = null;
+  release();
+}
+
+async function waitForDeferredPromptBodyRead(): Promise<void> {
+  if (!IS_TEST_MODE || !testControlState.deferPromptBodyRead) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    testControlState.promptBodyReadRelease = resolve;
+    document.dispatchEvent(new CustomEvent(TEST_PROMPT_BODY_READ_PENDING_EVENT));
+  });
 }
 
 async function openOptionsFromPopup(
@@ -753,6 +884,7 @@ async function closePopup(
   }
 
   clearTriggerArm(session);
+  invalidatePopupActionContinuations(session);
   session.status = 'closing';
   session.closeReason = reason;
 
@@ -767,6 +899,10 @@ async function closePopup(
     session.isInternalChange = true;
 
     try {
+      if (activeInput.isConnected) {
+        adapter.focusInput(activeInput);
+      }
+
       ensureAdapterMutation(
         adapter.removeTriggerText(activeInput, triggerContext),
         `clean up trigger text after ${reason}`,
@@ -806,12 +942,22 @@ async function performOpenOptionsAction(
   const triggerContext = session.triggerContext
     ? cloneTriggerContext(session.triggerContext)
     : null;
+  const actionToken = captureOpenPopupActionToken(session);
+
+  if (!actionToken) {
+    return false;
+  }
 
   session.isBusy = true;
   popup.setBusy(true);
 
   try {
     await requestOpenOptionsPage();
+
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return false;
+    }
+
     return await closePopup(
       session,
       popup,
@@ -823,6 +969,10 @@ async function performOpenOptionsAction(
       },
     );
   } catch (error) {
+    if (!isCurrentPopupActionToken(session, actionToken)) {
+      return false;
+    }
+
     console.error('[promptit] Failed to open options page.', error);
     session.isBusy = false;
     popup.setBusy(false);

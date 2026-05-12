@@ -28,6 +28,7 @@ type RenderState = {
 
 const VIEWPORT_MARGIN_PX = 12;
 const ANCHOR_GAP_PX = 24;
+const POPUP_MIN_WIDTH_PX = 320;
 const LIST_ROW_HEIGHT_PX = 56;
 const LIST_MAX_ROWS = 5;
 const LIST_VERTICAL_PADDING_PX = 16;
@@ -83,6 +84,7 @@ function getTargetCell(target: EventTarget | null): PopupActiveCell | null {
 export class PromptPopup {
   private host: HTMLDivElement | null = null;
   private shadowRoot: ShadowRoot | null = null;
+  private activeCellAnnouncement = '';
   private state: RenderState = {
     items: [],
     activeCell: null,
@@ -101,6 +103,7 @@ export class PromptPopup {
       activeCell: cloneActiveCell(activeCell),
       isBusy: false,
     };
+    this.activeCellAnnouncement = '';
 
     if (!this.host) {
       this.mount();
@@ -134,6 +137,7 @@ export class PromptPopup {
     this.host?.remove();
     this.host = null;
     this.shadowRoot = null;
+    this.activeCellAnnouncement = '';
     this.state = {
       items: [],
       activeCell: null,
@@ -158,6 +162,7 @@ export class PromptPopup {
     this.state.isBusy = isBusy;
     const card = this.shadowRoot?.querySelector<HTMLElement>('.promptit-card');
     card?.classList.toggle('is-busy', isBusy);
+    card?.setAttribute('aria-busy', String(isBusy));
 
     const buttons = this.shadowRoot?.querySelectorAll<HTMLButtonElement>('button[data-action]');
 
@@ -262,7 +267,9 @@ export class PromptPopup {
       <div class="promptit-root">
         <section
           class="promptit-card${this.state.isBusy ? ' is-busy' : ''}"
+          role="region"
           aria-label="Promptit prompt picker"
+          aria-busy="${this.state.isBusy ? 'true' : 'false'}"
           data-testid="promptit-popup"
         >
           <header class="promptit-header">
@@ -283,6 +290,14 @@ export class PromptPopup {
             class="promptit-list"
             data-role="prompt-list"
             data-testid="promptit-popup-list"
+            role="list"
+            aria-label="Saved prompts"
+          ></div>
+          <div
+            class="promptit-sr-only"
+            data-role="active-cell-status"
+            aria-live="polite"
+            aria-atomic="true"
           ></div>
           <footer class="promptit-footer">
             <span class="promptit-footer-label">${savedCountLabel}</span>
@@ -349,11 +364,38 @@ export class PromptPopup {
       '[data-role="prompt-cell"].is-active-cell',
     );
 
+    this.updateActiveCellStatus(activeElement);
+
     const list = this.shadowRoot.querySelector<HTMLElement>('[data-role="prompt-list"]');
 
     if (activeElement && list) {
       keepElementVisibleWithinList(list, activeElement);
     }
+  }
+
+  private updateActiveCellStatus(activeElement: HTMLElement | null): void {
+    const status = this.shadowRoot?.querySelector<HTMLElement>(
+      '[data-role="active-cell-status"]',
+    );
+
+    if (!status) {
+      return;
+    }
+
+    const nextAnnouncement =
+      activeElement?.getAttribute('aria-label') ??
+      activeElement?.textContent?.trim() ??
+      '';
+
+    if (
+      nextAnnouncement === this.activeCellAnnouncement &&
+      status.textContent === nextAnnouncement
+    ) {
+      return;
+    }
+
+    this.activeCellAnnouncement = nextAnnouncement;
+    status.textContent = nextAnnouncement;
   }
 
   private position(anchorRect: DOMRect): void {
@@ -389,8 +431,9 @@ function resolvePopupLayout(
 ): PopupLayout {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const maxAllowedWidth = Math.max(160, viewportWidth - VIEWPORT_MARGIN_PX * 2);
-  const popupWidth = Math.min(anchorRect.width, maxAllowedWidth);
+  const maxAllowedWidth = Math.max(0, viewportWidth - VIEWPORT_MARGIN_PX * 2);
+  const minAllowedWidth = Math.min(POPUP_MIN_WIDTH_PX, maxAllowedWidth);
+  const popupWidth = clamp(anchorRect.width, minAllowedWidth, maxAllowedWidth);
   const left = clamp(
     anchorRect.left,
     VIEWPORT_MARGIN_PX,
@@ -497,6 +540,7 @@ function createLauncherRow(
     : EMPTY_STATE_LAUNCHER_ITEM_ID;
   row.dataset.itemKind = item.kind;
   row.dataset.testid = 'promptit-row';
+  row.setAttribute('role', 'listitem');
 
   const leadingButton = document.createElement('button');
   leadingButton.type = 'button';
