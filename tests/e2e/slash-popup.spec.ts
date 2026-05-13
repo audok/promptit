@@ -157,6 +157,8 @@ async function dispatchNestedChildComposerInput(
 }
 
 type TriggerWindowState = Window & {
+  __promptitDetachedComposer?: HTMLElement;
+  __promptitDetachedComposerText?: string | null;
   __promptitPopupOpened?: boolean;
   __promptitComposerDetached?: boolean;
 };
@@ -219,6 +221,37 @@ async function installTriggerDetachmentWatcher(
   });
 }
 
+async function detachComposerAndTrackText(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    (window as TriggerWindowState).__promptitDetachedComposerText =
+      composer.textContent ?? '';
+    (window as TriggerWindowState).__promptitDetachedComposer = composer;
+    composer.remove();
+  });
+}
+
+async function getDetachedComposerText(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<string | null> {
+  return await page.evaluate(() => {
+    const state = window as TriggerWindowState;
+
+    return (
+      state.__promptitDetachedComposer?.textContent ??
+      state.__promptitDetachedComposerText ??
+      null
+    );
+  });
+}
+
 async function dispatchComposerCompositionEvent(
   page: Parameters<typeof getComposerText>[0],
   type: 'compositionstart' | 'compositionend',
@@ -244,6 +277,31 @@ async function dispatchComposerCompositionEvent(
       nextData: data,
     },
   );
+}
+
+async function dispatchComposerKeydown(
+  page: Parameters<typeof getComposerText>[0],
+  key: string,
+): Promise<{ defaultPrevented: boolean }> {
+  return await page.evaluate((nextKey) => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: nextKey,
+    });
+
+    composer.dispatchEvent(event);
+
+    return {
+      defaultPrevented: event.defaultPrevented,
+    };
+  }, key);
 }
 
 async function setMultilineContenteditableComposerState(
@@ -287,6 +345,139 @@ async function setMultilineContenteditableComposerState(
   );
 }
 
+async function dispatchBlockBoundaryComposerInput(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    document.documentElement.setAttribute(
+      'data-promptit-trigger-result',
+      'pending',
+    );
+
+    const slashBlock = document.createElement('p');
+    slashBlock.textContent = '/';
+
+    const spaceBlock = document.createElement('p');
+    spaceBlock.textContent = ' ';
+
+    composer.replaceChildren(slashBlock, spaceBlock);
+    composer.focus();
+
+    const textNode = spaceBlock.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare block-boundary selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    composer.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
+}
+
+async function dispatchLineBoundaryComposerInput(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    document.documentElement.setAttribute(
+      'data-promptit-trigger-result',
+      'pending',
+    );
+
+    const slashNode = document.createTextNode('/');
+    const lineBreak = document.createElement('br');
+    const spaceNode = document.createTextNode(' ');
+
+    composer.replaceChildren(slashNode, lineBreak, spaceNode);
+    composer.focus();
+
+    const selection = window.getSelection();
+
+    if (!selection) {
+      throw new Error('Selection not found.');
+    }
+
+    const range = document.createRange();
+    range.setStart(spaceNode, spaceNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    composer.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
+}
+
+async function dispatchInlineWrapperComposerInput(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const slashWrapper = document.createElement('span');
+    slashWrapper.textContent = '/';
+
+    const spaceWrapper = document.createElement('strong');
+    spaceWrapper.textContent = ' ';
+
+    composer.replaceChildren(slashWrapper, spaceWrapper);
+    composer.focus();
+
+    const spaceNode = spaceWrapper.firstChild;
+    const selection = window.getSelection();
+
+    if (!(spaceNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare inline-wrapper selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(spaceNode, spaceNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    composer.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
+}
+
 async function getComposerDomSnapshot(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<{
@@ -306,6 +497,204 @@ async function getComposerDomSnapshot(
       innerHTML: composer.innerHTML,
       textContent: composer.textContent ?? '',
     };
+  });
+}
+
+async function getPopupStateSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  actionButtonCount: number;
+  ariaBusy: string | null;
+  disabledActionButtonCount: number;
+  isBusy: boolean;
+  isVisible: boolean;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const card = host?.shadowRoot?.querySelector('[data-testid="promptit-popup"]');
+
+    if (!(host instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+      return {
+        actionButtonCount: 0,
+        ariaBusy: null,
+        disabledActionButtonCount: 0,
+        isBusy: false,
+        isVisible: false,
+      };
+    }
+
+    const actionButtons = Array.from(
+      host.shadowRoot?.querySelectorAll<HTMLButtonElement>('button[data-action]') ?? [],
+    );
+
+    return {
+      actionButtonCount: actionButtons.length,
+      ariaBusy: card.getAttribute('aria-busy'),
+      disabledActionButtonCount: actionButtons.filter((button) => button.disabled)
+        .length,
+      isBusy: card.classList.contains('is-busy'),
+      isVisible: true,
+    };
+  });
+}
+
+async function getPopupAccessibilitySnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  activeCellAriaCurrent: string | null;
+  activeCellLabel: string | null;
+  activeStatusAtomic: string | null;
+  activeStatusLive: string | null;
+  activeStatusText: string | null;
+  cardAriaModal: string | null;
+  cardLabel: string | null;
+  cardRole: string | null;
+  listLabel: string | null;
+  listRole: string | null;
+  rowRoles: Array<string | null>;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const root = host?.shadowRoot;
+    const card = root?.querySelector('[data-testid="promptit-popup"]');
+    const list = root?.querySelector('[data-role="prompt-list"]');
+    const activeCell = root?.querySelector(
+      '[data-role="prompt-cell"][aria-current="true"]',
+    );
+    const activeStatus = root?.querySelector('[data-role="active-cell-status"]');
+    const rows = Array.from(
+      root?.querySelectorAll('[data-role="prompt-row"]') ?? [],
+    );
+
+    if (
+      !(host instanceof HTMLElement) ||
+      !root ||
+      !(card instanceof HTMLElement)
+    ) {
+      throw new Error('Popup accessibility snapshot could not find the popup.');
+    }
+
+    return {
+      activeCellAriaCurrent:
+        activeCell instanceof HTMLElement
+          ? activeCell.getAttribute('aria-current')
+          : null,
+      activeCellLabel:
+        activeCell instanceof HTMLElement
+          ? activeCell.getAttribute('aria-label')
+          : null,
+      activeStatusAtomic:
+        activeStatus instanceof HTMLElement
+          ? activeStatus.getAttribute('aria-atomic')
+          : null,
+      activeStatusLive:
+        activeStatus instanceof HTMLElement
+          ? activeStatus.getAttribute('aria-live')
+          : null,
+      activeStatusText:
+        activeStatus instanceof HTMLElement ? activeStatus.textContent : null,
+      cardAriaModal: card.getAttribute('aria-modal'),
+      cardLabel: card.getAttribute('aria-label'),
+      cardRole: card.getAttribute('role'),
+      listLabel:
+        list instanceof HTMLElement
+          ? list.getAttribute('aria-label') ??
+            list.getAttribute('aria-labelledby')
+          : null,
+      listRole: list instanceof HTMLElement ? list.getAttribute('role') : null,
+      rowRoles: rows.map((row) =>
+        row instanceof HTMLElement ? row.getAttribute('role') : null,
+      ),
+    };
+  });
+}
+
+async function getToastAccessibilitySnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  atomic: string | null;
+  live: string | null;
+  role: string | null;
+  text: string | null;
+  variant: string | null;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-promptit-toast-host]');
+    const content = host?.shadowRoot?.querySelector('[data-role="toast-content"]');
+
+    if (!(host instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+      throw new Error('Toast accessibility snapshot could not find the toast.');
+    }
+
+    return {
+      atomic: content.getAttribute('aria-atomic'),
+      live: content.getAttribute('aria-live'),
+      role: content.getAttribute('role'),
+      text: content.textContent,
+      variant: content.dataset.variant ?? null,
+    };
+  });
+}
+
+async function getActiveElementSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  id: string;
+  testId: string | null;
+  text: string;
+}> {
+  return await page.evaluate(() => {
+    const element = document.activeElement;
+
+    if (!(element instanceof HTMLElement)) {
+      return {
+        id: '',
+        testId: null,
+        text: '',
+      };
+    }
+
+    return {
+      id: element.id,
+      testId: element.dataset.testid ?? null,
+      text: element.textContent?.trim() ?? '',
+    };
+  });
+}
+
+async function waitForPromptBodyReadPending(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(async () => {
+    const pendingRead = (
+      window as Window & {
+        __promptitPromptBodyReadPending?: Promise<void>;
+      }
+    ).__promptitPromptBodyReadPending;
+
+    if (!pendingRead) {
+      throw new Error('Prompt body read pending listener was not armed.');
+    }
+
+    await pendingRead;
+  });
+}
+
+async function armPromptBodyReadPendingListener(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    (
+      window as Window & {
+        __promptitPromptBodyReadPending?: Promise<void>;
+      }
+    ).__promptitPromptBodyReadPending = new Promise<void>((resolve) => {
+      document.addEventListener(
+        'promptit:test-prompt-body-read-pending',
+        () => resolve(),
+        { once: true },
+      );
+    });
   });
 }
 
@@ -375,6 +764,28 @@ async function getPopupWidthSnapshot(
       formWidth: form.getBoundingClientRect().width,
       surfaceWidth: surface.getBoundingClientRect().width,
     };
+  });
+}
+
+async function installTinyPopupAnchorRect(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+    const form = composer?.closest('form');
+
+    if (!(composer instanceof HTMLElement) || !(form instanceof HTMLElement)) {
+      throw new Error('Composer or form not found.');
+    }
+
+    const anchorRect = new DOMRect(96, 420, 1, 132);
+
+    for (const element of [composer, form]) {
+      Object.defineProperty(element, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => anchorRect,
+      });
+    }
   });
 }
 
@@ -577,6 +988,119 @@ test('opens the slash popup from the contenteditable fixture', async ({
   await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
 });
 
+test('accessibility: exposes non-modal popup semantics and active cell live status', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+
+  await expect
+    .poll(async () => await getPopupAccessibilitySnapshot(page))
+    .toMatchObject({
+      activeCellAriaCurrent: 'true',
+      activeCellLabel: 'Insert prompt: 번역',
+      activeStatusAtomic: 'true',
+      activeStatusLive: 'polite',
+      activeStatusText: 'Insert prompt: 번역',
+      cardAriaModal: null,
+      cardLabel: 'Promptit prompt picker',
+      cardRole: 'region',
+      listRole: 'list',
+      rowRoles: ['listitem', 'listitem'],
+    });
+  expect((await getPopupAccessibilitySnapshot(page)).listLabel).toBeTruthy();
+
+  await page.keyboard.press('ArrowDown');
+  await expect
+    .poll(async () => await getPopupAccessibilitySnapshot(page))
+    .toMatchObject({
+      activeCellAriaCurrent: 'true',
+      activeCellLabel: 'Insert prompt: 회의록',
+      activeStatusText: 'Insert prompt: 회의록',
+    });
+
+  await page.keyboard.press('ArrowRight');
+  await expect
+    .poll(async () => await getPopupAccessibilitySnapshot(page))
+    .toMatchObject({
+      activeCellAriaCurrent: 'true',
+      activeCellLabel: 'Copy prompt: 회의록',
+      activeStatusText: 'Copy prompt: 회의록',
+    });
+});
+
+test('toast live region attributes mark success announcements as polite status', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
+
+  await expect
+    .poll(async () => await getToastAccessibilitySnapshot(page))
+    .toMatchObject({
+      atomic: 'true',
+      live: 'polite',
+      role: 'status',
+      text: '프롬프트를 고정했습니다.',
+      variant: 'success',
+    });
+});
+
+test('toast live region attributes mark error announcements as assertive alerts', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    failClipboardWrite: true,
+  });
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+
+  await expect
+    .poll(async () => await getToastAccessibilitySnapshot(page))
+    .toMatchObject({
+      atomic: 'true',
+      live: 'assertive',
+      role: 'alert',
+      text: '프롬프트 복사에 실패했습니다.',
+      variant: 'error',
+    });
+});
+
+test('Tab closes the popup and leaves composer focus without trapping the trigger', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.keyboard.press('Tab');
+
+  await waitForPromptPopupToClose(page);
+  await expect(await getComposerText(page)).toBe('');
+  const activeElement = await getActiveElementSnapshot(page);
+
+  expect(activeElement.id).not.toBe('prompt-textarea');
+  expect(activeElement.testId).not.toBe('prompt-textarea');
+});
+
 test('matches the ChatGPT popup width to the composer form wrapper', async ({
   extension,
 }) => {
@@ -590,6 +1114,26 @@ test('matches the ChatGPT popup width to the composer form wrapper', async ({
 
   expect(Math.abs(snapshot.popupWidth - snapshot.formWidth)).toBeLessThan(1);
   expect(snapshot.popupWidth).toBeGreaterThan(snapshot.surfaceWidth + 80);
+});
+
+test('keeps the ChatGPT popup width usable for a tiny anchor rect', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await setContenteditableComposerState(page, { text: '/ ' });
+  await installTinyPopupAnchorRect(page);
+  await dispatchComposerInput(page, 'insertText', ' ');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+
+  const snapshot = await getPopupWidthSnapshot(page);
+
+  expect(snapshot.formWidth).toBe(1);
+  expect(snapshot.popupWidth).toBeGreaterThanOrEqual(300);
 });
 
 test('inserts the active prompt into the contenteditable fixture', async ({
@@ -666,6 +1210,115 @@ test('fetches the latest prompt body when selecting an already-open popup item',
   await waitForPromptPopupToClose(page);
 
   await expect(await getComposerText(page)).toBe('선택 시점에 읽은 본문');
+});
+
+test('keeps the popup busy and open while prompt insertion is pending', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    deferPromptBodyRead: true,
+  });
+
+  await armPromptBodyReadPendingListener(page);
+  await page.keyboard.press('Enter');
+  await waitForPromptBodyReadPending(page);
+
+  try {
+    const busySnapshot = await getPopupStateSnapshot(page);
+    expect(busySnapshot).toMatchObject({
+      ariaBusy: 'true',
+      isBusy: true,
+      isVisible: true,
+    });
+    expect(busySnapshot.disabledActionButtonCount).toBe(
+      busySnapshot.actionButtonCount,
+    );
+
+    await dispatchComposerInput(page, 'insertText', 'x');
+
+    await expect(await getPopupStateSnapshot(page)).toMatchObject({
+      ariaBusy: 'true',
+      isBusy: true,
+      isVisible: true,
+    });
+    await expect(await getComposerText(page)).toBe('/ ');
+
+    await page.keyboard.press('Tab');
+
+    await expect(await getPopupStateSnapshot(page)).toMatchObject({
+      ariaBusy: 'true',
+      isBusy: true,
+      isVisible: true,
+    });
+    await expect(await getComposerText(page)).toBe('/ ');
+    const activeElement = await getActiveElementSnapshot(page);
+    expect(activeElement.id).not.toBe('prompt-textarea');
+    expect(activeElement.testId).not.toBe('prompt-textarea');
+  } finally {
+    await dispatchPromptitTestEvent(
+      page,
+      'promptit:test-release-prompt-body-read',
+    );
+  }
+
+  await waitForPromptPopupToClose(page);
+  await expect(await getComposerText(page)).toBe(
+    '영문으로 자연스럽게 번역해줘.',
+  );
+});
+
+test('keeps the popup busy and open while prompt copy is pending', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    deferPromptBodyRead: true,
+  });
+
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe('Copy prompt: 번역');
+
+  await armPromptBodyReadPendingListener(page);
+  await page.keyboard.press('Enter');
+  await waitForPromptBodyReadPending(page);
+
+  try {
+    await expect(await getPopupStateSnapshot(page)).toMatchObject({
+      ariaBusy: 'true',
+      isBusy: true,
+      isVisible: true,
+    });
+
+    await dispatchComposerInput(page, 'insertText', 'x');
+
+    await expect(await getPopupStateSnapshot(page)).toMatchObject({
+      ariaBusy: 'true',
+      isBusy: true,
+      isVisible: true,
+    });
+    await expect(await getComposerText(page)).toBe('/ ');
+  } finally {
+    await dispatchPromptitTestEvent(
+      page,
+      'promptit:test-release-prompt-body-read',
+    );
+  }
+
+  await waitForPromptPopupToClose(page);
+  await expect(await getComposerText(page)).toBe('');
+  await expect(
+    await page.evaluate(() => navigator.clipboard.readText()),
+  ).toBe('영문으로 자연스럽게 번역해줘.');
 });
 
 test('opens from a nested contenteditable child input event and inserts the active prompt', async ({
@@ -985,6 +1638,9 @@ test('updates the open popup when prompt storage changes', async ({
   await expect
     .poll(async () => await getPopupTitles(page))
     .toEqual(['번역', '회의록 업데이트']);
+  await expect
+    .poll(async () => (await getPopupAccessibilitySnapshot(page)).activeStatusText)
+    .toBe('Insert prompt: 번역');
 });
 
 test('migrates valid legacy storage entries before rendering the popup', async ({
@@ -1153,6 +1809,118 @@ test('shows an error toast when prompt insertion fails', async ({
     .poll(async () => await getToastText(page))
     .toBe('[promptit] Adapter failed to insert prompt content.');
   await expect(await getComposerText(page)).toBe('x');
+});
+
+test('blocks contenteditable insertion when the live selection moved outside the composer', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.evaluate(() => {
+    const outsideSelectionTarget = document.createElement('span');
+    outsideSelectionTarget.textContent = 'outside';
+    document.body.append(outsideSelectionTarget);
+
+    const textNode = outsideSelectionTarget.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare outside selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('[promptit] Adapter failed to insert prompt content.');
+  await expect(await getComposerText(page)).toBe('/ ');
+});
+
+test('blocks contenteditable insertion when the live selection is not collapsed', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const textNode = composer.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare non-collapsed selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, textNode.data.length);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('[promptit] Adapter failed to insert prompt content.');
+  await expect(await getComposerText(page)).toBe('/ ');
+});
+
+test('keeps the trigger when same-root cleanup selection is not at the trigger endpoint', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const textNode = composer.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare same-root selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('입력창 정리에 실패했습니다.');
+  await expect(await getComposerText(page)).toBe('/ ');
 });
 
 test('preserves the multiline break when inserting and cleaning up a prompt from contenteditable', async ({
@@ -1585,6 +2353,67 @@ test('does not open the popup when the selection is not collapsed', async ({
   await waitForPromptPopupToClose(page);
 });
 
+test('does not open across a contenteditable br line boundary', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await dispatchLineBoundaryComposerInput(page);
+  await page.waitForTimeout(150);
+
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(0);
+  await expect
+    .poll(async () => await getComposerText(page))
+    .toBe('/ ');
+});
+
+test('does not open across contenteditable block boundaries', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await dispatchBlockBoundaryComposerInput(page);
+  await page.waitForTimeout(150);
+
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(0);
+  await expect
+    .poll(async () => await getComposerText(page))
+    .toBe('/ ');
+});
+
+test('opens across inline wrappers within one contenteditable line', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await dispatchInlineWrapperComposerInput(page);
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-promptit-trigger-result',
+    'contenteditable-match',
+  );
+
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+  await expect(await getComposerText(page)).toBe(
+    '영문으로 자연스럽게 번역해줘.',
+  );
+});
+
 test('waits for compositionend before opening the popup', async ({
   extension,
 }) => {
@@ -1633,6 +2462,85 @@ test('waits for compositionend before opening the popup', async ({
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
 });
 
+test('does not treat IME keydown events as popup commands while composing', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchComposerCompositionEvent(page, 'compositionstart', 'あ');
+
+  for (const key of ['Enter', 'Escape', 'Backspace']) {
+    const keydown = await dispatchComposerKeydown(page, key);
+
+    expect(keydown.defaultPrevented).toBe(false);
+    await expect(await getPopupStateSnapshot(page)).toMatchObject({
+      isBusy: false,
+      isVisible: true,
+    });
+    await expect(await getComposerText(page)).toBe('/ ');
+  }
+});
+
+test('keeps an already-open popup usable immediately after compositionend', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  const initialActiveCell = await getActivePopupCellLabel(page);
+
+  await dispatchComposerCompositionEvent(page, 'compositionstart', '한');
+  await dispatchComposerCompositionEvent(page, 'compositionend', '한');
+
+  await expect(page.locator('[data-testid="promptit-popup-host"]')).toHaveCount(1);
+  await expect(await getActivePopupCellLabel(page)).toBe(initialActiveCell);
+
+  const keydown = await dispatchComposerKeydown(page, 'Enter');
+
+  expect(keydown.defaultPrevented).toBe(true);
+  await waitForPromptPopupToClose(page);
+  await expect(await getComposerText(page)).toBe(
+    '영문으로 자연스럽게 번역해줘.',
+  );
+});
+
+test('ignores a stale prompt insertion after the composer is detached', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    deferPromptBodyRead: true,
+  });
+
+  await armPromptBodyReadPendingListener(page);
+  await page.keyboard.press('Enter');
+  await waitForPromptBodyReadPending(page);
+
+  await detachComposerAndTrackText(page);
+  await waitForPromptPopupToClose(page);
+
+  await dispatchPromptitTestEvent(
+    page,
+    'promptit:test-release-prompt-body-read',
+  );
+  await page.waitForTimeout(50);
+
+  await expect(
+    page.locator('[data-testid="promptit-popup-host"]'),
+  ).toHaveCount(0);
+  await expect(await getDetachedComposerText(page)).toBe('/ ');
+});
+
 test('resets composing state after a popup closes during IME input', async ({
   extension,
 }) => {
@@ -1644,6 +2552,10 @@ test('resets composing state after a popup closes during IME input', async ({
   await openPromptPopup(page);
   await dispatchComposerCompositionEvent(page, 'compositionstart', 'あ');
   await dispatchComposerInput(page, 'insertCompositionText', 'あ');
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('resize'));
+  });
   await waitForPromptPopupToClose(page);
 
   await clearComposer(page);

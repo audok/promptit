@@ -22,7 +22,7 @@ export type PopupKeyAction =
     };
 
 const PASSIVE_MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
-const PASSIVE_CONTROL_KEYS = new Set(['Delete', 'Tab']);
+const PASSIVE_CONTROL_KEYS = new Set(['Delete']);
 
 function isPrintableKey(event: KeyboardEvent): boolean {
   return event.key.length === 1 && !event.ctrlKey && !event.metaKey;
@@ -90,6 +90,15 @@ export function getPopupKeyAction(event: KeyboardEvent): PopupKeyAction {
       preventDefault: true,
       cleanupTrigger: true,
       reason: 'backspace',
+    };
+  }
+
+  if (event.key === 'Tab') {
+    return {
+      type: 'close',
+      preventDefault: false,
+      cleanupTrigger: true,
+      reason: 'blur',
     };
   }
 

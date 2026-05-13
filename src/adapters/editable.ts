@@ -14,6 +14,17 @@ export function isContenteditable(input: HTMLElement): boolean {
   return input.isContentEditable;
 }
 
+function isInputFocused(input: HTMLElement): boolean {
+  if (document.activeElement === input) {
+    return true;
+  }
+
+  return (
+    document.activeElement instanceof HTMLElement &&
+    input.contains(document.activeElement)
+  );
+}
+
 function getCollapsedSelectionRange(input: HTMLElement): Range | null {
   const selection = window.getSelection();
 
@@ -29,6 +40,32 @@ function getCollapsedSelectionRange(input: HTMLElement): Range | null {
     !input.contains(range.endContainer)
   ) {
     return null;
+  }
+
+  return range.cloneRange();
+}
+
+function getFocusedCollapsedSelectionRange(
+  input: HTMLElement,
+): Range | AdapterMutationResult {
+  if (!input.isConnected || !isInputFocused(input)) {
+    return createAdapterMutationFailure('stale-context');
+  }
+
+  const selection = window.getSelection();
+
+  if (!selection || selection.rangeCount !== 1) {
+    return createAdapterMutationFailure('invalid-context');
+  }
+
+  const range = selection.getRangeAt(0);
+
+  if (
+    !range.collapsed ||
+    !input.contains(range.startContainer) ||
+    !input.contains(range.endContainer)
+  ) {
+    return createAdapterMutationFailure('invalid-context');
   }
 
   return range.cloneRange();
@@ -51,6 +88,15 @@ function getRangeText(range: Range): string {
   return fragment.textContent ?? range.toString();
 }
 
+function areBoundaryPointsEqual(
+  leftNode: Node,
+  leftOffset: number,
+  rightNode: Node,
+  rightOffset: number,
+): boolean {
+  return leftNode === rightNode && leftOffset === rightOffset;
+}
+
 function getBoundaryNodeKind(node: Node): ContenteditableBoundaryNodeKind | null {
   if (node instanceof Text) {
     return 'text';
@@ -61,6 +107,60 @@ function getBoundaryNodeKind(node: Node): ContenteditableBoundaryNodeKind | null
   }
 
   return null;
+}
+
+const HARD_BOUNDARY_TAG_NAMES = new Set([
+  'ADDRESS',
+  'ARTICLE',
+  'ASIDE',
+  'BLOCKQUOTE',
+  'BR',
+  'DD',
+  'DIV',
+  'DL',
+  'DT',
+  'FIGCAPTION',
+  'FIGURE',
+  'FOOTER',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'HEADER',
+  'HR',
+  'LI',
+  'MAIN',
+  'NAV',
+  'OL',
+  'P',
+  'PRE',
+  'SECTION',
+  'TABLE',
+  'TD',
+  'TH',
+  'TR',
+  'UL',
+]);
+
+function isHardBoundaryElement(element: Element): boolean {
+  return HARD_BOUNDARY_TAG_NAMES.has(element.tagName);
+}
+
+function rangeContainsHardBoundary(range: Range): boolean {
+  const fragment = range.cloneContents();
+  const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_ELEMENT);
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+
+    if (node instanceof Element && isHardBoundaryElement(node)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function getBoundaryOffsetLimit(
@@ -382,6 +482,11 @@ export function createContenteditableTriggerContext(
     return null;
   }
 
+  if (rangeContainsHardBoundary(triggerRange)) {
+    setTriggerDebug?.('contenteditable-boundary-crossed', getRangeText(triggerRange));
+    return null;
+  }
+
   const startSnapshot = createBoundarySnapshot(
     input,
     triggerRange.startContainer,
@@ -461,6 +566,23 @@ export function replaceContenteditableRange(
   }
 
   const range = resolvedRange.cloneRange();
+  const liveSelectionRange = getFocusedCollapsedSelectionRange(input);
+
+  if (!(liveSelectionRange instanceof Range)) {
+    return liveSelectionRange;
+  }
+
+  if (
+    !areBoundaryPointsEqual(
+      liveSelectionRange.endContainer,
+      liveSelectionRange.endOffset,
+      range.endContainer,
+      range.endOffset,
+    )
+  ) {
+    return createAdapterMutationFailure('stale-context');
+  }
+
   const selection = window.getSelection();
 
   let usedExecCommand = false;

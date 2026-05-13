@@ -1,6 +1,7 @@
 import {
   createPrompt,
   deletePrompt,
+  ensureLegacyMigrationCompleteMarkerBestEffort,
   getPromptBody,
   listPromptMetas,
   movePrompt,
@@ -139,7 +140,7 @@ async function handleCreatePromptRequest(
 ): Promise<CreatePromptResponse> {
   const prompt = await createPrompt(request.draft);
 
-  await publishPromptRevisionBestEffort();
+  await publishPromptStorageSideEffectsBestEffort();
   return buildCreatePromptSuccessResponse(prompt);
 }
 
@@ -152,7 +153,7 @@ async function handleUpdatePromptMetaRequest(
 
   switch (result.status) {
     case 'success':
-      await publishPromptRevisionBestEffort();
+      await publishPromptStorageSideEffectsBestEffort();
       return buildPromptMetaSuccessResponse(
         UPDATE_PROMPT_META_MESSAGE,
         result.value,
@@ -184,7 +185,7 @@ async function handleUpdatePromptBodyRequest(
 
   switch (result.status) {
     case 'success':
-      await publishPromptRevisionBestEffort();
+      await publishPromptStorageSideEffectsBestEffort();
       return buildUpdatePromptBodySuccessResponse(result.value);
     case 'not-found':
       return buildPromptNotFoundResponse(
@@ -215,7 +216,7 @@ async function handleDeletePromptRequest(
 
   switch (result.status) {
     case 'success':
-      await publishPromptRevisionBestEffort();
+      await publishPromptStorageSideEffectsBestEffort();
       return buildDeletePromptSuccessResponse(result.value);
     case 'not-found':
       return buildPromptNotFoundResponse(
@@ -247,7 +248,7 @@ async function handleMovePromptRequest(
 
   switch (result.status) {
     case 'success':
-      await publishPromptRevisionBestEffort();
+      await publishPromptStorageSideEffectsBestEffort();
       return buildPromptMetaSuccessResponse(MOVE_PROMPT_MESSAGE, result.value);
     case 'not-found':
       return buildPromptNotFoundResponse(
@@ -276,7 +277,7 @@ async function handleSetPromptPinnedRequest(
 
   switch (result.status) {
     case 'success':
-      await publishPromptRevisionBestEffort();
+      await publishPromptStorageSideEffectsBestEffort();
       return buildPromptMetaSuccessResponse(
         SET_PROMPT_PINNED_MESSAGE,
         result.value,
@@ -309,7 +310,9 @@ function buildRequestErrorResponse(
   );
 }
 
-async function publishPromptRevisionBestEffort(): Promise<void> {
+async function publishPromptStorageSideEffectsBestEffort(): Promise<void> {
+  await ensureLegacyMigrationCompleteMarkerBestEffort();
+
   try {
     await publishPromptRevision();
   } catch (error) {

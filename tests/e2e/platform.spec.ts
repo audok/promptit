@@ -36,6 +36,17 @@ const test = base.extend<{
   },
 });
 
+const SUPPORTED_PRODUCTION_MATCHES = [
+  'https://chatgpt.com/*',
+  'https://chat.openai.com/*',
+  'https://gemini.google.com/*',
+];
+const TEST_ONLY_MATCHES = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];
+const EXPECTED_TEST_MANIFEST_MATCHES = [
+  ...SUPPORTED_PRODUCTION_MATCHES,
+  ...TEST_ONLY_MATCHES,
+];
+
 async function evaluateInPromptitContentScriptContext<T>(
   extension: LoadedExtension,
   page: Page,
@@ -89,6 +100,45 @@ async function evaluateInPromptitContentScriptContext<T>(
 
   return result.result.value as T;
 }
+
+test('manifest keeps supported-site injection policy without host permissions', async ({
+  extension,
+}) => {
+  const serviceWorker = await getServiceWorker(extension);
+  const manifest = await serviceWorker.evaluate(() => chrome.runtime.getManifest());
+
+  expect(manifest.permissions).toEqual(['storage']);
+  expect(manifest.host_permissions ?? []).toEqual([]);
+  const contentScriptMatches =
+    manifest.content_scripts?.flatMap((script) => script.matches ?? []) ?? [];
+
+  expect(contentScriptMatches).toEqual(EXPECTED_TEST_MANIFEST_MATCHES);
+
+  const webAccessibleResourceEntries = (
+    manifest.web_accessible_resources ?? []
+  ).filter(
+    (entry): entry is Exclude<typeof entry, string> => typeof entry !== 'string',
+  );
+  const webAccessibleMatches = Array.from(
+    new Set(
+      webAccessibleResourceEntries.flatMap(
+        (entry) => entry.matches ?? [],
+      ),
+    ),
+  );
+
+  expect(webAccessibleMatches).toEqual(
+    expect.arrayContaining(EXPECTED_TEST_MANIFEST_MATCHES),
+  );
+  expect(webAccessibleMatches).toHaveLength(
+    EXPECTED_TEST_MANIFEST_MATCHES.length,
+  );
+  expect(
+    webAccessibleResourceEntries.flatMap(
+      (entry) => entry.resources ?? [],
+    ),
+  ).toContain('fonts/PretendardVariable.woff2');
+});
 
 test('opens the options page when the content script sends the runtime message', async ({
   extension,

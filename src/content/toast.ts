@@ -77,13 +77,30 @@ function ensureToastHost(): {
   return { content };
 }
 
+function applyToastAccessibility(
+  content: HTMLDivElement,
+  variant: 'success' | 'error',
+): void {
+  content.setAttribute('aria-atomic', 'true');
+
+  if (variant === 'error') {
+    content.setAttribute('role', 'alert');
+    content.setAttribute('aria-live', 'assertive');
+    return;
+  }
+
+  content.setAttribute('role', 'status');
+  content.setAttribute('aria-live', 'polite');
+}
+
 export function showToast(
   message: string,
   variant: 'success' | 'error' = 'success',
 ): void {
   const { content } = ensureToastHost();
-  content.textContent = message;
+  applyToastAccessibility(content, variant);
   content.dataset.variant = variant;
+  content.textContent = message;
   content.classList.remove('is-visible');
 
   if (hideTimer !== null) {

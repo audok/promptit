@@ -12,6 +12,12 @@ export type PopupActiveCell = {
   column: ActiveCellColumn;
 };
 
+export type PopupActionToken = {
+  actionRequestId: number;
+  activeInput: HTMLElement;
+  triggerContext: TriggerContext;
+};
+
 export type CloseReason =
   | 'escape'
   | 'backspace'
@@ -34,6 +40,7 @@ export type PopupSessionState = {
   closeReason: CloseReason | null;
   armedTimer: number | null;
   triggerRequestId: number;
+  actionRequestId: number;
   isComposing: boolean;
   isInternalChange: boolean;
   isBusy: boolean;
@@ -81,6 +88,7 @@ export function createSessionState(): PopupSessionState {
     closeReason: null,
     armedTimer: null,
     triggerRequestId: 0,
+    actionRequestId: 0,
     isComposing: false,
     isInternalChange: false,
     isBusy: false,
@@ -100,6 +108,44 @@ export function invalidateTriggerRequestId(
 ): number {
   session.triggerRequestId += 1;
   return session.triggerRequestId;
+}
+
+export function invalidatePopupActionContinuations(
+  session: PopupSessionState,
+): number {
+  session.actionRequestId += 1;
+  return session.actionRequestId;
+}
+
+export function captureOpenPopupActionToken(
+  session: PopupSessionState,
+): PopupActionToken | null {
+  if (
+    session.status !== 'open' ||
+    !session.activeInput?.isConnected ||
+    !session.triggerContext
+  ) {
+    return null;
+  }
+
+  return {
+    actionRequestId: session.actionRequestId,
+    activeInput: session.activeInput,
+    triggerContext: session.triggerContext,
+  };
+}
+
+export function isCurrentPopupActionToken(
+  session: PopupSessionState,
+  token: PopupActionToken,
+): boolean {
+  return (
+    session.actionRequestId === token.actionRequestId &&
+    session.status === 'open' &&
+    session.activeInput === token.activeInput &&
+    session.activeInput.isConnected &&
+    session.triggerContext === token.triggerContext
+  );
 }
 
 export function isIdleSession(
@@ -268,6 +314,7 @@ export function resetSessionState(session: PopupSessionState): void {
 
   session.disconnectInputObserver?.();
   invalidateTriggerRequestId(session);
+  invalidatePopupActionContinuations(session);
   session.status = 'idle';
   session.activeInput = null;
   session.triggerContext = null;
