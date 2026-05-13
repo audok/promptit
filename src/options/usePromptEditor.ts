@@ -27,8 +27,6 @@ const LOAD_ERROR_MESSAGE =
   '저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요.';
 const BODY_LOAD_ERROR_MESSAGE =
   '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.';
-const BODY_LOAD_PENDING_MESSAGE =
-  '선택한 프롬프트 본문을 불러오는 중입니다.';
 const UPDATE_NOT_FOUND_MESSAGE =
   '수정할 프롬프트를 찾지 못했습니다. 프롬프트 추가 모드로 전환했습니다.';
 const DELETE_RECOVERY_MESSAGE =
@@ -471,7 +469,6 @@ export function usePromptEditor(): UsePromptEditorResult {
           promptId: prompt.id,
           message: BODY_LOAD_ERROR_MESSAGE,
         });
-        setAlertMessage(BODY_LOAD_ERROR_MESSAGE);
       });
     }
   }
@@ -645,22 +642,14 @@ export function usePromptEditor(): UsePromptEditorResult {
         currentBodyLoadState.status !== 'idle' &&
         currentBodyLoadState.promptId === currentMode.promptId;
 
-      if (bodyStateMatchesPrompt && currentBodyLoadState.status === 'loading') {
+      if (bodyStateMatchesPrompt) {
         setErrors({});
-        setAlertMessage(BODY_LOAD_PENDING_MESSAGE);
         return;
       }
 
-      if (
-        activePromptRef.current === null ||
-        (bodyStateMatchesPrompt && currentBodyLoadState.status === 'error')
-      ) {
+      if (activePromptRef.current === null) {
         setErrors({});
-        setAlertMessage(
-          currentBodyLoadState.status === 'error'
-            ? currentBodyLoadState.message
-            : BODY_LOAD_ERROR_MESSAGE,
-        );
+        setAlertMessage(BODY_LOAD_ERROR_MESSAGE);
         return;
       }
     }

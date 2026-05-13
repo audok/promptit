@@ -40,6 +40,8 @@ const test = base.extend<{
 });
 
 const PROMPT_IDB_MIGRATION_STORAGE_KEY = 'promptit:idbMigration';
+const BODY_LOAD_ERROR_MESSAGE =
+  '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.';
 
 async function openOptionsPage(
   extension: LoadedExtension,
@@ -178,6 +180,20 @@ async function patchRuntimeMessageResponse(
     mockedResponse: response,
     types: messageTypes,
   });
+}
+
+async function expectBodyLoadErrorStatusOnly(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('status').filter({ hasText: BODY_LOAD_ERROR_MESSAGE }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('alert').filter({ hasText: BODY_LOAD_ERROR_MESSAGE }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .locator('[aria-live="assertive"]')
+      .filter({ hasText: BODY_LOAD_ERROR_MESSAGE }),
+  ).toHaveCount(0);
 }
 
 function getPromptList(page: Page): Locator {
@@ -1446,11 +1462,7 @@ test('preserves dirty create draft when selected prompt body load fails', async 
   });
   await getPromptCard(page, targetPrompt.title).click();
 
-  await expect(
-    page.getByRole('alert').filter({
-      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
-    }),
-  ).toBeVisible();
+  await expectBodyLoadErrorStatusOnly(page);
   await expect(page.getByRole('heading', { name: '프롬프트 추가' })).toBeVisible();
   await expect(getTitleInput(page)).toHaveValue('작성 중인 제목');
   await expect(getContentInput(page)).toHaveValue('작성 중인 본문');
@@ -1577,11 +1589,7 @@ test('blocks save when dirty edit discard is followed by selected body load fail
   });
   await getPromptCard(page, secondPrompt.title).click();
 
-  await expect(
-    page.getByRole('alert').filter({
-      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
-    }),
-  ).toBeVisible();
+  await expectBodyLoadErrorStatusOnly(page);
   await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
   await expect(getTitleInput(page)).toHaveValue(secondPrompt.title);
   await expect(getContentInput(page)).toHaveValue('');
@@ -1599,6 +1607,7 @@ test('blocks save when dirty edit discard is followed by selected body load fail
     (form as HTMLFormElement).requestSubmit();
   });
 
+  await expectBodyLoadErrorStatusOnly(page);
   expect(await extension.getPromptRecords()).toEqual([firstPrompt, secondPrompt]);
 });
 
@@ -1623,22 +1632,14 @@ test('disables save when selected prompt body did not load', async ({
 
   await getPromptCard(page, targetPrompt.title).click();
 
-  await expect(
-    page.getByRole('alert').filter({
-      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
-    }),
-  ).toBeVisible();
+  await expectBodyLoadErrorStatusOnly(page);
   await expect(
     getPromptSubmitButton(page, '프롬프트 수정'),
   ).toBeDisabled();
   await page.locator('form').evaluate((form) => {
     (form as HTMLFormElement).requestSubmit();
   });
-  await expect(
-    page.getByRole('alert').filter({
-      hasText: '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.',
-    }),
-  ).toBeVisible();
+  await expectBodyLoadErrorStatusOnly(page);
   expect(await extension.getPromptRecords()).toEqual([targetPrompt]);
 });
 
