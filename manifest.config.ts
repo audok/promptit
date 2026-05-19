@@ -15,7 +15,8 @@ export default defineManifest({
   manifest_version: 3,
   name: 'Promptit',
   version: '0.0.1',
-  description: 'Load saved prompts into ChatGPT and Gemini with a slash trigger.',
+  description:
+    'Promptit is a browser extension for ChatGPT and Gemini. Use slash+space to quickly access and insert saved prompts.',
   icons: {
     16: 'icons/icon16.png',
     32: 'icons/icon32.png',
