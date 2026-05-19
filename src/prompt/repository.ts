@@ -40,6 +40,11 @@ import {
 
 const PROMPT_IDB_MIGRATION_STORAGE_KEY = 'promptit:idbMigration';
 
+type LegacyMigrationMarker = {
+  status: 'complete';
+  completedAt?: string;
+};
+
 export type PromptMutationOptions = {
   expectedUpdatedAt?: string;
 };
@@ -325,6 +330,7 @@ export async function deletePrompt(
   await ensurePromptStorageReady();
   validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
   validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
+  await ensureLegacyMigrationMarkerBeforeFinalDelete(id, options);
 
   return withPromptTransaction(
     [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
@@ -483,7 +489,16 @@ export async function setPromptPinned(
 export async function runLegacyPromptMigration(): Promise<void> {
   const existingMetas = await getAllStoreRecords(PROMPT_METAS_STORE);
 
-  if (existingMetas.length > 0 || !hasChromeStorageApi()) {
+  if (existingMetas.length > 0) {
+    await ensureLegacyMigrationCompleteMarkerBestEffort();
+    return;
+  }
+
+  if (!hasChromeStorageApi()) {
+    return;
+  }
+
+  if (await getLegacyMigrationMarker()) {
     return;
   }
 
@@ -534,7 +549,7 @@ export async function runLegacyPromptMigration(): Promise<void> {
     },
   );
 
-  await publishLegacyMigrationCompleteBestEffort();
+  await ensureLegacyMigrationCompleteMarkerBestEffort();
   await publishPromptRevisionBestEffort();
 }
 
@@ -553,20 +568,101 @@ export async function publishPromptRevision(): Promise<void> {
   });
 }
 
-async function publishLegacyMigrationCompleteBestEffort(): Promise<void> {
+export async function ensureLegacyMigrationCompleteMarkerBestEffort(): Promise<void> {
+  if (!hasChromeStorageApi()) {
+    return;
+  }
+
   try {
-    await chrome.storage.local.set({
-      [PROMPT_IDB_MIGRATION_STORAGE_KEY]: {
-        status: 'complete',
-        completedAt: new Date().toISOString(),
-      },
-    });
+    await writeLegacyMigrationCompleteMarker();
   } catch (error) {
     console.error(
       '[promptit] Failed to write prompt IndexedDB migration marker.',
       error,
     );
   }
+}
+
+async function ensureLegacyMigrationMarkerBeforeFinalDelete(
+  id: string,
+  options: PromptDeleteOptions,
+): Promise<void> {
+  if (!hasChromeStorageApi()) {
+    return;
+  }
+
+  const metas = (await getAllStoreRecords(PROMPT_METAS_STORE)).map(assertPromptMeta);
+
+  if (metas.length !== 1) {
+    return;
+  }
+
+  const [currentMeta] = metas;
+
+  if (
+    currentMeta.id !== id ||
+    (options.expectedUpdatedAt &&
+      currentMeta.updatedAt !== options.expectedUpdatedAt) ||
+    (options.expectedBodyUpdatedAt &&
+      currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt)
+  ) {
+    return;
+  }
+
+  if (await getLegacyMigrationMarker()) {
+    return;
+  }
+
+  if (!(await hasLegacyPromptStorageValue())) {
+    return;
+  }
+
+  await writeLegacyMigrationCompleteMarker();
+}
+
+async function writeLegacyMigrationCompleteMarker(): Promise<void> {
+  await chrome.storage.local.set({
+    [PROMPT_IDB_MIGRATION_STORAGE_KEY]: {
+      status: 'complete',
+      completedAt: new Date().toISOString(),
+    },
+  });
+}
+
+async function hasLegacyPromptStorageValue(): Promise<boolean> {
+  const result = await chrome.storage.local.get(LEGACY_PROMPTS_STORAGE_KEY);
+  return typeof result[LEGACY_PROMPTS_STORAGE_KEY] !== 'undefined';
+}
+
+async function getLegacyMigrationMarker(): Promise<LegacyMigrationMarker | null> {
+  const result = await chrome.storage.local.get(PROMPT_IDB_MIGRATION_STORAGE_KEY);
+  return parseLegacyMigrationMarker(result[PROMPT_IDB_MIGRATION_STORAGE_KEY]);
+}
+
+function parseLegacyMigrationMarker(value: unknown): LegacyMigrationMarker | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const marker = value as Record<string, unknown>;
+
+  if (marker.status !== 'complete') {
+    return null;
+  }
+
+  if (
+    marker.completedAt !== undefined &&
+    (typeof marker.completedAt !== 'string' ||
+      !isValidPromptTimestamp(marker.completedAt))
+  ) {
+    return null;
+  }
+
+  return {
+    status: 'complete',
+    completedAt:
+      typeof marker.completedAt === 'string' ? marker.completedAt : undefined,
+  };
 }
 
 async function publishPromptRevisionBestEffort(): Promise<void> {

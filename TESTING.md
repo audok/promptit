@@ -18,7 +18,18 @@
 
 ## 테스트 명령
 
-### 1. 타입 체크
+### 1. 결정적 기본 게이트
+
+```bash
+pnpm test
+```
+
+- 기본 로컬 회귀 게이트다.
+- 내부적으로 `pnpm typecheck`, production `pnpm build`, `pnpm check:manifest`, `pnpm test:e2e`, 최종 production `pnpm build`, `pnpm check:manifest`를 순서대로 실행한다.
+- `pnpm test:e2e`가 test-mode manifest를 생성하므로, 이 게이트는 마지막에 production manifest를 다시 생성하고 검사한다.
+- 실제 사이트 smoke는 외부 사이트와 로그인 상태에 의존하므로 포함하지 않는다.
+
+### 2. 타입 체크
 
 ```bash
 pnpm typecheck
@@ -26,7 +37,7 @@ pnpm typecheck
 
 - TypeScript 타입 오류를 검사한다.
 
-### 2. 결정적 E2E
+### 3. 결정적 E2E
 
 ```bash
 pnpm test:e2e
@@ -34,13 +45,17 @@ pnpm test:e2e
 
 - 로컬 fixture 기반 회귀 테스트를 실행한다.
 - 기본 개발 루프에서 가장 자주 돌려야 하는 테스트다.
+- test-mode manifest로 `dist/`를 다시 빌드한다. 확장을 수동 로드하거나 패키징하기 전에는 `pnpm build && pnpm check:manifest` 또는 `pnpm test`를 다시 실행한다.
 - 현재 커버하는 대표 항목:
   - 옵션 페이지 CRUD, validation, append-by-default, removed sort-order form input, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load draft preservation, storage sync
   - 옵션 페이지 stale save/delete/move conflict와 storage 실패 UI
+  - migration complete marker 재수입 차단 회귀 테스트
+  - selected body load failure와 dirty draft 보호 회귀 테스트
   - `/ ` trigger open/close/cleanup
   - insert, copy, pin/unpin, hover, click, keyboard navigation
   - hover + keyboard navigation + list scroll 조합 회귀
-  - IME, IME reset, NBSP, readonly/disabled textarea
+  - IME command suppression, IME reset, NBSP, readonly/disabled textarea
+  - busy prompt body read 중 popup state와 contenteditable block-boundary trigger rejection
   - storage normalization/recovery
   - toast 기반 실패 복구 경로
   - prompt read failure, composer detach stale-open regression
@@ -51,7 +66,7 @@ pnpm test:e2e
   - ChatGPT/Gemini composer child-node event bubbling resolve
   - Gemini fixture에서 초기화, `/ ` popup open, insert, cleanup, Enter no-submit host regression, Quill clipboard 무시, wrapper anchoring
 
-### 3. 실사이트 Smoke
+### 4. 실사이트 Smoke
 
 ```bash
 pnpm test:e2e:live
@@ -61,6 +76,7 @@ pnpm test:e2e:live
 - `gemini.google.com` public page smoke는 현재 skip되어 있다.
 - 로컬 fixture 테스트보다 느리고 외부 사이트 상태 영향을 받는다.
 - 기본 회귀 테스트가 아니라 release 전 smoke test로 사용한다.
+- 완료 후 production `dist/`를 다시 빌드하고 manifest policy를 검사한다.
 - 현재 커버하는 대표 항목:
   - `chatgpt.com`에서 popup open + insert
   - `chatgpt.com`에서 copy
@@ -99,12 +115,12 @@ Popup storage 테스트는 다음 경계를 우선 검증한다.
 릴리스 전에는 아래 순서를 권장한다.
 
 ```bash
-pnpm typecheck
-pnpm test:e2e
+pnpm test
 pnpm test:e2e:live
 ```
 
 `test:e2e`와 `test:e2e:live`는 동시에 돌리지 않는 편이 좋다. 둘 다 fixture web server를 쓰기 때문에 병렬 실행 시 포트 바인드 경고가 날 수 있다.
+확장을 수동으로 로드하거나 패키징할 때는 마지막 명령이 production `pnpm build`와 `pnpm check:manifest`를 완료한 상태여야 한다.
 
 ## 수동 최종 체크
 
@@ -140,18 +156,17 @@ pnpm test:e2e:live
 
 ### 구현 중
 
+- `pnpm test`
 - `pnpm typecheck`
 - `pnpm test:e2e`
 
 ### PR 전
 
-- `pnpm typecheck`
-- `pnpm test:e2e`
+- `pnpm test`
 
 ### 릴리스 전
 
-- `pnpm typecheck`
-- `pnpm test:e2e`
+- `pnpm test`
 - `pnpm test:e2e:live`
 - 브라우저 테스트 후 `chrome-devtools-mcp` / 테스트용 Chrome 프로세스 정리 확인
 - 브라우저 툴바 아이콘 수동 체크
@@ -193,8 +208,7 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 
 ## 빠른 체크리스트
 
-- [ ] `pnpm typecheck`
-- [ ] `pnpm test:e2e`
+- [ ] `pnpm test`
 - [ ] `pnpm test:e2e:live`
 - [ ] 테스트용 Chrome/MCP 프로세스 정리 확인
 - [ ] 툴바 Promptit 아이콘 클릭

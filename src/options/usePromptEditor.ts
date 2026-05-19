@@ -342,6 +342,7 @@ export function usePromptEditor(): UsePromptEditorResult {
   const formRef = useRef(form);
   const conflictStateRef = useRef(conflictState);
   const isDirtyRef = useRef(isDirty);
+  const bodyLoadStateRef = useRef(bodyLoadState);
   const bodyLoadRequestIdRef = useRef(0);
   const savingPromptIdRef = useRef<string | null>(null);
   const savedPromptEchoRef = useRef<{
@@ -356,6 +357,7 @@ export function usePromptEditor(): UsePromptEditorResult {
   formRef.current = form;
   conflictStateRef.current = conflictState;
   isDirtyRef.current = isDirty;
+  bodyLoadStateRef.current = bodyLoadState;
 
   function clearAlertMessage(): void {
     setAlertMessage(null);
@@ -420,23 +422,28 @@ export function usePromptEditor(): UsePromptEditorResult {
 
   async function loadPromptRecord(prompt: PromptMeta): Promise<void> {
     const requestId = bodyLoadRequestIdRef.current + 1;
+    const preserveDirtyDraftOnFailure =
+      isDirtyRef.current && modeRef.current.kind === 'create';
     bodyLoadRequestIdRef.current = requestId;
 
     startTransition(() => {
-      setMode({
-        kind: 'edit',
-        promptId: prompt.id,
-        expectedUpdatedAt: prompt.updatedAt,
-        expectedBodyUpdatedAt: prompt.bodyUpdatedAt,
-      });
-      setActivePrompt(null);
       setBodyLoadState({ status: 'loading', promptId: prompt.id });
-      setForm(createLoadingFormFromMeta(prompt));
-      setErrors({});
-      setIsDirty(false);
-      setConflictState({ status: 'idle' });
       setNotice(null);
       setAlertMessage(null);
+
+      if (!preserveDirtyDraftOnFailure) {
+        setMode({
+          kind: 'edit',
+          promptId: prompt.id,
+          expectedUpdatedAt: prompt.updatedAt,
+          expectedBodyUpdatedAt: prompt.bodyUpdatedAt,
+        });
+        setActivePrompt(null);
+        setForm(createLoadingFormFromMeta(prompt));
+        setErrors({});
+        setIsDirty(false);
+        setConflictState({ status: 'idle' });
+      }
     });
 
     try {
@@ -462,7 +469,6 @@ export function usePromptEditor(): UsePromptEditorResult {
           promptId: prompt.id,
           message: BODY_LOAD_ERROR_MESSAGE,
         });
-        setAlertMessage(BODY_LOAD_ERROR_MESSAGE);
       });
     }
   }
@@ -628,6 +634,26 @@ export function usePromptEditor(): UsePromptEditorResult {
       setAlertMessage(null);
     }
 
+    const currentMode = modeRef.current;
+    const currentBodyLoadState = bodyLoadStateRef.current;
+
+    if (currentMode.kind === 'edit') {
+      const bodyStateMatchesPrompt =
+        currentBodyLoadState.status !== 'idle' &&
+        currentBodyLoadState.promptId === currentMode.promptId;
+
+      if (bodyStateMatchesPrompt) {
+        setErrors({});
+        return;
+      }
+
+      if (activePromptRef.current === null) {
+        setErrors({});
+        setAlertMessage(BODY_LOAD_ERROR_MESSAGE);
+        return;
+      }
+    }
+
     const parsedForm = parsePromptForm(formRef.current);
 
     if (!parsedForm.ok) {
@@ -639,8 +665,6 @@ export function usePromptEditor(): UsePromptEditorResult {
     setSaveState({ status: 'saving' });
 
     try {
-      const currentMode = modeRef.current;
-
       if (currentMode.kind === 'edit') {
         const currentRecord = activePromptRef.current;
         const currentMeta =

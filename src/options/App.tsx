@@ -19,6 +19,9 @@ function formatTimestamp(value: string): string {
   });
 }
 
+const BUTTON_FOCUS_CLASS =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
+
 type DropPlacement = 'before' | 'after';
 
 type DropIndicatorState = {
@@ -36,6 +39,7 @@ export default function App() {
     conflictState,
     loadState,
     isSaving,
+    isDirty,
     isEditing,
     isEditorLoading,
     prompts,
@@ -117,11 +121,41 @@ export default function App() {
     activePromptId !== null
       ? prompts.find((prompt) => prompt.id === activePromptId) ?? null
       : null;
-  const editorDisabled = isSaving || isEditorLoading;
+  const bodyLoadErrorBlocksEditor =
+    bodyLoadState.status === 'error' &&
+    mode.kind === 'edit' &&
+    bodyLoadState.promptId === mode.promptId;
+  const editorUnavailable = isEditorLoading || bodyLoadErrorBlocksEditor;
+  const editorDisabled = isSaving || editorUnavailable;
   const listActionDisabled =
     isSaving || isEditorLoading || loadState.status !== 'ready';
   const reorderDisabled =
     isSaving || isEditorLoading || loadState.status !== 'ready';
+
+  function confirmDiscardDirtyForm(): boolean {
+    return (
+      !isDirty ||
+      window.confirm(
+        '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
+      )
+    );
+  }
+
+  function handleStartCreateMode(): void {
+    if (!confirmDiscardDirtyForm()) {
+      return;
+    }
+
+    startCreateMode();
+  }
+
+  async function handleSelectPrompt(prompt: PromptMeta): Promise<void> {
+    if (!confirmDiscardDirtyForm()) {
+      return;
+    }
+
+    await selectPrompt(prompt);
+  }
 
   function getPromptGroup(prompt: PromptMeta): 'pinned' | 'normal' {
     return prompt.pinned ? 'pinned' : 'normal';
@@ -417,8 +451,8 @@ export default function App() {
               </div>
               <button
                 type="button"
-                className="rounded-full border border-stone-300 bg-stone-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={startCreateMode}
+                className={`rounded-full border border-stone-300 bg-stone-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+                onClick={handleStartCreateMode}
                 disabled={isSaving}
               >
                 프롬프트 추가
@@ -473,7 +507,7 @@ export default function App() {
                                     : prompt.pinned
                                       ? 'border-stone-900 bg-stone-900 text-white hover:bg-stone-800'
                                       : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100 hover:text-stone-800'
-                                } disabled:cursor-not-allowed disabled:opacity-50`}
+                                } disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
                                 onClick={() => {
                                   void handleTogglePinned(prompt);
                                 }}
@@ -496,7 +530,7 @@ export default function App() {
                                   isActive
                                     ? 'border-white/15 bg-white/10 text-stone-200 hover:bg-white/15'
                                     : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100'
-                                } disabled:cursor-not-allowed disabled:opacity-50`}
+                                } disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
                                 draggable={!reorderDisabled}
                                 onDragStart={(event) => {
                                   handleDragStart(event, prompt);
@@ -530,16 +564,16 @@ export default function App() {
                             </div>
                             <button
                               type="button"
-                              className="min-w-0 flex-1 cursor-pointer text-left"
+                              className={`min-w-0 flex-1 cursor-pointer rounded-[18px] text-left ${BUTTON_FOCUS_CLASS}`}
                               onClick={() => {
-                                selectPrompt(prompt);
+                                void handleSelectPrompt(prompt);
                               }}
                               disabled={isSaving}
-                              aria-pressed={isActive}
+                              aria-label={`${prompt.title} 편집`}
                               aria-current={isActive ? 'true' : undefined}
                               data-testid="prompt-card"
                             >
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
+                            <span className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
                               <span
                                 className={`rounded-full px-2 py-1 tracking-[0.12em] ${
                                   isActive
@@ -565,11 +599,11 @@ export default function App() {
                               >
                                 {prompt.charCount.toLocaleString('ko-KR')}자
                               </span>
-                            </div>
-                            <p className="mt-3 text-lg font-semibold tracking-tight">
+                            </span>
+                            <span className="mt-3 block text-lg font-semibold tracking-tight">
                               {prompt.title}
-                            </p>
-                            <dl
+                            </span>
+                            <span
                               className={`mt-3 grid gap-2 text-xs leading-5 sm:grid-cols-2 ${
                                 isActive ? 'text-stone-300' : 'text-stone-600'
                               }`}
@@ -579,7 +613,7 @@ export default function App() {
                                 label="추가"
                                 value={formatTimestamp(prompt.createdAt)}
                               />
-                            </dl>
+                            </span>
                           </button>
 
                           <button
@@ -588,12 +622,12 @@ export default function App() {
                               isActive
                                 ? 'border-rose-200/20 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25'
                                 : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                            } disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
                             onClick={() => {
                               void handleDelete(prompt);
                             }}
                             disabled={isSaving}
-                            aria-label="목록에서 프롬프트 삭제"
+                            aria-label={`${prompt.title} 삭제`}
                           >
                             삭제
                           </button>
@@ -610,7 +644,7 @@ export default function App() {
 
           <article
             className="rounded-[28px] border border-stone-200 bg-[linear-gradient(180deg,#fef8f5,#f7eee8)] p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
-            aria-busy={isSaving}
+            aria-busy={isEditorLoading || isSaving}
           >
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -624,8 +658,8 @@ export default function App() {
               {isEditing ? (
                 <button
                   type="button"
-                  className="rounded-full border border-stone-300 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={startCreateMode}
+                  className={`rounded-full border border-stone-300 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+                  onClick={handleStartCreateMode}
                   disabled={isSaving}
                 >
                   편집 취소
@@ -673,6 +707,16 @@ export default function App() {
                 aria-live="polite"
               >
                 선택한 프롬프트 본문을 불러오는 중입니다.
+              </div>
+            ) : null}
+
+            {bodyLoadState.status === 'error' ? (
+              <div
+                className="mt-5 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900"
+                role="status"
+                aria-live="polite"
+              >
+                {bodyLoadState.message}
               </div>
             ) : null}
 
@@ -740,7 +784,7 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
-                  className="rounded-full bg-[#2f2f2f] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:bg-stone-500"
+                  className={`rounded-full bg-[#2f2f2f] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:bg-stone-500 ${BUTTON_FOCUS_CLASS}`}
                   disabled={editorDisabled || loadState.status === 'error'}
                 >
                   {isSaving
@@ -755,13 +799,13 @@ export default function App() {
                 {isEditing ? (
                   <button
                     type="button"
-                    className="rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
                     onClick={() => {
                       if (activePromptMeta) {
                         void handleDelete(activePromptMeta);
                       }
                     }}
-                    disabled={editorDisabled || !activePromptMeta}
+                    disabled={isSaving || isEditorLoading || !activePromptMeta}
                   >
                     프롬프트 삭제
                   </button>
@@ -869,10 +913,10 @@ function EmptyPanel(props: { message: string }) {
 
 function MetaLine(props: { label: string; value: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <dt className="shrink-0 font-semibold">{props.label}</dt>
-      <dd className="min-w-0 truncate">{props.value}</dd>
-    </div>
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="shrink-0 font-semibold">{props.label}</span>
+      <span className="min-w-0 truncate">{props.value}</span>
+    </span>
   );
 }
 
@@ -892,7 +936,7 @@ function Banner(props: {
       <p className="leading-6">{props.message}</p>
       <button
         type="button"
-        className="shrink-0 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] hover:bg-black/5"
+        className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] hover:bg-black/5 ${BUTTON_FOCUS_CLASS}`}
         onClick={props.onDismiss}
         aria-label="메시지 닫기"
       >

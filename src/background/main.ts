@@ -11,8 +11,11 @@ import {
   assertNever,
   buildOpenOptionsPageErrorResponse,
   buildOpenOptionsPageSuccessResponse,
+  buildPromptErrorResponse,
   parsePromptitRuntimeRequest,
   type OpenOptionsPageResponse,
+  type PromptitRuntimeRequest,
+  type PromptitRuntimeResponse,
 } from '../runtime/messages';
 import { handlePromptRequest } from './prompt-mutations';
 
@@ -82,7 +85,41 @@ export function registerBackgroundHandlers(): void {
       return assertNever(request);
     })();
 
-    void responsePromise.then(sendResponse);
+    void responsePromise
+      .then(sendResponse)
+      .catch((error) => {
+        console.error('[promptit] Runtime request failed in background.', error);
+        sendResponse(buildRuntimeRequestErrorResponse(request, error));
+      });
     return true;
   });
+}
+
+function buildRuntimeRequestErrorResponse(
+  request: PromptitRuntimeRequest,
+  error: unknown,
+): PromptitRuntimeResponse {
+  const message = getErrorMessage(error, 'Promptit runtime request failed.');
+
+  switch (request.type) {
+    case OPEN_OPTIONS_PAGE_MESSAGE:
+      return buildOpenOptionsPageErrorResponse(message);
+    case LIST_PROMPT_METAS_MESSAGE:
+    case GET_PROMPT_BODY_MESSAGE:
+    case CREATE_PROMPT_MESSAGE:
+    case UPDATE_PROMPT_META_MESSAGE:
+    case UPDATE_PROMPT_BODY_MESSAGE:
+    case DELETE_PROMPT_MESSAGE:
+    case MOVE_PROMPT_MESSAGE:
+    case SET_PROMPT_PINNED_MESSAGE:
+      return buildPromptErrorResponse(request.type, message);
+  }
+
+  return assertNever(request);
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : fallback;
 }

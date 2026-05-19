@@ -14,8 +14,9 @@ const contentScriptMatches = isTestMode
 export default defineManifest({
   manifest_version: 3,
   name: 'Promptit',
-  version: '0.0.1',
-  description: 'Load saved prompts into supported AI sites with a slash trigger.',
+  version: '0.9.0',
+  description:
+    'Promptit is a browser extension for ChatGPT and Gemini. Use slash+space to quickly access and insert saved prompts.',
   icons: {
     16: 'icons/icon16.png',
     32: 'icons/icon32.png',
@@ -23,7 +24,6 @@ export default defineManifest({
     128: 'icons/icon128.png',
   },
   permissions: ['storage'],
-  host_permissions: contentScriptMatches,
   web_accessible_resources: [
     {
       resources: ['fonts/PretendardVariable.woff2'],
