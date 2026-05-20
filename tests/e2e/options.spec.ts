@@ -42,6 +42,8 @@ const test = base.extend<{
 const PROMPT_IDB_MIGRATION_STORAGE_KEY = 'promptit:idbMigration';
 const BODY_LOAD_ERROR_MESSAGE =
   '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.';
+const PROMPT_GROUP_CROSS_REORDER_MESSAGE =
+  '고정됨 목록과 일반 목록 사이에서는 끌어서 순서를 바꿀 수 없습니다.';
 
 async function openOptionsPage(
   extension: LoadedExtension,
@@ -309,6 +311,43 @@ async function pressPromptHandleKey(
   await expect(handle).toBeVisible();
   await handle.focus();
   await page.keyboard.press(key);
+}
+
+async function expectPoliteLiveRegionToContain(
+  page: Page,
+  message: string,
+): Promise<void> {
+  await expect(
+    page.locator('[aria-live="polite"]').filter({ hasText: message }),
+  ).toHaveCount(1);
+}
+
+async function dragPromptHandleToPrompt(
+  page: Page,
+  sourceTitle: string,
+  targetTitle: string,
+  placement: 'after' | 'before',
+): Promise<void> {
+  const handle = getPromptDragHandle(page, sourceTitle);
+  const targetItem = getPromptCard(page, targetTitle).locator(
+    'xpath=ancestor::*[@role="listitem"][1]',
+  );
+
+  await expect(handle).toBeVisible();
+  await expect(targetItem).toBeVisible();
+
+  const targetBox = await targetItem.boundingBox();
+
+  if (!targetBox) {
+    throw new Error(`Prompt drop target not found for ${targetTitle}.`);
+  }
+
+  await handle.dragTo(targetItem, {
+    targetPosition: {
+      x: targetBox.width / 2,
+      y: placement === 'before' ? 4 : targetBox.height - 4,
+    },
+  });
 }
 
 async function expectNoChromeStoragePromptBody(
@@ -1070,6 +1109,84 @@ test('reorders normal prompts within the normal group using drag-handle keyboard
   await expectPromptListToHideInternalOrderFields(page);
 });
 
+test('reorders normal prompts using pointer drag after and before placements', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'pointer-first',
+      title: '포인터 첫 번째',
+      content: '포인터 첫 번째 본문',
+      sortOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'pointer-second',
+      title: '포인터 두 번째',
+      content: '포인터 두 번째 본문',
+      sortOrder: 2,
+    }),
+    createPromptRecord({
+      id: 'pointer-third',
+      title: '포인터 세 번째',
+      content: '포인터 세 번째 본문',
+      sortOrder: 3,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 첫 번째',
+    '포인터 두 번째',
+    '포인터 세 번째',
+  ]);
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 세 번째',
+    '포인터 첫 번째',
+    'after',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 첫 번째',
+    '포인터 세 번째',
+    '포인터 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-first',
+    'pointer-third',
+    'pointer-second',
+  ]);
+  await expectPoliteLiveRegionToContain(
+    page,
+    '포인터 세 번째 순서를 변경했습니다.',
+  );
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 세 번째',
+    '포인터 첫 번째',
+    'before',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 세 번째',
+    '포인터 첫 번째',
+    '포인터 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-third',
+    'pointer-first',
+    'pointer-second',
+  ]);
+  await expectPoliteLiveRegionToContain(
+    page,
+    '포인터 세 번째 순서를 변경했습니다.',
+  );
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
 test('centers the drag-handle dot icon inside its button', async ({
   extension,
 }) => {
@@ -1209,6 +1326,111 @@ test('keeps storage unchanged when drag-handle keyboard movement would cross gro
     'pinned-boundary',
     'normal-boundary',
   ]);
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
+test('keeps storage unchanged when pointer drag lands in the same position', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'pointer-noop-first',
+      title: '포인터 제자리 첫 번째',
+      content: '포인터 제자리 첫 번째 본문',
+      sortOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'pointer-noop-second',
+      title: '포인터 제자리 두 번째',
+      content: '포인터 제자리 두 번째 본문',
+      sortOrder: 2,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 제자리 첫 번째',
+    '포인터 제자리 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-noop-first',
+    'pointer-noop-second',
+  ]);
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 제자리 첫 번째',
+    '포인터 제자리 두 번째',
+    'before',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 제자리 첫 번째',
+    '포인터 제자리 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-noop-first',
+    'pointer-noop-second',
+  ]);
+  await expect(
+    page.locator('[aria-live="polite"]'),
+  ).not.toContainText(
+    '포인터 제자리 첫 번째 순서를 변경했습니다.',
+  );
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
+test('keeps storage unchanged when pointer drag would cross prompt groups', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'pointer-cross-pinned',
+      title: '포인터 교차 고정',
+      content: '포인터 교차 고정 본문',
+      pinned: true,
+      pinnedOrder: 1,
+      sortOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'pointer-cross-normal',
+      title: '포인터 교차 일반',
+      content: '포인터 교차 일반 본문',
+      sortOrder: 2,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 교차 고정',
+    '포인터 교차 일반',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-cross-pinned',
+    'pointer-cross-normal',
+  ]);
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 교차 일반',
+    '포인터 교차 고정',
+    'before',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 교차 고정',
+    '포인터 교차 일반',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-cross-pinned',
+    'pointer-cross-normal',
+  ]);
+  await expectPoliteLiveRegionToContain(
+    page,
+    PROMPT_GROUP_CROSS_REORDER_MESSAGE,
+  );
   await expectPromptListToHideInternalOrderFields(page);
 });
 
