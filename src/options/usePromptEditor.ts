@@ -13,8 +13,7 @@ import {
   movePrompt,
   setPromptPinned,
   subscribeToPromptMetas,
-  updatePromptBody,
-  updatePromptMeta,
+  updatePromptRecord,
 } from '../prompt/storage';
 import {
   BODY_LOAD_ERROR_MESSAGE,
@@ -95,10 +94,14 @@ async function resolveConflictRecord(
   } catch (error) {
     console.error('[promptit] Failed to load conflicted prompt body.', error);
 
-    return {
-      ...meta,
-      content: fallback?.content ?? '',
-    };
+    if (fallback?.id === meta.id) {
+      return {
+        ...meta,
+        content: fallback.content,
+      };
+    }
+
+    throw new Error(BODY_LOAD_ERROR_MESSAGE);
   }
 }
 
@@ -472,14 +475,13 @@ export function usePromptEditor(): UsePromptEditorResult {
 
         const saveResult = await saveExistingPrompt({
           promptId: currentMode.promptId,
+          expectedUpdatedAt: currentMode.expectedUpdatedAt,
           expectedBodyUpdatedAt: currentMode.expectedBodyUpdatedAt,
           form: parsedForm.form,
           currentRecord,
           prompts: promptsRef.current,
           operations: {
-            setPromptPinned,
-            updatePromptMeta,
-            updatePromptBody,
+            updatePromptRecord,
             resolveConflictRecord,
           },
         });
@@ -827,11 +829,25 @@ export function usePromptEditor(): UsePromptEditorResult {
       }
 
       if (result.status === 'conflict') {
-        const conflictRecord = await resolveConflictRecord(
-          result.currentMeta,
-          activePromptRef.current,
-        );
+        const fallbackRecord =
+          activePromptRef.current?.id === id ? activePromptRef.current : null;
         const nextPrompts = upsertPromptMeta(promptsRef.current, result.currentMeta);
+        let conflictRecord: PromptRecord;
+
+        try {
+          conflictRecord = await resolveConflictRecord(
+            result.currentMeta,
+            fallbackRecord,
+          );
+        } catch (error) {
+          console.error('[promptit] Failed to resolve delete conflict.', error);
+
+          startTransition(() => {
+            setPrompts(nextPrompts);
+            setAlertMessage(BODY_LOAD_ERROR_MESSAGE);
+          });
+          return;
+        }
 
         startTransition(() => {
           setPrompts(nextPrompts);

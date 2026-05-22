@@ -15,9 +15,11 @@ import {
 export const OPEN_OPTIONS_PAGE_MESSAGE = 'promptit/open-options-page';
 export const LIST_PROMPT_METAS_MESSAGE = 'promptit/list-prompt-metas';
 export const GET_PROMPT_BODY_MESSAGE = 'promptit/get-prompt-body';
+export const GET_PROMPT_RECORD_MESSAGE = 'promptit/get-prompt-record';
 export const CREATE_PROMPT_MESSAGE = 'promptit/create-prompt';
 export const UPDATE_PROMPT_META_MESSAGE = 'promptit/update-prompt-meta';
 export const UPDATE_PROMPT_BODY_MESSAGE = 'promptit/update-prompt-body';
+export const UPDATE_PROMPT_RECORD_MESSAGE = 'promptit/update-prompt-record';
 export const DELETE_PROMPT_MESSAGE = 'promptit/delete-prompt';
 export const MOVE_PROMPT_MESSAGE = 'promptit/move-prompt';
 export const SET_PROMPT_PINNED_MESSAGE = 'promptit/set-prompt-pinned';
@@ -25,17 +27,21 @@ export const SET_PROMPT_PINNED_MESSAGE = 'promptit/set-prompt-pinned';
 type PromptMessageType =
   | typeof LIST_PROMPT_METAS_MESSAGE
   | typeof GET_PROMPT_BODY_MESSAGE
+  | typeof GET_PROMPT_RECORD_MESSAGE
   | typeof CREATE_PROMPT_MESSAGE
   | typeof UPDATE_PROMPT_META_MESSAGE
   | typeof UPDATE_PROMPT_BODY_MESSAGE
+  | typeof UPDATE_PROMPT_RECORD_MESSAGE
   | typeof DELETE_PROMPT_MESSAGE
   | typeof MOVE_PROMPT_MESSAGE
   | typeof SET_PROMPT_PINNED_MESSAGE;
 
 type ExistingPromptMessageType =
   | typeof GET_PROMPT_BODY_MESSAGE
+  | typeof GET_PROMPT_RECORD_MESSAGE
   | typeof UPDATE_PROMPT_META_MESSAGE
   | typeof UPDATE_PROMPT_BODY_MESSAGE
+  | typeof UPDATE_PROMPT_RECORD_MESSAGE
   | typeof DELETE_PROMPT_MESSAGE
   | typeof MOVE_PROMPT_MESSAGE
   | typeof SET_PROMPT_PINNED_MESSAGE;
@@ -43,6 +49,7 @@ type ExistingPromptMessageType =
 type PromptConflictMessageType =
   | typeof UPDATE_PROMPT_META_MESSAGE
   | typeof UPDATE_PROMPT_BODY_MESSAGE
+  | typeof UPDATE_PROMPT_RECORD_MESSAGE
   | typeof DELETE_PROMPT_MESSAGE
   | typeof MOVE_PROMPT_MESSAGE
   | typeof SET_PROMPT_PINNED_MESSAGE;
@@ -57,6 +64,11 @@ export type ListPromptMetasRequest = {
 
 export type GetPromptBodyRequest = {
   type: typeof GET_PROMPT_BODY_MESSAGE;
+  id: string;
+};
+
+export type GetPromptRecordRequest = {
+  type: typeof GET_PROMPT_RECORD_MESSAGE;
   id: string;
 };
 
@@ -76,6 +88,15 @@ export type UpdatePromptBodyRequest = {
   type: typeof UPDATE_PROMPT_BODY_MESSAGE;
   id: string;
   content: string;
+  expectedUpdatedAt: string;
+  expectedBodyUpdatedAt: string;
+};
+
+export type UpdatePromptRecordRequest = {
+  type: typeof UPDATE_PROMPT_RECORD_MESSAGE;
+  id: string;
+  draft: PromptDraft;
+  expectedUpdatedAt: string;
   expectedBodyUpdatedAt: string;
 };
 
@@ -105,9 +126,11 @@ export type SetPromptPinnedRequest = {
 export type PromptRequest =
   | ListPromptMetasRequest
   | GetPromptBodyRequest
+  | GetPromptRecordRequest
   | CreatePromptRequest
   | UpdatePromptMetaRequest
   | UpdatePromptBodyRequest
+  | UpdatePromptRecordRequest
   | DeletePromptRequest
   | MovePromptRequest
   | SetPromptPinnedRequest;
@@ -116,6 +139,7 @@ export type PromptMutationRequest =
   | CreatePromptRequest
   | UpdatePromptMetaRequest
   | UpdatePromptBodyRequest
+  | UpdatePromptRecordRequest
   | DeletePromptRequest
   | MovePromptRequest
   | SetPromptPinnedRequest;
@@ -158,6 +182,13 @@ export type GetPromptBodySuccessResponse = {
   body: PromptBody;
 };
 
+export type GetPromptRecordSuccessResponse = {
+  type: typeof GET_PROMPT_RECORD_MESSAGE;
+  ok: true;
+  status: 'success';
+  prompt: PromptRecord;
+};
+
 export type CreatePromptSuccessResponse = {
   type: typeof CREATE_PROMPT_MESSAGE;
   ok: true;
@@ -179,6 +210,13 @@ export type PromptMetaSuccessResponse<
 
 export type UpdatePromptBodySuccessResponse = {
   type: typeof UPDATE_PROMPT_BODY_MESSAGE;
+  ok: true;
+  status: 'success';
+  prompt: PromptRecord;
+};
+
+export type UpdatePromptRecordSuccessResponse = {
+  type: typeof UPDATE_PROMPT_RECORD_MESSAGE;
   ok: true;
   status: 'success';
   prompt: PromptRecord;
@@ -226,6 +264,11 @@ export type GetPromptBodyResponse =
   | PromptNotFoundResponse<typeof GET_PROMPT_BODY_MESSAGE>
   | PromptErrorResponse<typeof GET_PROMPT_BODY_MESSAGE>;
 
+export type GetPromptRecordResponse =
+  | GetPromptRecordSuccessResponse
+  | PromptNotFoundResponse<typeof GET_PROMPT_RECORD_MESSAGE>
+  | PromptErrorResponse<typeof GET_PROMPT_RECORD_MESSAGE>;
+
 export type CreatePromptResponse =
   | CreatePromptSuccessResponse
   | PromptErrorResponse<typeof CREATE_PROMPT_MESSAGE>;
@@ -241,6 +284,12 @@ export type UpdatePromptBodyResponse =
   | PromptNotFoundResponse<typeof UPDATE_PROMPT_BODY_MESSAGE>
   | PromptConflictResponse<typeof UPDATE_PROMPT_BODY_MESSAGE>
   | PromptErrorResponse<typeof UPDATE_PROMPT_BODY_MESSAGE>;
+
+export type UpdatePromptRecordResponse =
+  | UpdatePromptRecordSuccessResponse
+  | PromptNotFoundResponse<typeof UPDATE_PROMPT_RECORD_MESSAGE>
+  | PromptConflictResponse<typeof UPDATE_PROMPT_RECORD_MESSAGE>
+  | PromptErrorResponse<typeof UPDATE_PROMPT_RECORD_MESSAGE>;
 
 export type DeletePromptResponse =
   | DeletePromptSuccessResponse
@@ -263,9 +312,11 @@ export type SetPromptPinnedResponse =
 export type PromptResponse =
   | ListPromptMetasResponse
   | GetPromptBodyResponse
+  | GetPromptRecordResponse
   | CreatePromptResponse
   | UpdatePromptMetaResponse
   | UpdatePromptBodyResponse
+  | UpdatePromptRecordResponse
   | DeletePromptResponse
   | MovePromptResponse
   | SetPromptPinnedResponse;
@@ -274,6 +325,7 @@ export type PromptMutationResponse =
   | CreatePromptResponse
   | UpdatePromptMetaResponse
   | UpdatePromptBodyResponse
+  | UpdatePromptRecordResponse
   | DeletePromptResponse
   | MovePromptResponse
   | SetPromptPinnedResponse;
@@ -303,6 +355,13 @@ export function buildGetPromptBodyRequest(id: string): GetPromptBodyRequest {
   };
 }
 
+export function buildGetPromptRecordRequest(id: string): GetPromptRecordRequest {
+  return {
+    type: GET_PROMPT_RECORD_MESSAGE,
+    id,
+  };
+}
+
 export function buildCreatePromptRequest(
   draft: PromptDraft,
 ): CreatePromptRequest {
@@ -328,12 +387,29 @@ export function buildUpdatePromptMetaRequest(
 export function buildUpdatePromptBodyRequest(
   id: string,
   content: string,
+  expectedUpdatedAt: string,
   expectedBodyUpdatedAt: string,
 ): UpdatePromptBodyRequest {
   return {
     type: UPDATE_PROMPT_BODY_MESSAGE,
     id,
     content,
+    expectedUpdatedAt,
+    expectedBodyUpdatedAt,
+  };
+}
+
+export function buildUpdatePromptRecordRequest(
+  id: string,
+  draft: PromptDraft,
+  expectedUpdatedAt: string,
+  expectedBodyUpdatedAt: string,
+): UpdatePromptRecordRequest {
+  return {
+    type: UPDATE_PROMPT_RECORD_MESSAGE,
+    id,
+    draft,
+    expectedUpdatedAt,
     expectedBodyUpdatedAt,
   };
 }
@@ -416,6 +492,17 @@ export function buildGetPromptBodySuccessResponse(
   };
 }
 
+export function buildGetPromptRecordSuccessResponse(
+  prompt: PromptRecord,
+): GetPromptRecordSuccessResponse {
+  return {
+    type: GET_PROMPT_RECORD_MESSAGE,
+    ok: true,
+    status: 'success',
+    prompt,
+  };
+}
+
 export function buildCreatePromptSuccessResponse(
   prompt: PromptRecord,
 ): CreatePromptSuccessResponse {
@@ -446,6 +533,17 @@ export function buildUpdatePromptBodySuccessResponse(
 ): UpdatePromptBodySuccessResponse {
   return {
     type: UPDATE_PROMPT_BODY_MESSAGE,
+    ok: true,
+    status: 'success',
+    prompt,
+  };
+}
+
+export function buildUpdatePromptRecordSuccessResponse(
+  prompt: PromptRecord,
+): UpdatePromptRecordSuccessResponse {
+  return {
+    type: UPDATE_PROMPT_RECORD_MESSAGE,
     ok: true,
     status: 'success',
     prompt,
@@ -523,12 +621,16 @@ export function parsePromptitRuntimeRequest(
       return buildListPromptMetasRequest();
     case GET_PROMPT_BODY_MESSAGE:
       return parseGetPromptBodyRequest(value);
+    case GET_PROMPT_RECORD_MESSAGE:
+      return parseGetPromptRecordRequest(value);
     case CREATE_PROMPT_MESSAGE:
       return parseCreatePromptRequest(value);
     case UPDATE_PROMPT_META_MESSAGE:
       return parseUpdatePromptMetaRequest(value);
     case UPDATE_PROMPT_BODY_MESSAGE:
       return parseUpdatePromptBodyRequest(value);
+    case UPDATE_PROMPT_RECORD_MESSAGE:
+      return parseUpdatePromptRecordRequest(value);
     case DELETE_PROMPT_MESSAGE:
       return parseDeletePromptRequest(value);
     case MOVE_PROMPT_MESSAGE:
@@ -554,12 +656,16 @@ export function parsePromptitRuntimeResponse(
       return parseListPromptMetasResponse(value);
     case GET_PROMPT_BODY_MESSAGE:
       return parseGetPromptBodyResponse(value);
+    case GET_PROMPT_RECORD_MESSAGE:
+      return parseGetPromptRecordResponse(value);
     case CREATE_PROMPT_MESSAGE:
       return parseCreatePromptResponse(value);
     case UPDATE_PROMPT_META_MESSAGE:
       return parsePromptMetaResponse(value, UPDATE_PROMPT_META_MESSAGE);
     case UPDATE_PROMPT_BODY_MESSAGE:
       return parseUpdatePromptBodyResponse(value);
+    case UPDATE_PROMPT_RECORD_MESSAGE:
+      return parseUpdatePromptRecordResponse(value);
     case DELETE_PROMPT_MESSAGE:
       return parseDeletePromptResponse(value);
     case MOVE_PROMPT_MESSAGE:
@@ -596,6 +702,13 @@ function parseGetPromptBodyRequest(
   return id ? buildGetPromptBodyRequest(id) : null;
 }
 
+function parseGetPromptRecordRequest(
+  value: Record<string, unknown>,
+): GetPromptRecordRequest | null {
+  const id = parsePromptId(value.id);
+  return id ? buildGetPromptRecordRequest(id) : null;
+}
+
 function parseCreatePromptRequest(
   value: Record<string, unknown>,
 ): CreatePromptRequest | null {
@@ -621,15 +734,48 @@ function parseUpdatePromptBodyRequest(
   value: Record<string, unknown>,
 ): UpdatePromptBodyRequest | null {
   const id = parsePromptId(value.id);
+  const expectedUpdatedAt = parseRequiredTimestamp(value.expectedUpdatedAt);
   const expectedBodyUpdatedAt = parseRequiredTimestamp(
     value.expectedBodyUpdatedAt,
   );
 
-  if (!id || typeof value.content !== 'string' || !expectedBodyUpdatedAt) {
+  if (
+    !id ||
+    typeof value.content !== 'string' ||
+    !expectedUpdatedAt ||
+    !expectedBodyUpdatedAt
+  ) {
     return null;
   }
 
-  return buildUpdatePromptBodyRequest(id, value.content, expectedBodyUpdatedAt);
+  return buildUpdatePromptBodyRequest(
+    id,
+    value.content,
+    expectedUpdatedAt,
+    expectedBodyUpdatedAt,
+  );
+}
+
+function parseUpdatePromptRecordRequest(
+  value: Record<string, unknown>,
+): UpdatePromptRecordRequest | null {
+  const id = parsePromptId(value.id);
+  const draft = parsePromptDraft(value.draft);
+  const expectedUpdatedAt = parseRequiredTimestamp(value.expectedUpdatedAt);
+  const expectedBodyUpdatedAt = parseRequiredTimestamp(
+    value.expectedBodyUpdatedAt,
+  );
+
+  if (!id || !draft || !expectedUpdatedAt || !expectedBodyUpdatedAt) {
+    return null;
+  }
+
+  return buildUpdatePromptRecordRequest(
+    id,
+    draft,
+    expectedUpdatedAt,
+    expectedBodyUpdatedAt,
+  );
 }
 
 function parseDeletePromptRequest(
@@ -736,6 +882,20 @@ function parseGetPromptBodyResponse(
   );
 }
 
+function parseGetPromptRecordResponse(
+  value: Record<string, unknown>,
+): GetPromptRecordResponse | null {
+  if (value.ok === true && value.status === 'success') {
+    const prompt = parsePromptRecord(value.prompt);
+    return prompt ? buildGetPromptRecordSuccessResponse(prompt) : null;
+  }
+
+  return (
+    parseNotFoundResponse(value, GET_PROMPT_RECORD_MESSAGE) ??
+    parsePromptErrorResponse(value, GET_PROMPT_RECORD_MESSAGE)
+  );
+}
+
 function parseCreatePromptResponse(
   value: Record<string, unknown>,
 ): CreatePromptResponse | null {
@@ -782,6 +942,21 @@ function parseUpdatePromptBodyResponse(
     parseNotFoundResponse(value, UPDATE_PROMPT_BODY_MESSAGE) ??
     parseConflictResponse(value, UPDATE_PROMPT_BODY_MESSAGE) ??
     parsePromptErrorResponse(value, UPDATE_PROMPT_BODY_MESSAGE)
+  );
+}
+
+function parseUpdatePromptRecordResponse(
+  value: Record<string, unknown>,
+): UpdatePromptRecordResponse | null {
+  if (value.ok === true && value.status === 'success') {
+    const prompt = parsePromptRecord(value.prompt);
+    return prompt ? buildUpdatePromptRecordSuccessResponse(prompt) : null;
+  }
+
+  return (
+    parseNotFoundResponse(value, UPDATE_PROMPT_RECORD_MESSAGE) ??
+    parseConflictResponse(value, UPDATE_PROMPT_RECORD_MESSAGE) ??
+    parsePromptErrorResponse(value, UPDATE_PROMPT_RECORD_MESSAGE)
   );
 }
 

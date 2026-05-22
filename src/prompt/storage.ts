@@ -9,6 +9,7 @@ export {
   subscribeToPromptMetas,
   updatePromptBody,
   updatePromptMeta,
+  updatePromptRecord,
 } from './runtimeStorageClient';
 export type {
   DeletePromptOptions,
@@ -17,4 +18,5 @@ export type {
   SetPromptPinnedOptions,
   UpdatePromptBodyOptions,
   UpdatePromptOptions,
+  UpdatePromptRecordOptions,
 } from './runtimeStorageClient';

@@ -4,7 +4,6 @@ import {
   isValidPromptTimestamp,
   normalizePromptDraft,
   sortPromptMetas,
-  toPromptRecord,
   validatePromptDraft,
   type PromptBody,
   type PromptDraft,
@@ -17,17 +16,20 @@ import {
   buildCreatePromptRequest,
   buildDeletePromptRequest,
   buildGetPromptBodyRequest,
+  buildGetPromptRecordRequest,
   buildListPromptMetasRequest,
   buildMovePromptRequest,
   buildSetPromptPinnedRequest,
   buildUpdatePromptBodyRequest,
   buildUpdatePromptMetaRequest,
+  buildUpdatePromptRecordRequest,
   sendPromptitRuntimeRequest,
   type DeletePromptResponse as RuntimeDeletePromptResponse,
   type MovePromptResponse,
   type SetPromptPinnedResponse,
   type UpdatePromptBodyResponse,
   type UpdatePromptMetaResponse,
+  type UpdatePromptRecordResponse,
 } from '../runtime/messages';
 
 export type UpdatePromptOptions = {
@@ -35,6 +37,12 @@ export type UpdatePromptOptions = {
 };
 
 export type UpdatePromptBodyOptions = {
+  expectedUpdatedAt: string;
+  expectedBodyUpdatedAt: string;
+};
+
+export type UpdatePromptRecordOptions = {
+  expectedUpdatedAt: string;
   expectedBodyUpdatedAt: string;
 };
 
@@ -93,15 +101,17 @@ export async function getPromptBody(id: string): Promise<PromptBody> {
 }
 
 export async function getPromptRecord(id: string): Promise<PromptRecord> {
-  const metas = await getPromptMetas();
-  const meta = metas.find((item) => item.id === id) ?? null;
+  const response = await sendRuntimeRequest(buildGetPromptRecordRequest(id));
 
-  if (!meta) {
-    throw new Error('프롬프트를 찾지 못했습니다.');
+  if (response.type !== 'promptit/get-prompt-record') {
+    throw new Error('Received mismatched prompt record response.');
   }
 
-  const body = await getPromptBody(id);
-  return toPromptRecord(meta, body);
+  if (!response.ok) {
+    throw new Error(response.message);
+  }
+
+  return response.prompt;
 }
 
 export async function createPrompt(
@@ -146,14 +156,44 @@ export async function updatePromptBody(
   content: string,
   options: UpdatePromptBodyOptions,
 ): Promise<UpdatePromptBodyResponse> {
+  validateExpectedUpdatedAt(options.expectedUpdatedAt);
   validateExpectedUpdatedAt(options.expectedBodyUpdatedAt);
 
   const response = await sendRuntimeRequest(
-    buildUpdatePromptBodyRequest(id, content, options.expectedBodyUpdatedAt),
+    buildUpdatePromptBodyRequest(
+      id,
+      content,
+      options.expectedUpdatedAt,
+      options.expectedBodyUpdatedAt,
+    ),
   );
 
   if (response.type !== 'promptit/update-prompt-body') {
     throw new Error('Received mismatched prompt body update response.');
+  }
+
+  return response;
+}
+
+export async function updatePromptRecord(
+  id: string,
+  draft: PromptDraft,
+  options: UpdatePromptRecordOptions,
+): Promise<UpdatePromptRecordResponse> {
+  validateExpectedUpdatedAt(options.expectedUpdatedAt);
+  validateExpectedUpdatedAt(options.expectedBodyUpdatedAt);
+
+  const response = await sendRuntimeRequest(
+    buildUpdatePromptRecordRequest(
+      id,
+      draft,
+      options.expectedUpdatedAt,
+      options.expectedBodyUpdatedAt,
+    ),
+  );
+
+  if (response.type !== 'promptit/update-prompt-record') {
+    throw new Error('Received mismatched prompt record update response.');
   }
 
   return response;

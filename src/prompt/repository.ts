@@ -33,6 +33,7 @@ import {
   movePromptMetaInOrder,
   resolvePromptCreateOrders,
   resolvePromptPinnedMeta,
+  validatePromptMoveBoundaries,
 } from './order';
 export { publishPromptRevision } from './revision';
 
@@ -41,6 +42,12 @@ export type PromptMutationOptions = {
 };
 
 export type PromptBodyMutationOptions = {
+  expectedUpdatedAt?: string;
+  expectedBodyUpdatedAt?: string;
+};
+
+export type PromptRecordMutationOptions = {
+  expectedUpdatedAt?: string;
   expectedBodyUpdatedAt?: string;
 };
 
@@ -96,16 +103,28 @@ export async function getPromptBody(id: string): Promise<PromptBody | null> {
 }
 
 export async function getPromptRecord(id: string): Promise<PromptRecord | null> {
-  const [meta, body] = await Promise.all([
-    getStoreRecord(PROMPT_METAS_STORE, id),
-    getStoreRecord(PROMPT_BODIES_STORE, id),
-  ]);
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readonly',
+    async (transaction) => {
+      const meta = await getRecordFromTransaction(
+        transaction,
+        PROMPT_METAS_STORE,
+        id,
+      );
+      const body = await getRecordFromTransaction(
+        transaction,
+        PROMPT_BODIES_STORE,
+        id,
+      );
 
-  if (!meta || !body) {
-    return null;
-  }
+      if (!meta || !body) {
+        return null;
+      }
 
-  return toPromptRecord(assertPromptMeta(meta), assertPromptBody(body));
+      return toPromptRecord(assertPromptMeta(meta), assertPromptBody(body));
+    },
+  );
 }
 
 export async function createPrompt(
@@ -219,6 +238,7 @@ export async function updatePromptBody(
   options: PromptBodyMutationOptions = {},
 ): Promise<PromptBodyMutationResult> {
   const nextContent = validatePromptContent(content);
+  validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
   validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
 
   return withPromptTransaction(
@@ -247,8 +267,10 @@ export async function updatePromptBody(
       const currentBody = assertPromptBody(currentBodyRecord);
 
       if (
-        options.expectedBodyUpdatedAt &&
-        currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt
+        (options.expectedUpdatedAt &&
+          currentMeta.updatedAt !== options.expectedUpdatedAt) ||
+        (options.expectedBodyUpdatedAt &&
+          currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt)
       ) {
         return {
           status: 'conflict',
@@ -272,6 +294,99 @@ export async function updatePromptBody(
       };
 
       await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
+      await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
+
+      return {
+        status: 'success',
+        value: toPromptRecord(meta, body),
+      };
+    },
+  );
+}
+
+export async function updatePromptRecord(
+  id: string,
+  draft: PromptDraft,
+  options: PromptRecordMutationOptions = {},
+): Promise<PromptBodyMutationResult> {
+  const validatedDraft = getValidatedPromptDraft(draft);
+  validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
+  validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
+
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readwrite',
+    async (transaction) => {
+      const metas = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_METAS_STORE)
+      ).map(assertPromptMeta);
+      const currentMeta = metas.find((meta) => meta.id === id) ?? null;
+      const currentBodyRecord = await getRecordFromTransaction(
+        transaction,
+        PROMPT_BODIES_STORE,
+        id,
+      );
+
+      if (!currentMeta || !currentBodyRecord) {
+        return {
+          status: 'not-found',
+          id,
+        };
+      }
+
+      const currentBody = assertPromptBody(currentBodyRecord);
+      const currentRecord = toPromptRecord(currentMeta, currentBody);
+
+      if (
+        (options.expectedUpdatedAt &&
+          currentMeta.updatedAt !== options.expectedUpdatedAt) ||
+        (options.expectedBodyUpdatedAt &&
+          currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt)
+      ) {
+        return {
+          status: 'conflict',
+          id,
+          currentMeta,
+          currentRecord,
+        };
+      }
+
+      const nextPinned = validatedDraft.pinned ?? currentMeta.pinned;
+      const titleChanged = validatedDraft.title !== currentMeta.title;
+      const contentChanged = validatedDraft.content !== currentBody.content;
+      const pinnedChanged = nextPinned !== currentMeta.pinned;
+
+      if (!titleChanged && !contentChanged && !pinnedChanged) {
+        return {
+          status: 'success',
+          value: currentRecord,
+        };
+      }
+
+      const timestamp = new Date().toISOString();
+      const pinnedMeta = pinnedChanged
+        ? resolvePromptPinnedMeta(metas, currentMeta, nextPinned, timestamp)
+        : currentMeta;
+      const body: PromptBody = contentChanged
+        ? {
+            id,
+            content: validatedDraft.content,
+            updatedAt: timestamp,
+          }
+        : currentBody;
+      const meta: PromptMeta = {
+        ...pinnedMeta,
+        title: validatedDraft.title,
+        updatedAt: timestamp,
+        bodyUpdatedAt: contentChanged ? timestamp : currentMeta.bodyUpdatedAt,
+        charCount: contentChanged
+          ? getPromptCharCount(validatedDraft.content)
+          : currentMeta.charCount,
+      };
+
+      if (contentChanged) {
+        await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
+      }
       await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
 
       return {
@@ -359,6 +474,21 @@ export async function movePrompt(
     }
 
     const group = request.group ?? (currentMeta.pinned ? 'pinned' : 'normal');
+    const boundaryValidation = validatePromptMoveBoundaries(
+      metas,
+      currentMeta,
+      group,
+      request,
+    );
+
+    if (!boundaryValidation.ok) {
+      return {
+        status: 'conflict',
+        id,
+        currentMeta,
+      };
+    }
+
     const nextMetas = movePromptMetaInOrder(
       metas,
       currentMeta,

@@ -16,6 +16,14 @@ export type PromptMoveOrderRequest = {
   nextId?: string | null;
 };
 
+export type PromptMoveBoundaryValidationResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+    };
+
 export function getInitialOrder(index: number): number {
   return (index + 1) * PROMPT_ORDER_GAP;
 }
@@ -179,6 +187,59 @@ export function movePromptMetaInOrder(
           pinnedOrder: null,
         };
   });
+}
+
+export function validatePromptMoveBoundaries(
+  metas: PromptMeta[],
+  currentMeta: PromptMeta,
+  group: PromptOrderGroup,
+  request: PromptMoveOrderRequest,
+): PromptMoveBoundaryValidationResult {
+  const groupMetas = sortPromptMetas(
+    metas.filter((meta) => meta.id !== currentMeta.id),
+  ).filter((meta) => (group === 'pinned' ? meta.pinned : !meta.pinned));
+  const previousIndex =
+    typeof request.previousId === 'string'
+      ? groupMetas.findIndex((meta) => meta.id === request.previousId)
+      : null;
+  const nextIndex =
+    typeof request.nextId === 'string'
+      ? groupMetas.findIndex((meta) => meta.id === request.nextId)
+      : null;
+
+  if (previousIndex === -1 || nextIndex === -1) {
+    return { ok: false };
+  }
+
+  if (
+    typeof previousIndex === 'number' &&
+    typeof nextIndex === 'number' &&
+    previousIndex + 1 !== nextIndex
+  ) {
+    return { ok: false };
+  }
+
+  if (request.previousId === null && typeof nextIndex === 'number' && nextIndex !== 0) {
+    return { ok: false };
+  }
+
+  if (
+    request.nextId === null &&
+    typeof previousIndex === 'number' &&
+    previousIndex !== groupMetas.length - 1
+  ) {
+    return { ok: false };
+  }
+
+  if (
+    request.previousId === null &&
+    request.nextId === null &&
+    groupMetas.length > 0
+  ) {
+    return { ok: false };
+  }
+
+  return { ok: true };
 }
 
 function getBoundaryOrder(
