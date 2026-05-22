@@ -20,10 +20,13 @@ import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
   GET_PROMPT_BODY_MESSAGE,
+  GET_PROMPT_RECORD_MESSAGE,
+  LIST_PROMPT_METAS_MESSAGE,
   MOVE_PROMPT_MESSAGE,
   SET_PROMPT_PINNED_MESSAGE,
   UPDATE_PROMPT_BODY_MESSAGE,
   UPDATE_PROMPT_META_MESSAGE,
+  UPDATE_PROMPT_RECORD_MESSAGE,
 } from '../../src/runtime/messages';
 
 const test = base.extend<{
@@ -750,6 +753,7 @@ test('runtime create commits when prompt revision publication fails', async ({
     type: UPDATE_PROMPT_BODY_MESSAGE,
     id: createdPrompt.id,
     content: '리비전 저장 실패와 무관하게 본문도 수정되어야 한다.',
+    expectedUpdatedAt: afterMetaUpdate.updatedAt,
     expectedBodyUpdatedAt: afterMetaUpdate.bodyUpdatedAt,
   });
 
@@ -864,9 +868,106 @@ test('runtime mutations without required conflict timestamps are not accepted', 
     content: '반영되면 안 되는 본문',
   });
   await expectRawRuntimeMessageNotAccepted(extension, {
+    type: UPDATE_PROMPT_BODY_MESSAGE,
+    id: initialPrompt.id,
+    content: '반영되면 안 되는 본문',
+    expectedBodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: UPDATE_PROMPT_RECORD_MESSAGE,
+    id: initialPrompt.id,
+    draft: {
+      title: '반영되면 안 되는 제목',
+      content: '반영되면 안 되는 본문',
+    },
+    expectedBodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: UPDATE_PROMPT_RECORD_MESSAGE,
+    id: initialPrompt.id,
+    draft: {
+      title: '반영되면 안 되는 제목',
+      content: '반영되면 안 되는 본문',
+    },
+    expectedUpdatedAt: initialPrompt.updatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
     type: DELETE_PROMPT_MESSAGE,
     id: initialPrompt.id,
     expectedBodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+});
+
+test('rejects stale body updates when the prompt metadata timestamp changed', async ({
+  extension,
+}) => {
+  const initialPrompt = createPromptRecord({
+    id: 'runtime-body-meta-conflict',
+    title: '본문 저장 메타 충돌',
+    content: '메타 변경 전 본문',
+    normalOrder: 1,
+    createdAt: '2026-03-29T04:00:00.000Z',
+    updatedAt: '2026-03-29T04:00:00.000Z',
+    bodyUpdatedAt: '2026-03-29T04:00:00.000Z',
+  });
+
+  await extension.setPromptRecords([initialPrompt]);
+
+  const metaResponse = await extension.sendRuntimeMessage({
+    type: UPDATE_PROMPT_META_MESSAGE,
+    id: initialPrompt.id,
+    draft: {
+      title: '다른 창의 최신 제목',
+      normalOrder: initialPrompt.normalOrder,
+    },
+    expectedUpdatedAt: initialPrompt.updatedAt,
+  });
+
+  expect(metaResponse).toEqual(
+    expect.objectContaining({
+      type: UPDATE_PROMPT_META_MESSAGE,
+      ok: true,
+      status: 'success',
+    }),
+  );
+
+  const afterMetaUpdate = await getRequiredPromptRecord(
+    extension,
+    initialPrompt.id,
+  );
+
+  expect(afterMetaUpdate.updatedAt).not.toBe(initialPrompt.updatedAt);
+  expect(afterMetaUpdate.bodyUpdatedAt).toBe(initialPrompt.bodyUpdatedAt);
+
+  const staleBodyResponse = await extension.sendRawRuntimeMessage({
+    type: UPDATE_PROMPT_BODY_MESSAGE,
+    id: initialPrompt.id,
+    content: '오래된 메타 기준 본문',
+    expectedUpdatedAt: initialPrompt.updatedAt,
+    expectedBodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+
+  expect(staleBodyResponse).toEqual(
+    expect.objectContaining({
+      type: UPDATE_PROMPT_BODY_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: initialPrompt.id,
+    }),
+  );
+  await expect
+    .poll(async () => await getRequiredPromptRecord(extension, initialPrompt.id))
+    .toEqual(
+      expect.objectContaining({
+        title: '다른 창의 최신 제목',
+        content: initialPrompt.content,
+        bodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+      }),
+    );
+  expect(await extension.getPromptBody(initialPrompt.id)).toEqual({
+    id: initialPrompt.id,
+    content: initialPrompt.content,
+    updatedAt: initialPrompt.bodyUpdatedAt,
   });
 });
 
@@ -1494,6 +1595,55 @@ test('does not announce reorder success or mutate storage when move prompt confl
   expect(await extension.getPromptRecords()).toEqual(beforeRecords);
 });
 
+test('rejects stale reorder boundary requests without moving to an edge', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'stale-boundary-first',
+    title: '경계 첫 번째',
+    content: '경계 첫 번째 본문',
+    normalOrder: 1,
+  });
+  const nextPrompt = createPromptRecord({
+    id: 'stale-boundary-next',
+    title: '경계 다음',
+    content: '경계 다음 본문',
+    normalOrder: 2,
+  });
+  const movingPrompt = createPromptRecord({
+    id: 'stale-boundary-moving',
+    title: '경계 이동 대상',
+    content: '경계 이동 대상 본문',
+    normalOrder: 3,
+  });
+
+  await extension.setPromptRecords([
+    firstPrompt,
+    nextPrompt,
+    movingPrompt,
+  ]);
+
+  const beforeRecords = await extension.getPromptRecords();
+  const response = await extension.sendRuntimeMessage({
+    type: MOVE_PROMPT_MESSAGE,
+    id: movingPrompt.id,
+    group: 'normal',
+    previousId: 'stale-deleted-boundary',
+    nextId: nextPrompt.id,
+    expectedUpdatedAt: movingPrompt.updatedAt,
+  });
+
+  expect(response).toEqual(
+    expect.objectContaining({
+      type: MOVE_PROMPT_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: movingPrompt.id,
+    }),
+  );
+  expect(await extension.getPromptRecords()).toEqual(beforeRecords);
+});
+
 test('preserves draft input while the initial prompt load resolves', async ({
   extension,
 }) => {
@@ -1603,6 +1753,65 @@ test('keeps dirty edit draft when selecting another prompt is dismissed', async 
   await expect(getContentInput(page)).toHaveValue(secondPrompt.content);
 });
 
+test('loads selected prompts through one prompt record runtime request', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'record-load-first',
+    title: '레코드 로드 첫 번째',
+    content: '첫 번째 원자 로드 본문',
+    normalOrder: 1,
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'record-load-second',
+    title: '레코드 로드 두 번째',
+    content: '두 번째 원자 로드 본문',
+    normalOrder: 2,
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await page.evaluate(() => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+    const requestTypes: string[] = [];
+
+    (window as Window & {
+      __promptitSelectionRequestTypes?: string[];
+    }).__promptitSelectionRequestTypes = requestTypes;
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (typeof request === 'object' && request !== null) {
+        requestTypes.push(String((request as { type?: unknown }).type));
+      }
+
+      return await originalSendMessage(...args);
+    };
+  });
+
+  await getPromptCard(page, secondPrompt.title).click();
+
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(secondPrompt.title);
+  await expect(getContentInput(page)).toHaveValue(secondPrompt.content);
+
+  const requestTypes = await page.evaluate(() =>
+    (window as Window & {
+      __promptitSelectionRequestTypes?: string[];
+    }).__promptitSelectionRequestTypes ?? [],
+  );
+
+  expect(requestTypes).toContain(GET_PROMPT_RECORD_MESSAGE);
+  expect(requestTypes).not.toContain(LIST_PROMPT_METAS_MESSAGE);
+  expect(requestTypes).not.toContain(GET_PROMPT_BODY_MESSAGE);
+});
+
 test('keeps dirty edit draft when edit cancel is dismissed', async ({
   extension,
 }) => {
@@ -1650,7 +1859,7 @@ test('keeps dirty edit draft when edit cancel is dismissed', async ({
   await expect(getContentInput(page)).toHaveValue('');
 });
 
-test('preserves dirty create draft when selected prompt body load fails', async ({
+test('preserves dirty create draft when selected prompt record load fails', async ({
   extension,
 }) => {
   const targetPrompt = createPromptRecord({
@@ -1667,7 +1876,7 @@ test('preserves dirty create draft when selected prompt body load fails', async 
   await getContentInput(page).fill('작성 중인 본문');
   await patchRuntimeMessageFailure(
     page,
-    [GET_PROMPT_BODY_MESSAGE],
+    [GET_PROMPT_RECORD_MESSAGE],
     'mock selected body load failure',
   );
 
@@ -1767,7 +1976,7 @@ test('selects prompt cards by keyboard with specific edit names', async ({
   await expect(firstCard).toHaveAttribute('aria-current', 'true');
 });
 
-test('blocks save when dirty edit discard is followed by selected body load failure', async ({
+test('blocks save when dirty edit discard is followed by selected record load failure', async ({
   extension,
 }) => {
   const firstPrompt = createPromptRecord({
@@ -1794,7 +2003,7 @@ test('blocks save when dirty edit discard is followed by selected body load fail
   await getContentInput(page).fill('버리기로 승인한 수정 본문');
   await patchRuntimeMessageFailure(
     page,
-    [GET_PROMPT_BODY_MESSAGE],
+    [GET_PROMPT_RECORD_MESSAGE],
     'mock selected body load failure',
   );
 
@@ -1828,7 +2037,7 @@ test('blocks save when dirty edit discard is followed by selected body load fail
   expect(await extension.getPromptRecords()).toEqual([firstPrompt, secondPrompt]);
 });
 
-test('disables save when selected prompt body did not load', async ({
+test('disables save when selected prompt record did not load', async ({
   extension,
 }) => {
   const targetPrompt = createPromptRecord({
@@ -1843,7 +2052,7 @@ test('disables save when selected prompt body did not load', async ({
   const page = await openOptionsPage(extension);
   await patchRuntimeMessageFailure(
     page,
-    [GET_PROMPT_BODY_MESSAGE],
+    [GET_PROMPT_RECORD_MESSAGE],
     'mock selected body load failure',
   );
 
@@ -2046,6 +2255,94 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
     ]);
 });
 
+test('keeps the active editor content when non-active delete conflict body load fails', async ({
+  extension,
+}) => {
+  const activePrompt = createPromptRecord({
+    id: 'delete-conflict-active',
+    title: '활성 삭제 충돌 아님',
+    content: '활성 편집기 본문은 유지되어야 한다.',
+    normalOrder: 1,
+  });
+  const deleteTarget = createPromptRecord({
+    id: 'delete-conflict-target',
+    title: '목록 삭제 충돌 대상',
+    content: '이 본문은 로드 실패로 편집기에 들어오면 안 된다.',
+    normalOrder: 2,
+  });
+  const { content: _content, ...deleteTargetMeta } = deleteTarget;
+
+  await extension.setPromptRecords([activePrompt, deleteTarget]);
+
+  const page = await openOptionsPage(extension);
+  await getPromptCard(page, activePrompt.title).click();
+  await expect(getTitleInput(page)).toHaveValue(activePrompt.title);
+  await expect(getContentInput(page)).toHaveValue(activePrompt.content);
+
+  await page.evaluate((config) => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (typeof request === 'object' && request !== null) {
+        const type = String((request as { type?: unknown }).type);
+        const id = String((request as { id?: unknown }).id);
+
+        if (type === config.deleteMessage && id === config.deleteTargetId) {
+          return config.deleteConflictResponse;
+        }
+
+        if (
+          (type === config.getRecordMessage || type === config.getBodyMessage) &&
+          id === config.deleteTargetId
+        ) {
+          throw new Error('mock delete conflict record load failure');
+        }
+      }
+
+      return await originalSendMessage(...args);
+    };
+  }, {
+    deleteConflictResponse: {
+      type: DELETE_PROMPT_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: deleteTarget.id,
+      message: 'mock delete conflict',
+      currentMeta: deleteTargetMeta,
+    },
+    deleteMessage: DELETE_PROMPT_MESSAGE,
+    deleteTargetId: deleteTarget.id,
+    getBodyMessage: GET_PROMPT_BODY_MESSAGE,
+    getRecordMessage: GET_PROMPT_RECORD_MESSAGE,
+  });
+
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await getPromptList(page)
+    .getByRole('button', {
+      name: `${deleteTarget.title} 삭제`,
+      exact: true,
+    })
+    .click();
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: BODY_LOAD_ERROR_MESSAGE }),
+  ).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(activePrompt.title);
+  await expect(getContentInput(page)).toHaveValue(activePrompt.content);
+  await expect(getPromptCard(page, deleteTarget.title)).toBeVisible();
+  expect(await extension.getPromptRecords()).toEqual([
+    activePrompt,
+    deleteTarget,
+  ]);
+});
+
 test('preserves prompts and shows a load error when prompt storage reads fail', async ({
   extension,
 }) => {
@@ -2172,6 +2469,100 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         normalOrder: 2,
       },
     ]);
+});
+
+test('uses atomic record save so conflicts cannot partially commit editor changes', async ({
+  extension,
+}) => {
+  const initialPrompt = createPromptRecord({
+    id: 'atomic-save-conflict',
+    title: '원자 저장 원본',
+    content: '원자 저장 원본 본문',
+    normalOrder: 1,
+    createdAt: '2026-03-29T05:00:00.000Z',
+    updatedAt: '2026-03-29T05:00:00.000Z',
+    bodyUpdatedAt: '2026-03-29T05:00:00.000Z',
+  });
+  const { content: _content, ...initialMeta } = initialPrompt;
+
+  await extension.setPromptRecords([initialPrompt]);
+
+  const page = await openOptionsPage(extension);
+  await getPromptCard(page, initialPrompt.title).click();
+  await expect(getContentInput(page)).toHaveValue(initialPrompt.content);
+
+  await page.evaluate((config) => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+    const requestTypes: string[] = [];
+
+    (window as Window & {
+      __promptitSaveRequestTypes?: string[];
+    }).__promptitSaveRequestTypes = requestTypes;
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (typeof request === 'object' && request !== null) {
+        const type = String((request as { type?: unknown }).type);
+
+        requestTypes.push(type);
+
+        if (type === config.updateRecordMessage) {
+          return config.updateRecordConflictResponse;
+        }
+
+        if (type === config.updateBodyMessage) {
+          return config.updateBodyConflictResponse;
+        }
+      }
+
+      return await originalSendMessage(...args);
+    };
+  }, {
+    updateBodyConflictResponse: {
+      type: UPDATE_PROMPT_BODY_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: initialPrompt.id,
+      message: 'mock body conflict after partial meta save',
+      currentMeta: initialMeta,
+      currentRecord: initialPrompt,
+    },
+    updateBodyMessage: UPDATE_PROMPT_BODY_MESSAGE,
+    updateRecordConflictResponse: {
+      type: UPDATE_PROMPT_RECORD_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: initialPrompt.id,
+      message: 'mock atomic record conflict',
+      currentMeta: initialMeta,
+      currentRecord: initialPrompt,
+    },
+    updateRecordMessage: UPDATE_PROMPT_RECORD_MESSAGE,
+  });
+
+  await getTitleInput(page).fill('부분 커밋되면 안 되는 제목');
+  await getContentInput(page).fill('부분 커밋되면 안 되는 본문');
+  await getPromptSubmitButton(page, '프롬프트 수정').click();
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'mock atomic record conflict' }),
+  ).toBeVisible();
+
+  const requestTypes = await page.evaluate(() =>
+    (window as Window & {
+      __promptitSaveRequestTypes?: string[];
+    }).__promptitSaveRequestTypes ?? [],
+  );
+
+  expect(requestTypes).toContain(UPDATE_PROMPT_RECORD_MESSAGE);
+  expect(requestTypes).not.toContain(UPDATE_PROMPT_META_MESSAGE);
+  expect(requestTypes).not.toContain(UPDATE_PROMPT_BODY_MESSAGE);
+  expect(requestTypes).not.toContain(SET_PROMPT_PINNED_MESSAGE);
+  expect(await extension.getPromptRecords()).toEqual([initialPrompt]);
 });
 
 test('surfaces a conflict when two options tabs save the same body stale', async ({
