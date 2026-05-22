@@ -34,14 +34,6 @@ import {
   resolvePromptCreateOrders,
   resolvePromptPinnedMeta,
 } from './order';
-import {
-  ensureLegacyMigrationMarkerBeforeFinalDelete,
-  runLegacyPromptMigration,
-} from './legacy-migration';
-export {
-  ensureLegacyMigrationCompleteMarkerBestEffort,
-  runLegacyPromptMigration,
-} from './legacy-migration';
 export { publishPromptRevision } from './revision';
 
 export type PromptMutationOptions = {
@@ -92,34 +84,18 @@ export type PromptBodyMutationResult =
       currentMeta: PromptMeta;
     };
 
-let storageReadyPromise: Promise<void> | null = null;
-
-export function ensurePromptStorageReady(): Promise<void> {
-  if (!storageReadyPromise) {
-    storageReadyPromise = runLegacyPromptMigration().catch((error) => {
-      storageReadyPromise = null;
-      throw error;
-    });
-  }
-
-  return storageReadyPromise;
-}
-
 export async function listPromptMetas(): Promise<PromptMeta[]> {
-  await ensurePromptStorageReady();
   const records = await getAllStoreRecords(PROMPT_METAS_STORE);
   return sortPromptMetas(records.map(assertPromptMeta));
 }
 
 export async function getPromptBody(id: string): Promise<PromptBody | null> {
-  await ensurePromptStorageReady();
   const body = await getStoreRecord(PROMPT_BODIES_STORE, id);
 
   return body ? assertPromptBody(body) : null;
 }
 
 export async function getPromptRecord(id: string): Promise<PromptRecord | null> {
-  await ensurePromptStorageReady();
   const [meta, body] = await Promise.all([
     getStoreRecord(PROMPT_METAS_STORE, id),
     getStoreRecord(PROMPT_BODIES_STORE, id),
@@ -135,8 +111,6 @@ export async function getPromptRecord(id: string): Promise<PromptRecord | null> 
 export async function createPrompt(
   draft: PromptDraft,
 ): Promise<PromptRecord> {
-  await ensurePromptStorageReady();
-
   const validatedDraft = getValidatedPromptDraft(draft);
   const timestamp = new Date().toISOString();
   const id = createPromptId();
@@ -188,8 +162,6 @@ export async function updatePromptMeta(
   draft: PromptMetaDraft,
   options: PromptMutationOptions = {},
 ): Promise<PromptMutationResult<PromptMeta>> {
-  await ensurePromptStorageReady();
-
   const nextTitle = validatePromptTitle(draft.title);
   validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
 
@@ -246,7 +218,6 @@ export async function updatePromptBody(
   content: string,
   options: PromptBodyMutationOptions = {},
 ): Promise<PromptBodyMutationResult> {
-  await ensurePromptStorageReady();
   const nextContent = validatePromptContent(content);
   validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
 
@@ -315,10 +286,8 @@ export async function deletePrompt(
   id: string,
   options: PromptDeleteOptions = {},
 ): Promise<PromptMutationResult<string>> {
-  await ensurePromptStorageReady();
   validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
   validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
-  await ensureLegacyMigrationMarkerBeforeFinalDelete(id, options);
 
   return withPromptTransaction(
     [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
@@ -363,7 +332,6 @@ export async function movePrompt(
   id: string,
   request: PromptMoveRequest,
 ): Promise<PromptMutationResult<PromptMeta>> {
-  await ensurePromptStorageReady();
   validateExpectedTimestamp(request.expectedUpdatedAt, 'updatedAt');
 
   return withPromptTransaction([PROMPT_METAS_STORE], 'readwrite', async (transaction) => {
@@ -424,7 +392,6 @@ export async function setPromptPinned(
   pinned: boolean,
   options: PromptMutationOptions = {},
 ): Promise<PromptMutationResult<PromptMeta>> {
-  await ensurePromptStorageReady();
   validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
 
   return withPromptTransaction([PROMPT_METAS_STORE], 'readwrite', async (transaction) => {

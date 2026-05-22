@@ -1,5 +1,3 @@
-import { registerStorageTestHooks } from './storageTestHooks';
-
 export {
   createPrompt,
   deletePrompt,
@@ -20,16 +18,3 @@ export type {
   UpdatePromptBodyOptions,
   UpdatePromptOptions,
 } from './runtimeStorageClient';
-export {
-  getPrompts,
-  getUserPrompts,
-  subscribeToPrompts,
-  updatePrompt,
-} from './legacyStorage';
-export type { LegacyUpdatePromptResponse } from './legacyStorage';
-
-const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
-
-if (IS_TEST_MODE && typeof window !== 'undefined') {
-  registerStorageTestHooks();
-}

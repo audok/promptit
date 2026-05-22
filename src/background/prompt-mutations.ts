@@ -1,7 +1,6 @@
 import {
   createPrompt,
   deletePrompt,
-  ensureLegacyMigrationCompleteMarkerBestEffort,
   getPromptBody,
   listPromptMetas,
   movePrompt,
@@ -311,8 +310,6 @@ function buildRequestErrorResponse(
 }
 
 async function publishPromptStorageSideEffectsBestEffort(): Promise<void> {
-  await ensureLegacyMigrationCompleteMarkerBestEffort();
-
   try {
     await publishPromptRevision();
   } catch (error) {

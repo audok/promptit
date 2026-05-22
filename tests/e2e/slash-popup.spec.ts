@@ -1,11 +1,10 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { STARTER_PROMPT_ID, type PromptRecord } from '../../src/prompt/schema';
+import { type PromptRecord } from '../../src/prompt/schema';
 
 import { launchExtension, type LoadedExtension } from '../playwright/extension';
 import {
   clearComposer,
   CONTENTEDITABLE_FIXTURE_URL,
-  createLegacyPromptItem,
   createPromptRecord,
   dispatchPromptitTestEvent,
   getActivePopupCellLabel,
@@ -1641,59 +1640,6 @@ test('updates the open popup when prompt storage changes', async ({
   await expect
     .poll(async () => (await getPopupAccessibilitySnapshot(page)).activeStatusText)
     .toBe('Insert prompt: 번역');
-});
-
-test('migrates valid legacy storage entries before rendering the popup', async ({
-  extension,
-}) => {
-  await extension.setLegacyRawPrompts([
-    {
-      id: STARTER_PROMPT_ID,
-      title: 'starter',
-      content: 'starter content',
-      sortOrder: 0,
-      createdAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
-    },
-    { id: 'broken', title: '', content: '', sortOrder: 'bad' },
-    createLegacyPromptItem({
-      id: 'prompt-later',
-      title: '나중 순서',
-      content: '두 번째',
-      sortOrder: 9,
-      createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-    }),
-    createLegacyPromptItem({
-      id: 'prompt-earlier',
-      title: '먼저 순서',
-      content: '첫 번째',
-      sortOrder: 2,
-      createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-    }),
-  ]);
-
-  const page = await extension.context.newPage();
-  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
-
-  await openPromptPopup(page);
-
-  await expect(await getPopupTitles(page)).toEqual([
-    '먼저 순서',
-    '나중 순서',
-  ]);
-  await expect
-    .poll(async () =>
-      (await extension.getPromptRecords()).map((prompt) => ({
-        id: prompt.id,
-        title: prompt.title,
-      })),
-    )
-    .toEqual([
-      { id: 'prompt-earlier', title: '먼저 순서' },
-      { id: 'prompt-later', title: '나중 순서' },
-    ]);
 });
 
 test('opens the options page from the popup empty state', async ({

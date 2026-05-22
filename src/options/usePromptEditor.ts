@@ -521,9 +521,7 @@ export function usePromptEditor(): UsePromptEditorResult {
         return;
       }
 
-      const createdPrompt = await createPrompt(
-        buildCreateDraft(parsedForm.form),
-      ) as PromptRecord;
+      const createdPrompt = await createPrompt(buildCreateDraft(parsedForm.form));
       const nextPrompts = upsertPromptMeta(promptsRef.current, createdPrompt);
 
       startTransition(() => {
@@ -831,12 +829,7 @@ export function usePromptEditor(): UsePromptEditorResult {
       if (result.status === 'conflict') {
         const conflictRecord = await resolveConflictRecord(
           result.currentMeta,
-          'currentPrompt' in result
-            ? {
-                ...result.currentMeta,
-                content: result.currentPrompt.content,
-              }
-            : activePromptRef.current,
+          activePromptRef.current,
         );
         const nextPrompts = upsertPromptMeta(promptsRef.current, result.currentMeta);
 

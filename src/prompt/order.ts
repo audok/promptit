@@ -92,9 +92,7 @@ export function resolvePromptCreateOrders(
   const normalOrder =
     typeof draft.normalOrder === 'number'
       ? draft.normalOrder
-      : typeof draft.sortOrder === 'number'
-        ? draft.sortOrder
-        : fallbackNormalOrder;
+      : fallbackNormalOrder;
   const pinnedOrder =
     pinned
       ? typeof draft.pinnedOrder === 'number'

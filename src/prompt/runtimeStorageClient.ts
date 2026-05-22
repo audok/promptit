@@ -4,12 +4,10 @@ import {
   isValidPromptTimestamp,
   normalizePromptDraft,
   sortPromptMetas,
-  toLegacyPromptItem,
   toPromptRecord,
   validatePromptDraft,
   type PromptBody,
   type PromptDraft,
-  type PromptItem,
   type PromptMeta,
   type PromptMetaDraft,
   type PromptOrderGroup,
@@ -31,10 +29,6 @@ import {
   type UpdatePromptBodyResponse,
   type UpdatePromptMetaResponse,
 } from '../runtime/messages';
-
-type PromptRecordWithLegacyOrder = PromptRecord & {
-  sortOrder: number;
-};
 
 export type UpdatePromptOptions = {
   expectedUpdatedAt: string;
@@ -60,16 +54,7 @@ export type SetPromptPinnedOptions = {
   expectedUpdatedAt: string;
 };
 
-export type DeletePromptResponse =
-  | RuntimeDeletePromptResponse
-  | {
-      ok: false;
-      status: 'conflict';
-      id: string;
-      message: string;
-      currentMeta: PromptMeta;
-      currentPrompt: PromptItem;
-    };
+export type DeletePromptResponse = RuntimeDeletePromptResponse;
 
 function hasRuntimeApi(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
@@ -121,7 +106,7 @@ export async function getPromptRecord(id: string): Promise<PromptRecord> {
 
 export async function createPrompt(
   draft: PromptDraft,
-): Promise<PromptRecordWithLegacyOrder> {
+): Promise<PromptRecord> {
   const validatedDraft = getValidatedDraft(draft);
   const response = await sendRuntimeRequest(
     buildCreatePromptRequest(validatedDraft),
@@ -135,7 +120,7 @@ export async function createPrompt(
     throw new Error(response.message);
   }
 
-  return withLegacyOrder(response.prompt);
+  return response.prompt;
 }
 
 export async function updatePromptMeta(
@@ -191,13 +176,6 @@ export async function deletePrompt(
 
   if (response.type !== 'promptit/delete-prompt') {
     throw new Error('Received mismatched prompt delete response.');
-  }
-
-  if (response.status === 'conflict') {
-    return {
-      ...response,
-      currentPrompt: await getLegacyPromptFromMeta(response.currentMeta),
-    };
   }
 
   return response;
@@ -264,18 +242,6 @@ export function subscribeToPromptMetas(
 
   return () => {
     chrome.storage.onChanged.removeListener(handleChange);
-  };
-}
-
-async function getLegacyPromptFromMeta(meta: PromptMeta): Promise<PromptItem> {
-  const body = await getPromptBody(meta.id);
-  return toLegacyPromptItem(toPromptRecord(meta, body));
-}
-
-function withLegacyOrder(record: PromptRecord): PromptRecordWithLegacyOrder {
-  return {
-    ...record,
-    sortOrder: record.normalOrder,
   };
 }
 

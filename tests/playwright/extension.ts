@@ -6,7 +6,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  LEGACY_PROMPTS_STORAGE_KEY,
   PROMPT_REVISION_STORAGE_KEY,
   type PromptBody,
   type PromptMeta,
@@ -50,18 +49,10 @@ export type LoadedExtension = {
   getPromptBody: (id: string) => Promise<PromptBody | null>;
   getPromptRecords: () => Promise<PromptRecord[]>;
   setPromptRecords: (records: PromptRecord[]) => Promise<void>;
-  getLegacyPrompts: () => Promise<unknown>;
-  setLegacyRawPrompts: (rawValue: unknown) => Promise<void>;
-  setPromptMigrationCompleteMarker: () => Promise<void>;
-  getPromptMigrationMarker: () => Promise<unknown>;
   deletePromptBody: (id: string) => Promise<void>;
   getPromptStorageRevision: () => Promise<unknown>;
   getChromeStorageLocalSnapshot: () => Promise<Record<string, unknown>>;
   failPromptStorageRevisionWrites: (message?: string) => Promise<void>;
-  failPromptStorageKeyWritesOnce: (
-    keys: string[],
-    message?: string,
-  ) => Promise<void>;
   sendRuntimeMessage: (
     message: PromptitRuntimeRequest,
   ) => Promise<PromptitRuntimeResponse>;
@@ -73,7 +64,6 @@ const PROMPT_DATABASE_NAME = 'promptit';
 const PROMPT_DATABASE_VERSION = 1;
 const PROMPT_META_STORE_NAME = 'promptMetas';
 const PROMPT_BODY_STORE_NAME = 'promptBodies';
-const PROMPT_IDB_MIGRATION_STORAGE_KEY = 'promptit:idbMigration';
 
 function assertBuiltExtension(): void {
   if (fs.existsSync(extensionManifestPath)) {
@@ -503,59 +493,7 @@ export async function launchExtension(): Promise<LoadedExtension> {
     },
     async setPromptRecords(records) {
       await evaluatePromptDatabase<void>('set-records', records);
-      const serviceWorker = await getServiceWorker();
-
-      await serviceWorker.evaluate(async (legacyPromptsKey) => {
-        await chrome.storage.local.remove(legacyPromptsKey);
-      }, LEGACY_PROMPTS_STORAGE_KEY);
       await publishPromptStorageRevision();
-    },
-    async getLegacyPrompts() {
-      const serviceWorker = await getServiceWorker();
-
-      return await serviceWorker.evaluate(async (legacyPromptsKey) => {
-        const result = await chrome.storage.local.get(legacyPromptsKey);
-        return result[legacyPromptsKey] as unknown;
-      }, LEGACY_PROMPTS_STORAGE_KEY);
-    },
-    async setLegacyRawPrompts(rawValue) {
-      await evaluatePromptDatabase<void>('set-records', []);
-      const serviceWorker = await getServiceWorker();
-
-      await serviceWorker.evaluate(async (request) => {
-        await chrome.storage.local.set({
-          [request.legacyPromptsKey]: request.rawValue,
-        });
-        await chrome.storage.local.remove([
-          request.revisionKey,
-          request.migrationKey,
-        ]);
-      }, {
-        legacyPromptsKey: LEGACY_PROMPTS_STORAGE_KEY,
-        migrationKey: PROMPT_IDB_MIGRATION_STORAGE_KEY,
-        rawValue,
-        revisionKey: PROMPT_REVISION_STORAGE_KEY,
-      });
-    },
-    async setPromptMigrationCompleteMarker() {
-      const serviceWorker = await getServiceWorker();
-
-      await serviceWorker.evaluate(async (migrationKey) => {
-        await chrome.storage.local.set({
-          [migrationKey]: {
-            status: 'complete',
-            completedAt: new Date().toISOString(),
-          },
-        });
-      }, PROMPT_IDB_MIGRATION_STORAGE_KEY);
-    },
-    async getPromptMigrationMarker() {
-      const serviceWorker = await getServiceWorker();
-
-      return await serviceWorker.evaluate(async (migrationKey) => {
-        const result = await chrome.storage.local.get(migrationKey);
-        return result[migrationKey] as unknown;
-      }, PROMPT_IDB_MIGRATION_STORAGE_KEY);
     },
     async deletePromptBody(id) {
       await evaluatePromptDatabase<void>('delete-body', id);
@@ -601,40 +539,6 @@ export async function launchExtension(): Promise<LoadedExtension> {
       }, {
         failureMessage: message,
         revisionKey: PROMPT_REVISION_STORAGE_KEY,
-      });
-    },
-    async failPromptStorageKeyWritesOnce(
-      keys,
-      message = 'mock prompt storage key write failure',
-    ) {
-      const serviceWorker = await getServiceWorker();
-
-      await serviceWorker.evaluate(({ failureMessage, storageKeys }) => {
-        const storage = chrome.storage.local;
-        const originalSet = storage.set.bind(storage);
-        let didFail = false;
-
-        storage.set = (async (...args: unknown[]) => {
-          const [items] = args;
-          const shouldFail =
-            !didFail &&
-            typeof items === 'object' &&
-            items !== null &&
-            storageKeys.some(
-              (storageKey) => storageKey in (items as Record<string, unknown>),
-            );
-
-          if (shouldFail) {
-            didFail = true;
-            storage.set = originalSet as typeof chrome.storage.local.set;
-            throw new Error(failureMessage);
-          }
-
-          await (originalSet as (...nextArgs: unknown[]) => Promise<void>)(...args);
-        }) as typeof chrome.storage.local.set;
-      }, {
-        failureMessage: message,
-        storageKeys: keys,
       });
     },
     async sendRuntimeMessage(message) {

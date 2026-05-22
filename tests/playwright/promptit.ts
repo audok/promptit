@@ -5,7 +5,6 @@ import { expect, type BrowserContext, type Page } from '@playwright/test';
 import {
   PROMPT_ORDER_GAP,
   type PromptBody,
-  type PromptItem,
   type PromptMeta,
   type PromptRecord,
 } from '../../src/prompt/schema';
@@ -113,26 +112,6 @@ export function createPromptRecord(overrides: {
   return {
     ...meta,
     content: overrides.content,
-  };
-}
-
-export function createLegacyPromptItem(overrides: {
-  title: string;
-  content: string;
-  sortOrder: number;
-  id?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}): PromptItem {
-  const timestamp = getPromptTimestamp(overrides);
-
-  return {
-    id: overrides.id ?? randomUUID(),
-    title: overrides.title,
-    content: overrides.content,
-    sortOrder: overrides.sortOrder,
-    createdAt: overrides.createdAt ?? timestamp,
-    updatedAt: overrides.updatedAt ?? timestamp,
   };
 }
 
