@@ -12,8 +12,7 @@ import {
   replaceContenteditableRange,
 } from './editable';
 
-const CHATGPT_URL_PATTERN =
-  /^https:\/\/(?:chatgpt\.com|chat\.openai\.com)(?:\/|$)/;
+const CHATGPT_URL_PATTERN = /^https:\/\/chatgpt\.com(?:\/|$)/;
 const TEST_FIXTURE_URL_PATTERN =
   /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/(?:chatgpt-contenteditable|chatgpt-textarea)\.html(?:[?#].*)?$/;
 const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';

@@ -8,7 +8,7 @@
 ## 상태 기준
 
 - `Automated`: 로컬 Playwright 회귀 테스트에서 반복 가능하게 검증됨
-- `Live smoke`: 실제 `chatgpt.com` 또는 `chat.openai.com`에서만 확인함
+- `Live smoke`: 실제 `chatgpt.com`에서만 확인함
 - `Skipped live`: 실제 사이트 자동화 후보가 있지만 외부 사이트 상태 때문에 release gate로 쓰지 않음
 - `Manual`: 사람이 직접 확인해야 함
 - `Gap`: 구현은 있지만 아직 반복 가능한 검증이 없음
@@ -20,7 +20,6 @@
 - [x] 지원하지 않는 URL에서는 Promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
 - [x] test mode에서 지원하지 않는 localhost fixture에서는 Promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
 - [x] 실제 `chatgpt.com`에서 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [x] `chat.openai.com`에서 진입해도 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] Gemini fixture에서 Promptit이 초기화된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] 같은 페이지에서 중복 초기화 방지 가드가 명시적으로 검증된다. `Automated` via `tests/e2e/platform.spec.ts`
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭으로 옵션 페이지가 열린다. `Manual`
@@ -131,7 +130,6 @@
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 insert할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 copy할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 empty state -> options가 된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [x] 실제 `chat.openai.com`에서 진입해도 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [ ] 실제 public `gemini.google.com/app` no-submit smoke는 skip되어 있다. `Skipped live` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state로 이동했고 composer readback은 빈 문자열이었다. Deterministic Gemini no-submit은 `tests/e2e/gemini-slash-popup.spec.ts`에서 검증한다.
 - [ ] 로그인된 ChatGPT, Gemini 세션에서 전체 흐름을 반복 검증한다. `Manual`
 

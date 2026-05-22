@@ -72,7 +72,7 @@ pnpm test:e2e
 pnpm test:e2e:live
 ```
 
-- 실제 `chatgpt.com`과 `chat.openai.com`에 접속해 핵심 흐름만 검증한다.
+- 실제 `chatgpt.com`에 접속해 핵심 흐름만 검증한다.
 - `gemini.google.com` public page smoke는 현재 skip되어 있다.
 - 로컬 fixture 테스트보다 느리고 외부 사이트 상태 영향을 받는다.
 - 기본 회귀 테스트가 아니라 release 전 smoke test로 사용한다.
@@ -81,7 +81,6 @@ pnpm test:e2e:live
   - `chatgpt.com`에서 popup open + insert
   - `chatgpt.com`에서 copy
   - `chatgpt.com` empty state -> options
-  - `chat.openai.com` 진입 시 Promptit 초기화
   - Gemini public page는 Promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동해 no-submit smoke로 안전하지 않음
 
 ## 테스트 파일과 체크리스트 매핑
@@ -92,7 +91,7 @@ pnpm test:e2e:live
 | `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, child-node resolve, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `Gemini 지원` |
 | `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, child-node resolve, insert/copy/pin, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
 | `tests/e2e/platform.spec.ts` | 지원 URL 범위, same-page duplicate initialization guard, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
-| `tests/live/live-chatgpt.spec.ts` | 실제 `chatgpt.com` / `chat.openai.com` smoke | `실사이트 smoke` |
+| `tests/live/live-chatgpt.spec.ts` | 실제 `chatgpt.com` smoke | `실사이트 smoke` |
 | `tests/live/live-gemini.spec.ts` | Gemini public-page smoke 후보. 현재 no-submit 조건을 만족하지 못해 skip | `실사이트 smoke` |
 
 ## Promptit 테스트 헬퍼
