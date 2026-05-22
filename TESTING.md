@@ -47,9 +47,9 @@ pnpm test:e2e
 - 기본 개발 루프에서 가장 자주 돌려야 하는 테스트다.
 - test-mode manifest로 `dist/`를 다시 빌드한다. 확장을 수동 로드하거나 패키징하기 전에는 `pnpm build && pnpm check:manifest` 또는 `pnpm test`를 다시 실행한다.
 - 현재 커버하는 대표 항목:
-  - 옵션 페이지 CRUD, validation, append-by-default, removed sort-order form input, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load draft preservation, storage sync
+  - 옵션 페이지 CRUD, validation, append-by-default, hidden internal order fields, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load draft preservation, storage sync
   - 옵션 페이지 stale save/delete/move conflict와 storage 실패 UI
-  - migration complete marker 재수입 차단 회귀 테스트
+  - production prompt body가 `chrome.storage.local`에 쓰이지 않는 저장소 분리 회귀 테스트
   - selected body load failure와 dirty draft 보호 회귀 테스트
   - `/ ` trigger open/close/cleanup
   - insert, copy, pin/unpin, hover, click, keyboard navigation
@@ -88,7 +88,7 @@ pnpm test:e2e:live
 
 | 파일 | 주 역할 | 상세 체크리스트 섹션 |
 | --- | --- | --- |
-| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, append-by-default, removed sort-order form input, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
+| `tests/e2e/options.spec.ts` | 옵션 페이지, CRUD, validation, append-by-default, hidden internal order fields, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load, storage 복구/실패 UI, stale conflict | `옵션 페이지와 스토리지` |
 | `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, child-node resolve, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `Gemini 지원` |
 | `tests/e2e/slash-popup.spec.ts` | 입력 감지, popup 상호작용, child-node resolve, insert/copy/pin, toast, placement, composer detach, hover + keyboard scroll 회귀 | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
 | `tests/e2e/platform.spec.ts` | 지원 URL 범위, same-page duplicate initialization guard, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
@@ -101,7 +101,7 @@ Promptit production prompt data는 IndexedDB에 저장되며 `promptMetas`와 `p
 
 일반 테스트 데이터는 `extension.setPromptRecords(records)`로 seed하고, 상태 확인은 `extension.getPromptMetas()`, `extension.getPromptBody(id)`, `extension.getPromptRecords()`를 사용한다.
 
-legacy `chrome.storage.local.prompts` helper는 migration/recovery 시나리오에서만 사용한다. 이 경우 `setLegacyRawPrompts(rawValue)`로 예전 저장소 값을 준비하고, `getChromeStorageLocalSnapshot()`로 production prompt body가 `chrome.storage.local`에 다시 쓰이지 않았는지 확인할 수 있다.
+production prompt body는 `chrome.storage.local`에 저장하지 않는 것을 옵션 페이지 E2E에서 검증한다.
 
 Popup storage 테스트는 다음 경계를 우선 검증한다.
 

@@ -116,19 +116,13 @@
 - [x] 편집 중인 항목이 외부에서 삭제되면 create mode로 돌아간다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 두 옵션 탭에서 같은 프롬프트를 stale save하면 conflict를 표시하고 최신 저장본으로 복구한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 두 옵션 탭에서 stale delete가 발생하면 conflict를 표시하고 최신 저장본을 유지한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] legacy `chrome.storage.local.prompts`는 IndexedDB가 비어 있을 때 migration 입력으로 사용된다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] legacy migration은 valid prompt를 `promptMetas`/`promptBodies`로 분리하고 legacy key를 recovery용으로 유지한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] legacy migration은 invalid item과 starter prompt를 사용자 목록에서 제외한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] migration complete marker가 있으면 IndexedDB가 비어 있고 legacy prompt가 남아 있어도 재수입하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] marker가 없고 stale legacy key가 남은 상태에서 marker repair가 실패하면 마지막 migrated prompt 삭제를 커밋하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] oversized legacy body가 있으면 migration이 abort되고 truncation하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] selected prompt body load 실패 시 dirty create draft를 유지한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] selected prompt body load 실패 시 edit save를 차단한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] storage read 실패 시 오류를 표시하고 기존 storage 값을 보존한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] initial storage read 실패 시 legacy/malformed storage를 repair하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] initial prompt storage read 실패 시 load error를 표시하고 기존 prompt records를 보존한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 저장 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 삭제 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] legacy-compatible `sortOrder`가 같은 경우 `createdAt`, `id` tie-break 정렬이 명시적으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] `normalOrder`가 같은 경우 `createdAt`, `id` tie-break 정렬이 명시적으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] body stale save conflict가 `expectedBodyUpdatedAt` 기준으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
 
 ## 6. 실사이트 smoke
@@ -143,18 +137,12 @@
 
 ## 7. 릴리스 체크용 빠른 체크리스트
 
-- [x] `pnpm test` is the deterministic local gate: `pnpm typecheck`, production build/manifest check, fixture-based `pnpm test:e2e`, and final production build/manifest check
-- [x] `pnpm typecheck` reported passed by core/UI/test agents for the IndexedDB migration slice
-- [x] `pnpm build:test` reported passed by core/UI/test agents for the IndexedDB migration slice
-- [x] options focused suite passed 27/27 for the IndexedDB migration slice
-- [x] options focused suite passed 33/33 after list pin toggle and drag-handle centering updates
-- [x] slash plus Gemini focused suites passed 47/47 for the IndexedDB migration slice
-- [x] migration marker post-commit failure issue was fixed and regression-tested
-- [x] reviewer findings addressed: revision publish is best-effort after committed mutations, and runtime mutation timestamps are required except delete optional body timestamp
-- [x] F1-F8 deterministic validation passed through `pnpm typecheck`, production/test builds, targeted affected specs, and full `pnpm test:e2e` with `120 passed`
+- [x] `pnpm test` passed: `pnpm typecheck`, production build/manifest check, fixture-based `pnpm test:e2e`, and final production build/manifest check
+- [x] fixture-based Playwright E2E passed with `117 passed`
+- [x] options coverage includes prompt record storage, body size, failure, conflict, reorder, and hidden internal order field checks
+- [x] slash popup and Gemini fixture coverage includes popup storage, pin, insert/copy, and host adapter flows
 - [x] production manifest policy check rejects `host_permissions` and test-only localhost matches in `dist/manifest.json`
-- [x] final code review found no blocking correctness issues; residual pin gaps are not-found/generic runtime error direct E2E coverage and existing-pinned-list insertion-order direct popup coverage
-- [ ] live suites were not run for this slice
+- [ ] 실사이트 smoke 실행
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `Promptit Settings`인지 확인
 - [ ] 로그인된 ChatGPT, Gemini 전체 흐름 수동 확인
