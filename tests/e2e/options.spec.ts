@@ -503,7 +503,7 @@ test('appends newly created normal prompts by default', async ({
     id: 'append-existing-normal',
     title: '기존 일반',
     content: '기존 일반 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([existingPrompt]);
@@ -574,7 +574,7 @@ test('accepts an exact 500 KiB body and rejects oversized updates without trunca
     id: 'body-limit-prompt',
     title: '본문 용량 제한',
     content: exactLimitBody,
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([]);
@@ -611,7 +611,7 @@ test('metadata-only save does not rewrite body content or body timestamp', async
     id: 'metadata-only-prompt',
     title: '원래 제목',
     content: '본문은 바뀌면 안 된다.',
-    sortOrder: 4,
+    normalOrder: 4,
     createdAt: '2026-03-29T01:00:00.000Z',
     updatedAt: '2026-03-29T01:00:00.000Z',
     bodyUpdatedAt: '2026-03-29T01:00:00.000Z',
@@ -649,7 +649,7 @@ test('body save updates the body record, bodyUpdatedAt, and charCount', async ({
     id: 'body-update-prompt',
     title: '본문 변경',
     content: '이전 본문',
-    sortOrder: 4,
+    normalOrder: 4,
     createdAt: '2026-03-29T02:00:00.000Z',
     updatedAt: '2026-03-29T02:00:00.000Z',
     bodyUpdatedAt: '2026-03-29T02:00:00.000Z',
@@ -831,7 +831,7 @@ test('runtime mutations without required conflict timestamps are not accepted', 
     id: 'runtime-contract-prompt',
     title: '런타임 계약',
     content: '타임스탬프 누락 요청은 반영되면 안 된다.',
-    sortOrder: 1,
+    normalOrder: 1,
     createdAt: '2026-03-29T03:00:00.000Z',
     updatedAt: '2026-03-29T03:00:00.000Z',
     bodyUpdatedAt: '2026-03-29T03:00:00.000Z',
@@ -870,7 +870,7 @@ test('runtime mutations without required conflict timestamps are not accepted', 
   });
 });
 
-test('orders prompts with matching sortOrder by createdAt and id tie-breaks', async ({
+test('orders prompts with matching normalOrder by createdAt and id tie-breaks', async ({
   extension,
 }) => {
   await extension.setPromptRecords([
@@ -878,7 +878,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-later',
       title: '생성일 늦은 프롬프트',
       content: '생성일이 가장 늦어서 마지막에 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:03:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:03:00.000Z').toISOString(),
     }),
@@ -886,7 +886,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-id-b',
       title: '같은 생성일 ID B',
       content: '같은 생성일에서는 ID A 다음에 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
@@ -894,7 +894,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-earlier',
       title: '생성일 빠른 프롬프트',
       content: '생성일이 가장 빨라서 먼저 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
     }),
@@ -902,7 +902,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-id-a',
       title: '같은 생성일 ID A',
       content: '같은 생성일에서는 ID B보다 먼저 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
@@ -926,13 +926,13 @@ test('orders pinned prompts first and restores normal position when unpinned', a
     id: 'normal-first',
     title: '일반 첫 번째',
     content: '일반 첫 번째 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const pinnedMiddle = createPromptRecord({
     id: 'pinned-middle',
     title: '고정된 중간',
     content: '고정된 중간 본문',
-    sortOrder: 2,
+    normalOrder: 2,
     pinned: true,
     pinnedOrder: 1,
   });
@@ -940,7 +940,7 @@ test('orders pinned prompts first and restores normal position when unpinned', a
     id: 'normal-last',
     title: '일반 마지막',
     content: '일반 마지막 본문',
-    sortOrder: 3,
+    normalOrder: 3,
   });
 
   await extension.setPromptRecords([normalLast, pinnedMiddle, normalFirst]);
@@ -984,13 +984,13 @@ test('toggles pinned state from the prompt list pin button instead of the editor
     id: 'list-pin-first',
     title: '목록 첫 번째',
     content: '목록 첫 번째 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'list-pin-second',
     title: '목록 두 번째',
     content: '목록 두 번째 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1065,19 +1065,19 @@ test('reorders normal prompts within the normal group using drag-handle keyboard
       id: 'normal-first',
       title: '일반 첫 번째',
       content: '일반 첫 번째 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'normal-second',
       title: '일반 두 번째',
       content: '일반 두 번째 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
     createPromptRecord({
       id: 'normal-third',
       title: '일반 세 번째',
       content: '일반 세 번째 본문',
-      sortOrder: 3,
+      normalOrder: 3,
     }),
   ]);
 
@@ -1112,19 +1112,19 @@ test('reorders normal prompts using pointer drag after and before placements', a
       id: 'pointer-first',
       title: '포인터 첫 번째',
       content: '포인터 첫 번째 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'pointer-second',
       title: '포인터 두 번째',
       content: '포인터 두 번째 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
     createPromptRecord({
       id: 'pointer-third',
       title: '포인터 세 번째',
       content: '포인터 세 번째 본문',
-      sortOrder: 3,
+      normalOrder: 3,
     }),
   ]);
 
@@ -1190,7 +1190,7 @@ test('centers the drag-handle dot icon inside its button', async ({
       id: 'centered-handle',
       title: '핸들 중앙',
       content: '핸들 중앙 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
   ]);
 
@@ -1232,7 +1232,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       id: 'normal-only',
       title: '일반 프롬프트',
       content: '일반 프롬프트 본문',
-      sortOrder: 10,
+      normalOrder: 10,
     }),
     createPromptRecord({
       id: 'pinned-first',
@@ -1240,7 +1240,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       content: '고정 첫 번째 본문',
       pinned: true,
       pinnedOrder: 1,
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'pinned-second',
@@ -1248,7 +1248,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       content: '고정 두 번째 본문',
       pinned: true,
       pinnedOrder: 2,
-      sortOrder: 2,
+      normalOrder: 2,
     }),
     createPromptRecord({
       id: 'pinned-third',
@@ -1256,7 +1256,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       content: '고정 세 번째 본문',
       pinned: true,
       pinnedOrder: 3,
-      sortOrder: 3,
+      normalOrder: 3,
     }),
   ]);
 
@@ -1296,13 +1296,13 @@ test('keeps storage unchanged when drag-handle keyboard movement would cross gro
       content: '고정 경계 본문',
       pinned: true,
       pinnedOrder: 1,
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'normal-boundary',
       title: '일반 경계',
       content: '일반 경계 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ]);
 
@@ -1332,13 +1332,13 @@ test('keeps storage unchanged when pointer drag lands in the same position', asy
       id: 'pointer-noop-first',
       title: '포인터 제자리 첫 번째',
       content: '포인터 제자리 첫 번째 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'pointer-noop-second',
       title: '포인터 제자리 두 번째',
       content: '포인터 제자리 두 번째 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ]);
 
@@ -1386,13 +1386,13 @@ test('keeps storage unchanged when pointer drag would cross prompt groups', asyn
       content: '포인터 교차 고정 본문',
       pinned: true,
       pinnedOrder: 1,
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'pointer-cross-normal',
       title: '포인터 교차 일반',
       content: '포인터 교차 일반 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ]);
 
@@ -1437,19 +1437,19 @@ test('does not announce reorder success or mutate storage when move prompt confl
       id: 'move-conflict-first',
       title: '충돌 첫 번째',
       content: '충돌 첫 번째 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'move-conflict-second',
       title: '충돌 두 번째',
       content: '충돌 두 번째 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
     createPromptRecord({
       id: 'move-conflict-third',
       title: '충돌 세 번째',
       content: '충돌 세 번째 본문',
-      sortOrder: 3,
+      normalOrder: 3,
     }),
   ]);
 
@@ -1502,7 +1502,7 @@ test('preserves draft input while the initial prompt load resolves', async ({
       id: 'loaded-prompt',
       title: '불러온 프롬프트',
       content: '로드가 끝난 뒤 목록에 나타나야 한다.',
-      sortOrder: 7,
+      normalOrder: 7,
     }),
   ]);
 
@@ -1558,13 +1558,13 @@ test('keeps dirty edit draft when selecting another prompt is dismissed', async 
     id: 'dirty-select-first',
     title: '첫 번째 선택 대상',
     content: '첫 번째 원래 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'dirty-select-second',
     title: '두 번째 선택 대상',
     content: '두 번째 원래 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1610,7 +1610,7 @@ test('keeps dirty edit draft when edit cancel is dismissed', async ({
     id: 'dirty-cancel-prompt',
     title: '취소 확인 대상',
     content: '취소 확인 원래 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([prompt]);
@@ -1657,7 +1657,7 @@ test('preserves dirty create draft when selected prompt body load fails', async 
     id: 'dirty-create-body-load-failure',
     title: '본문 로드 실패 대상',
     content: '이 본문은 실패 응답 때문에 편집기에 들어오면 안 된다.',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([targetPrompt]);
@@ -1693,13 +1693,13 @@ test('uses prompt-specific accessible names for list delete buttons', async ({
     id: 'list-delete-accessible-name',
     title: '목록 삭제 접근성 첫 번째',
     content: '첫 번째 목록 삭제 버튼 이름을 검증한다.',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'list-delete-accessible-name-second',
     title: '목록 삭제 접근성 두 번째',
     content: '두 번째 목록 삭제 버튼 이름을 검증한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1727,13 +1727,13 @@ test('selects prompt cards by keyboard with specific edit names', async ({
     id: 'keyboard-card-first',
     title: '키보드 카드 첫 번째',
     content: '첫 번째 카드 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'keyboard-card-second',
     title: '키보드 카드 두 번째',
     content: '두 번째 카드 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1774,13 +1774,13 @@ test('blocks save when dirty edit discard is followed by selected body load fail
     id: 'dirty-edit-failed-select-first',
     title: '기존 편집 대상',
     content: '기존 편집 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'dirty-edit-failed-select-second',
     title: '실패 선택 대상',
     content: '선택 실패 대상 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1835,7 +1835,7 @@ test('disables save when selected prompt body did not load', async ({
     id: 'disabled-save-body-load-failure',
     title: '저장 차단 대상',
     content: '본문 로드 실패 뒤 빈 본문으로 저장되면 안 된다.',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([targetPrompt]);
@@ -1889,7 +1889,7 @@ test('cancels and confirms prompt deletion from edit mode', async ({
       id: 'prompt-delete-target',
       title: '삭제 테스트',
       content: '삭제 흐름을 검증한다.',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ]);
 
@@ -1939,13 +1939,13 @@ test('returns to create mode when the editing prompt is deleted elsewhere', asyn
       id: 'prompt-editing',
       title: '편집 중',
       content: '현재 편집 중인 프롬프트',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'prompt-remaining',
       title: '남아있는 프롬프트',
       content: '삭제되지 않는 프롬프트',
-      sortOrder: 5,
+      normalOrder: 5,
     }),
   ];
 
@@ -1978,7 +1978,7 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
     id: 'shared-delete-prompt',
     title: '삭제 충돌 대상',
     content: '두 번째 탭이 오래된 상태로 삭제를 시도한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([initialPrompt]);
@@ -2033,7 +2033,7 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
         id: prompt.id,
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
+        normalOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
@@ -2041,7 +2041,7 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
         id: 'shared-delete-prompt',
         title: '최신 삭제 충돌 제목',
         content: '두 번째 탭이 오래된 상태로 삭제를 시도한다.',
-        sortOrder: 2,
+        normalOrder: 2,
       },
     ]);
 });
@@ -2054,7 +2054,7 @@ test('preserves prompts and shows a load error when prompt storage reads fail', 
       id: 'stale-prompt',
       title: '남은 프롬프트',
       content: '이 값은 지워지면 안 된다.',
-      sortOrder: 4,
+      normalOrder: 4,
     }),
   ];
 
@@ -2101,7 +2101,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
     id: 'shared-prompt',
     title: '동시 수정 대상',
     content: '같은 프롬프트를 두 탭에서 편집한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([initialPrompt]);
@@ -2134,7 +2134,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: prompt.id,
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
+        normalOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
@@ -2142,7 +2142,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: 'shared-prompt',
         title: '첫 번째 저장',
         content: '같은 프롬프트를 두 탭에서 편집한다.',
-        sortOrder: 2,
+        normalOrder: 2,
       },
     ]);
 
@@ -2161,7 +2161,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: prompt.id,
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
+        normalOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
@@ -2169,7 +2169,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: 'shared-prompt',
         title: '첫 번째 저장',
         content: '같은 프롬프트를 두 탭에서 편집한다.',
-        sortOrder: 2,
+        normalOrder: 2,
       },
     ]);
 });
@@ -2181,7 +2181,7 @@ test('surfaces a conflict when two options tabs save the same body stale', async
     id: 'shared-body-prompt',
     title: '본문 동시 수정 대상',
     content: '두 탭 모두 이 본문에서 시작한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([initialPrompt]);
@@ -2249,7 +2249,7 @@ test('shows an error when deleting fails', async ({ extension }) => {
       id: 'delete-failure',
       title: '삭제 실패',
       content: '삭제 실패를 검증한다.',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ];
 

@@ -53,7 +53,6 @@ export function createPromptMeta(overrides: {
   title: string;
   content?: string;
   normalOrder?: number;
-  sortOrder?: number;
   pinned?: boolean;
   pinnedOrder?: number | null;
   id?: string;
@@ -69,7 +68,7 @@ export function createPromptMeta(overrides: {
     id: overrides.id ?? randomUUID(),
     title: overrides.title,
     pinned: overrides.pinned ?? false,
-    normalOrder: overrides.normalOrder ?? overrides.sortOrder ?? PROMPT_ORDER_GAP,
+    normalOrder: overrides.normalOrder ?? PROMPT_ORDER_GAP,
     pinnedOrder: overrides.pinned ? (overrides.pinnedOrder ?? PROMPT_ORDER_GAP) : null,
     createdAt: overrides.createdAt ?? timestamp,
     updatedAt: overrides.updatedAt ?? timestamp,
@@ -98,7 +97,6 @@ export function createPromptRecord(overrides: {
   title: string;
   content: string;
   normalOrder?: number;
-  sortOrder?: number;
   pinned?: boolean;
   pinnedOrder?: number | null;
   id?: string;

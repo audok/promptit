@@ -53,7 +53,7 @@ test.describe('chatgpt.com live smoke', () => {
         id: 'live-insert',
         title: '라이브 삽입',
         content: '실사이트 삽입 검증용 프롬프트',
-        sortOrder: 1,
+        normalOrder: 1,
       }),
     ]);
 
@@ -81,13 +81,13 @@ test.describe('chatgpt.com live smoke', () => {
         id: 'live-copy-1',
         title: '라이브 번역',
         content: '실사이트 복사 검증용 프롬프트',
-        sortOrder: 1,
+        normalOrder: 1,
       }),
       createPromptRecord({
         id: 'live-copy-2',
         title: '라이브 복사',
         content: '클립보드로 복사되는 프롬프트',
-        sortOrder: 2,
+        normalOrder: 2,
       }),
     ]);
 
@@ -138,7 +138,7 @@ test.describe('chatgpt.com live smoke', () => {
         id: 'legacy-host',
         title: '레거시 호스트',
         content: '레거시 호스트 검증용 프롬프트',
-        sortOrder: 1,
+        normalOrder: 1,
       }),
     ]);
 

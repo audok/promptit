@@ -50,7 +50,7 @@ test.describe.skip('gemini.google.com live smoke', () => {
         id: 'live-gemini-insert',
         title: 'Gemini 라이브 삽입',
         content: 'Gemini 실사이트 삽입 검증용 프롬프트',
-        sortOrder: 1,
+        normalOrder: 1,
       }),
     ]);
 

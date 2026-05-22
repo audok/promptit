@@ -28,13 +28,13 @@ const geminiPrompts = [
     id: 'gemini-prompt-translate',
     title: 'Gemini 번역',
     content: 'Gemini에서 자연스럽게 번역해줘.',
-    sortOrder: 10,
+    normalOrder: 10,
   }),
   createPromptRecord({
     id: 'gemini-prompt-summary',
     title: 'Gemini 요약',
     content: 'Gemini에서 핵심만 요약해줘.',
-    sortOrder: 20,
+    normalOrder: 20,
   }),
 ];
 
@@ -131,7 +131,7 @@ test('reads the Gemini prompt body on selection instead of popup open', async ({
     id: 'gemini-body-on-select',
     title: 'Gemini 지연 본문',
     content: 'Gemini 처음 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([prompt]);

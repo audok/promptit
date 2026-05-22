@@ -34,13 +34,13 @@ const basePrompts = [
     id: 'prompt-translate',
     title: '번역',
     content: '영문으로 자연스럽게 번역해줘.',
-    sortOrder: 10,
+    normalOrder: 10,
   }),
   createPromptRecord({
     id: 'prompt-minutes',
     title: '회의록',
     content: '회의록으로 정리해줘.',
-    sortOrder: 20,
+    normalOrder: 20,
     createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
     updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
   }),
@@ -1187,7 +1187,7 @@ test('fetches the latest prompt body when selecting an already-open popup item',
     id: 'body-on-select',
     title: '본문 지연 읽기',
     content: '처음 열린 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([prompt]);
@@ -1374,7 +1374,7 @@ test('fetches the latest prompt body when copying from an already-open popup', a
     id: 'body-on-copy',
     title: '복사 지연 읽기',
     content: '처음 열린 복사 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([prompt]);
@@ -1628,7 +1628,7 @@ test('updates the open popup when prompt storage changes', async ({
       id: basePrompts[1].id,
       title: '회의록 업데이트',
       content: basePrompts[1].content,
-      sortOrder: basePrompts[1].normalOrder,
+      normalOrder: basePrompts[1].normalOrder,
       createdAt: basePrompts[1].createdAt,
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
@@ -2112,7 +2112,7 @@ test('shows an error and preserves external pin state on stale popup activation'
     id: 'stale-pin-prompt',
     title: '고정 충돌',
     content: '고정 충돌 본문',
-    sortOrder: 1,
+    normalOrder: 1,
     createdAt: '2026-03-29T00:03:00.000Z',
     updatedAt: '2026-03-29T00:03:00.000Z',
   });
@@ -2606,7 +2606,7 @@ test('scrolls the popup list to keep the active row visible', async ({
         id: `prompt-${index + 1}`,
         title: `프롬프트 ${index + 1}`,
         content: `내용 ${index + 1}`,
-        sortOrder: index,
+        normalOrder: index,
         createdAt: new Date(
           `2026-03-29T00:0${index}:00.000Z`,
         ).toISOString(),
@@ -2643,7 +2643,7 @@ test('keeps keyboard navigation active while the hovered popup cell scrolls out 
         id: `prompt-${index + 1}`,
         title: `프롬프트 ${index + 1}`,
         content: `내용 ${index + 1}`,
-        sortOrder: index,
+        normalOrder: index,
         createdAt: new Date(
           `2026-03-29T00:0${index}:00.000Z`,
         ).toISOString(),
