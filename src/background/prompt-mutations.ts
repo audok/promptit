@@ -1,40 +1,47 @@
 import {
   createPrompt,
   deletePrompt,
-  ensureLegacyMigrationCompleteMarkerBestEffort,
   getPromptBody,
+  getPromptRecord,
   listPromptMetas,
   movePrompt,
   publishPromptRevision,
   setPromptPinned,
   updatePromptBody,
   updatePromptMeta,
+  updatePromptRecord,
 } from '../prompt/repository';
 import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
   GET_PROMPT_BODY_MESSAGE,
+  GET_PROMPT_RECORD_MESSAGE,
   LIST_PROMPT_METAS_MESSAGE,
   MOVE_PROMPT_MESSAGE,
   SET_PROMPT_PINNED_MESSAGE,
   UPDATE_PROMPT_BODY_MESSAGE,
   UPDATE_PROMPT_META_MESSAGE,
+  UPDATE_PROMPT_RECORD_MESSAGE,
   assertNever,
   buildCreatePromptSuccessResponse,
   buildDeletePromptSuccessResponse,
   buildGetPromptBodySuccessResponse,
+  buildGetPromptRecordSuccessResponse,
   buildListPromptMetasSuccessResponse,
   buildPromptConflictResponse,
   buildPromptErrorResponse,
   buildPromptMetaSuccessResponse,
   buildPromptNotFoundResponse,
   buildUpdatePromptBodySuccessResponse,
+  buildUpdatePromptRecordSuccessResponse,
   type CreatePromptRequest,
   type CreatePromptResponse,
   type DeletePromptRequest,
   type DeletePromptResponse,
   type GetPromptBodyRequest,
   type GetPromptBodyResponse,
+  type GetPromptRecordRequest,
+  type GetPromptRecordResponse,
   type ListPromptMetasRequest,
   type ListPromptMetasResponse,
   type MovePromptRequest,
@@ -49,6 +56,8 @@ import {
   type UpdatePromptBodyResponse,
   type UpdatePromptMetaRequest,
   type UpdatePromptMetaResponse,
+  type UpdatePromptRecordRequest,
+  type UpdatePromptRecordResponse,
 } from '../runtime/messages';
 
 const UPDATE_PROMPT_CONFLICT_MESSAGE =
@@ -92,12 +101,16 @@ async function executePromptRequest(
         return await handleListPromptMetasRequest(request);
       case GET_PROMPT_BODY_MESSAGE:
         return await handleGetPromptBodyRequest(request);
+      case GET_PROMPT_RECORD_MESSAGE:
+        return await handleGetPromptRecordRequest(request);
       case CREATE_PROMPT_MESSAGE:
         return await handleCreatePromptRequest(request);
       case UPDATE_PROMPT_META_MESSAGE:
         return await handleUpdatePromptMetaRequest(request);
       case UPDATE_PROMPT_BODY_MESSAGE:
         return await handleUpdatePromptBodyRequest(request);
+      case UPDATE_PROMPT_RECORD_MESSAGE:
+        return await handleUpdatePromptRecordRequest(request);
       case DELETE_PROMPT_MESSAGE:
         return await handleDeletePromptRequest(request);
       case MOVE_PROMPT_MESSAGE:
@@ -133,6 +146,22 @@ async function handleGetPromptBodyRequest(
   }
 
   return buildGetPromptBodySuccessResponse(body);
+}
+
+async function handleGetPromptRecordRequest(
+  request: GetPromptRecordRequest,
+): Promise<GetPromptRecordResponse> {
+  const prompt = await getPromptRecord(request.id);
+
+  if (!prompt) {
+    return buildPromptNotFoundResponse(
+      GET_PROMPT_RECORD_MESSAGE,
+      request.id,
+      READ_PROMPT_NOT_FOUND_MESSAGE,
+    );
+  }
+
+  return buildGetPromptRecordSuccessResponse(prompt);
 }
 
 async function handleCreatePromptRequest(
@@ -180,6 +209,7 @@ async function handleUpdatePromptBodyRequest(
   request: UpdatePromptBodyRequest,
 ): Promise<UpdatePromptBodyResponse> {
   const result = await updatePromptBody(request.id, request.content, {
+    expectedUpdatedAt: request.expectedUpdatedAt,
     expectedBodyUpdatedAt: request.expectedBodyUpdatedAt,
   });
 
@@ -196,6 +226,37 @@ async function handleUpdatePromptBodyRequest(
     case 'conflict':
       return buildPromptConflictResponse(
         UPDATE_PROMPT_BODY_MESSAGE,
+        result.id,
+        result.currentMeta,
+        UPDATE_PROMPT_CONFLICT_MESSAGE,
+        result.currentRecord ?? undefined,
+      );
+  }
+
+  return assertNever(result);
+}
+
+async function handleUpdatePromptRecordRequest(
+  request: UpdatePromptRecordRequest,
+): Promise<UpdatePromptRecordResponse> {
+  const result = await updatePromptRecord(request.id, request.draft, {
+    expectedUpdatedAt: request.expectedUpdatedAt,
+    expectedBodyUpdatedAt: request.expectedBodyUpdatedAt,
+  });
+
+  switch (result.status) {
+    case 'success':
+      await publishPromptStorageSideEffectsBestEffort();
+      return buildUpdatePromptRecordSuccessResponse(result.value);
+    case 'not-found':
+      return buildPromptNotFoundResponse(
+        UPDATE_PROMPT_RECORD_MESSAGE,
+        result.id,
+        UPDATE_PROMPT_NOT_FOUND_MESSAGE,
+      );
+    case 'conflict':
+      return buildPromptConflictResponse(
+        UPDATE_PROMPT_RECORD_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
@@ -311,8 +372,6 @@ function buildRequestErrorResponse(
 }
 
 async function publishPromptStorageSideEffectsBestEffort(): Promise<void> {
-  await ensureLegacyMigrationCompleteMarkerBestEffort();
-
   try {
     await publishPromptRevision();
   } catch (error) {
@@ -324,10 +383,12 @@ function getDefaultErrorMessage(request: PromptRequest): string {
   switch (request.type) {
     case LIST_PROMPT_METAS_MESSAGE:
     case GET_PROMPT_BODY_MESSAGE:
+    case GET_PROMPT_RECORD_MESSAGE:
       return '프롬프트를 읽는 중 오류가 발생했습니다.';
     case CREATE_PROMPT_MESSAGE:
     case UPDATE_PROMPT_META_MESSAGE:
     case UPDATE_PROMPT_BODY_MESSAGE:
+    case UPDATE_PROMPT_RECORD_MESSAGE:
     case MOVE_PROMPT_MESSAGE:
     case SET_PROMPT_PINNED_MESSAGE:
       return '프롬프트 저장 중 오류가 발생했습니다.';

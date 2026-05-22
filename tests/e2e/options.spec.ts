@@ -10,23 +10,23 @@ import {
   type LoadedExtension,
 } from '../playwright/extension';
 import {
-  createLegacyPromptItem,
   createPromptRecord,
 } from '../playwright/promptit';
 import {
-  LEGACY_PROMPTS_STORAGE_KEY,
   PROMPT_BODY_MAX_BYTES,
-  STARTER_PROMPT_ID,
   type PromptRecord,
 } from '../../src/prompt/schema';
 import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
   GET_PROMPT_BODY_MESSAGE,
+  GET_PROMPT_RECORD_MESSAGE,
+  LIST_PROMPT_METAS_MESSAGE,
   MOVE_PROMPT_MESSAGE,
   SET_PROMPT_PINNED_MESSAGE,
   UPDATE_PROMPT_BODY_MESSAGE,
   UPDATE_PROMPT_META_MESSAGE,
+  UPDATE_PROMPT_RECORD_MESSAGE,
 } from '../../src/runtime/messages';
 
 const test = base.extend<{
@@ -39,9 +39,10 @@ const test = base.extend<{
   },
 });
 
-const PROMPT_IDB_MIGRATION_STORAGE_KEY = 'promptit:idbMigration';
 const BODY_LOAD_ERROR_MESSAGE =
   '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.';
+const PROMPT_GROUP_CROSS_REORDER_MESSAGE =
+  '고정됨 목록과 일반 목록 사이에서는 끌어서 순서를 바꿀 수 없습니다.';
 
 async function openOptionsPage(
   extension: LoadedExtension,
@@ -311,6 +312,43 @@ async function pressPromptHandleKey(
   await page.keyboard.press(key);
 }
 
+async function expectPoliteLiveRegionToContain(
+  page: Page,
+  message: string,
+): Promise<void> {
+  await expect(
+    page.locator('[aria-live="polite"]').filter({ hasText: message }),
+  ).toHaveCount(1);
+}
+
+async function dragPromptHandleToPrompt(
+  page: Page,
+  sourceTitle: string,
+  targetTitle: string,
+  placement: 'after' | 'before',
+): Promise<void> {
+  const handle = getPromptDragHandle(page, sourceTitle);
+  const targetItem = getPromptCard(page, targetTitle).locator(
+    'xpath=ancestor::*[@role="listitem"][1]',
+  );
+
+  await expect(handle).toBeVisible();
+  await expect(targetItem).toBeVisible();
+
+  const targetBox = await targetItem.boundingBox();
+
+  if (!targetBox) {
+    throw new Error(`Prompt drop target not found for ${targetTitle}.`);
+  }
+
+  await handle.dragTo(targetItem, {
+    targetPosition: {
+      x: targetBox.width / 2,
+      y: placement === 'before' ? 4 : targetBox.height - 4,
+    },
+  });
+}
+
 async function expectNoChromeStoragePromptBody(
   extension: LoadedExtension,
   bodyText: string,
@@ -318,7 +356,6 @@ async function expectNoChromeStoragePromptBody(
   const snapshot = await extension.getChromeStorageLocalSnapshot();
 
   expect(JSON.stringify(snapshot)).not.toContain(bodyText);
-  expect(snapshot).not.toHaveProperty(LEGACY_PROMPTS_STORAGE_KEY);
 }
 
 async function getRequiredPromptRecord(
@@ -469,7 +506,7 @@ test('appends newly created normal prompts by default', async ({
     id: 'append-existing-normal',
     title: '기존 일반',
     content: '기존 일반 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([existingPrompt]);
@@ -540,7 +577,7 @@ test('accepts an exact 500 KiB body and rejects oversized updates without trunca
     id: 'body-limit-prompt',
     title: '본문 용량 제한',
     content: exactLimitBody,
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([]);
@@ -577,7 +614,7 @@ test('metadata-only save does not rewrite body content or body timestamp', async
     id: 'metadata-only-prompt',
     title: '원래 제목',
     content: '본문은 바뀌면 안 된다.',
-    sortOrder: 4,
+    normalOrder: 4,
     createdAt: '2026-03-29T01:00:00.000Z',
     updatedAt: '2026-03-29T01:00:00.000Z',
     bodyUpdatedAt: '2026-03-29T01:00:00.000Z',
@@ -615,7 +652,7 @@ test('body save updates the body record, bodyUpdatedAt, and charCount', async ({
     id: 'body-update-prompt',
     title: '본문 변경',
     content: '이전 본문',
-    sortOrder: 4,
+    normalOrder: 4,
     createdAt: '2026-03-29T02:00:00.000Z',
     updatedAt: '2026-03-29T02:00:00.000Z',
     bodyUpdatedAt: '2026-03-29T02:00:00.000Z',
@@ -716,6 +753,7 @@ test('runtime create commits when prompt revision publication fails', async ({
     type: UPDATE_PROMPT_BODY_MESSAGE,
     id: createdPrompt.id,
     content: '리비전 저장 실패와 무관하게 본문도 수정되어야 한다.',
+    expectedUpdatedAt: afterMetaUpdate.updatedAt,
     expectedBodyUpdatedAt: afterMetaUpdate.bodyUpdatedAt,
   });
 
@@ -797,7 +835,7 @@ test('runtime mutations without required conflict timestamps are not accepted', 
     id: 'runtime-contract-prompt',
     title: '런타임 계약',
     content: '타임스탬프 누락 요청은 반영되면 안 된다.',
-    sortOrder: 1,
+    normalOrder: 1,
     createdAt: '2026-03-29T03:00:00.000Z',
     updatedAt: '2026-03-29T03:00:00.000Z',
     bodyUpdatedAt: '2026-03-29T03:00:00.000Z',
@@ -825,9 +863,45 @@ test('runtime mutations without required conflict timestamps are not accepted', 
     nextId: null,
   });
   await expectRawRuntimeMessageNotAccepted(extension, {
+    type: MOVE_PROMPT_MESSAGE,
+    id: initialPrompt.id,
+    nextId: null,
+    expectedUpdatedAt: initialPrompt.updatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: MOVE_PROMPT_MESSAGE,
+    id: initialPrompt.id,
+    previousId: null,
+    expectedUpdatedAt: initialPrompt.updatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
     type: UPDATE_PROMPT_BODY_MESSAGE,
     id: initialPrompt.id,
     content: '반영되면 안 되는 본문',
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: UPDATE_PROMPT_BODY_MESSAGE,
+    id: initialPrompt.id,
+    content: '반영되면 안 되는 본문',
+    expectedBodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: UPDATE_PROMPT_RECORD_MESSAGE,
+    id: initialPrompt.id,
+    draft: {
+      title: '반영되면 안 되는 제목',
+      content: '반영되면 안 되는 본문',
+    },
+    expectedBodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: UPDATE_PROMPT_RECORD_MESSAGE,
+    id: initialPrompt.id,
+    draft: {
+      title: '반영되면 안 되는 제목',
+      content: '반영되면 안 되는 본문',
+    },
+    expectedUpdatedAt: initialPrompt.updatedAt,
   });
   await expectRawRuntimeMessageNotAccepted(extension, {
     type: DELETE_PROMPT_MESSAGE,
@@ -836,7 +910,80 @@ test('runtime mutations without required conflict timestamps are not accepted', 
   });
 });
 
-test('orders prompts with matching sortOrder by createdAt and id tie-breaks', async ({
+test('rejects stale body updates when the prompt metadata timestamp changed', async ({
+  extension,
+}) => {
+  const initialPrompt = createPromptRecord({
+    id: 'runtime-body-meta-conflict',
+    title: '본문 저장 메타 충돌',
+    content: '메타 변경 전 본문',
+    normalOrder: 1,
+    createdAt: '2026-03-29T04:00:00.000Z',
+    updatedAt: '2026-03-29T04:00:00.000Z',
+    bodyUpdatedAt: '2026-03-29T04:00:00.000Z',
+  });
+
+  await extension.setPromptRecords([initialPrompt]);
+
+  const metaResponse = await extension.sendRuntimeMessage({
+    type: UPDATE_PROMPT_META_MESSAGE,
+    id: initialPrompt.id,
+    draft: {
+      title: '다른 창의 최신 제목',
+      normalOrder: initialPrompt.normalOrder,
+    },
+    expectedUpdatedAt: initialPrompt.updatedAt,
+  });
+
+  expect(metaResponse).toEqual(
+    expect.objectContaining({
+      type: UPDATE_PROMPT_META_MESSAGE,
+      ok: true,
+      status: 'success',
+    }),
+  );
+
+  const afterMetaUpdate = await getRequiredPromptRecord(
+    extension,
+    initialPrompt.id,
+  );
+
+  expect(afterMetaUpdate.updatedAt).not.toBe(initialPrompt.updatedAt);
+  expect(afterMetaUpdate.bodyUpdatedAt).toBe(initialPrompt.bodyUpdatedAt);
+
+  const staleBodyResponse = await extension.sendRawRuntimeMessage({
+    type: UPDATE_PROMPT_BODY_MESSAGE,
+    id: initialPrompt.id,
+    content: '오래된 메타 기준 본문',
+    expectedUpdatedAt: initialPrompt.updatedAt,
+    expectedBodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+
+  expect(staleBodyResponse).toEqual(
+    expect.objectContaining({
+      type: UPDATE_PROMPT_BODY_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: initialPrompt.id,
+    }),
+  );
+  await expect
+    .poll(async () => await getRequiredPromptRecord(extension, initialPrompt.id))
+    .toEqual(
+      expect.objectContaining({
+        title: '다른 창의 최신 제목',
+        content: initialPrompt.content,
+        bodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+      }),
+    );
+  expect(await extension.getPromptBody(initialPrompt.id)).toEqual({
+    id: initialPrompt.id,
+    content: initialPrompt.content,
+    updatedAt: initialPrompt.bodyUpdatedAt,
+  });
+});
+
+test('orders prompts with matching normalOrder by createdAt and id tie-breaks', async ({
   extension,
 }) => {
   await extension.setPromptRecords([
@@ -844,7 +991,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-later',
       title: '생성일 늦은 프롬프트',
       content: '생성일이 가장 늦어서 마지막에 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:03:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:03:00.000Z').toISOString(),
     }),
@@ -852,7 +999,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-id-b',
       title: '같은 생성일 ID B',
       content: '같은 생성일에서는 ID A 다음에 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
@@ -860,7 +1007,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-earlier',
       title: '생성일 빠른 프롬프트',
       content: '생성일이 가장 빨라서 먼저 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
     }),
@@ -868,7 +1015,7 @@ test('orders prompts with matching sortOrder by createdAt and id tie-breaks', as
       id: 'same-sort-id-a',
       title: '같은 생성일 ID A',
       content: '같은 생성일에서는 ID B보다 먼저 보여야 한다.',
-      sortOrder: 5,
+      normalOrder: 5,
       createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
       updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
     }),
@@ -892,13 +1039,13 @@ test('orders pinned prompts first and restores normal position when unpinned', a
     id: 'normal-first',
     title: '일반 첫 번째',
     content: '일반 첫 번째 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const pinnedMiddle = createPromptRecord({
     id: 'pinned-middle',
     title: '고정된 중간',
     content: '고정된 중간 본문',
-    sortOrder: 2,
+    normalOrder: 2,
     pinned: true,
     pinnedOrder: 1,
   });
@@ -906,7 +1053,7 @@ test('orders pinned prompts first and restores normal position when unpinned', a
     id: 'normal-last',
     title: '일반 마지막',
     content: '일반 마지막 본문',
-    sortOrder: 3,
+    normalOrder: 3,
   });
 
   await extension.setPromptRecords([normalLast, pinnedMiddle, normalFirst]);
@@ -950,13 +1097,13 @@ test('toggles pinned state from the prompt list pin button instead of the editor
     id: 'list-pin-first',
     title: '목록 첫 번째',
     content: '목록 첫 번째 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'list-pin-second',
     title: '목록 두 번째',
     content: '목록 두 번째 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1031,19 +1178,19 @@ test('reorders normal prompts within the normal group using drag-handle keyboard
       id: 'normal-first',
       title: '일반 첫 번째',
       content: '일반 첫 번째 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'normal-second',
       title: '일반 두 번째',
       content: '일반 두 번째 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
     createPromptRecord({
       id: 'normal-third',
       title: '일반 세 번째',
       content: '일반 세 번째 본문',
-      sortOrder: 3,
+      normalOrder: 3,
     }),
   ]);
 
@@ -1070,6 +1217,84 @@ test('reorders normal prompts within the normal group using drag-handle keyboard
   await expectPromptListToHideInternalOrderFields(page);
 });
 
+test('reorders normal prompts using pointer drag after and before placements', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'pointer-first',
+      title: '포인터 첫 번째',
+      content: '포인터 첫 번째 본문',
+      normalOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'pointer-second',
+      title: '포인터 두 번째',
+      content: '포인터 두 번째 본문',
+      normalOrder: 2,
+    }),
+    createPromptRecord({
+      id: 'pointer-third',
+      title: '포인터 세 번째',
+      content: '포인터 세 번째 본문',
+      normalOrder: 3,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 첫 번째',
+    '포인터 두 번째',
+    '포인터 세 번째',
+  ]);
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 세 번째',
+    '포인터 첫 번째',
+    'after',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 첫 번째',
+    '포인터 세 번째',
+    '포인터 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-first',
+    'pointer-third',
+    'pointer-second',
+  ]);
+  await expectPoliteLiveRegionToContain(
+    page,
+    '포인터 세 번째 순서를 변경했습니다.',
+  );
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 세 번째',
+    '포인터 첫 번째',
+    'before',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 세 번째',
+    '포인터 첫 번째',
+    '포인터 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-third',
+    'pointer-first',
+    'pointer-second',
+  ]);
+  await expectPoliteLiveRegionToContain(
+    page,
+    '포인터 세 번째 순서를 변경했습니다.',
+  );
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
 test('centers the drag-handle dot icon inside its button', async ({
   extension,
 }) => {
@@ -1078,7 +1303,7 @@ test('centers the drag-handle dot icon inside its button', async ({
       id: 'centered-handle',
       title: '핸들 중앙',
       content: '핸들 중앙 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
   ]);
 
@@ -1120,7 +1345,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       id: 'normal-only',
       title: '일반 프롬프트',
       content: '일반 프롬프트 본문',
-      sortOrder: 10,
+      normalOrder: 10,
     }),
     createPromptRecord({
       id: 'pinned-first',
@@ -1128,7 +1353,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       content: '고정 첫 번째 본문',
       pinned: true,
       pinnedOrder: 1,
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'pinned-second',
@@ -1136,7 +1361,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       content: '고정 두 번째 본문',
       pinned: true,
       pinnedOrder: 2,
-      sortOrder: 2,
+      normalOrder: 2,
     }),
     createPromptRecord({
       id: 'pinned-third',
@@ -1144,7 +1369,7 @@ test('reorders pinned prompts within the pinned group using drag-handle keyboard
       content: '고정 세 번째 본문',
       pinned: true,
       pinnedOrder: 3,
-      sortOrder: 3,
+      normalOrder: 3,
     }),
   ]);
 
@@ -1184,13 +1409,13 @@ test('keeps storage unchanged when drag-handle keyboard movement would cross gro
       content: '고정 경계 본문',
       pinned: true,
       pinnedOrder: 1,
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'normal-boundary',
       title: '일반 경계',
       content: '일반 경계 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ]);
 
@@ -1212,6 +1437,111 @@ test('keeps storage unchanged when drag-handle keyboard movement would cross gro
   await expectPromptListToHideInternalOrderFields(page);
 });
 
+test('keeps storage unchanged when pointer drag lands in the same position', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'pointer-noop-first',
+      title: '포인터 제자리 첫 번째',
+      content: '포인터 제자리 첫 번째 본문',
+      normalOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'pointer-noop-second',
+      title: '포인터 제자리 두 번째',
+      content: '포인터 제자리 두 번째 본문',
+      normalOrder: 2,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 제자리 첫 번째',
+    '포인터 제자리 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-noop-first',
+    'pointer-noop-second',
+  ]);
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 제자리 첫 번째',
+    '포인터 제자리 두 번째',
+    'before',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 제자리 첫 번째',
+    '포인터 제자리 두 번째',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-noop-first',
+    'pointer-noop-second',
+  ]);
+  await expect(
+    page.locator('[aria-live="polite"]'),
+  ).not.toContainText(
+    '포인터 제자리 첫 번째 순서를 변경했습니다.',
+  );
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
+test('keeps storage unchanged when pointer drag would cross prompt groups', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([
+    createPromptRecord({
+      id: 'pointer-cross-pinned',
+      title: '포인터 교차 고정',
+      content: '포인터 교차 고정 본문',
+      pinned: true,
+      pinnedOrder: 1,
+      normalOrder: 1,
+    }),
+    createPromptRecord({
+      id: 'pointer-cross-normal',
+      title: '포인터 교차 일반',
+      content: '포인터 교차 일반 본문',
+      normalOrder: 2,
+    }),
+  ]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 교차 고정',
+    '포인터 교차 일반',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-cross-pinned',
+    'pointer-cross-normal',
+  ]);
+
+  await dragPromptHandleToPrompt(
+    page,
+    '포인터 교차 일반',
+    '포인터 교차 고정',
+    'before',
+  );
+
+  await expectVisiblePromptOrder(page, [
+    '포인터 교차 고정',
+    '포인터 교차 일반',
+  ]);
+  await expectStoredPromptMetaOrder(extension, [
+    'pointer-cross-pinned',
+    'pointer-cross-normal',
+  ]);
+  await expectPoliteLiveRegionToContain(
+    page,
+    PROMPT_GROUP_CROSS_REORDER_MESSAGE,
+  );
+  await expectPromptListToHideInternalOrderFields(page);
+});
+
 test('does not announce reorder success or mutate storage when move prompt conflicts', async ({
   extension,
 }) => {
@@ -1220,19 +1550,19 @@ test('does not announce reorder success or mutate storage when move prompt confl
       id: 'move-conflict-first',
       title: '충돌 첫 번째',
       content: '충돌 첫 번째 본문',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'move-conflict-second',
       title: '충돌 두 번째',
       content: '충돌 두 번째 본문',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
     createPromptRecord({
       id: 'move-conflict-third',
       title: '충돌 세 번째',
       content: '충돌 세 번째 본문',
-      sortOrder: 3,
+      normalOrder: 3,
     }),
   ]);
 
@@ -1277,6 +1607,55 @@ test('does not announce reorder success or mutate storage when move prompt confl
   expect(await extension.getPromptRecords()).toEqual(beforeRecords);
 });
 
+test('rejects stale reorder boundary requests without moving to an edge', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'stale-boundary-first',
+    title: '경계 첫 번째',
+    content: '경계 첫 번째 본문',
+    normalOrder: 1,
+  });
+  const nextPrompt = createPromptRecord({
+    id: 'stale-boundary-next',
+    title: '경계 다음',
+    content: '경계 다음 본문',
+    normalOrder: 2,
+  });
+  const movingPrompt = createPromptRecord({
+    id: 'stale-boundary-moving',
+    title: '경계 이동 대상',
+    content: '경계 이동 대상 본문',
+    normalOrder: 3,
+  });
+
+  await extension.setPromptRecords([
+    firstPrompt,
+    nextPrompt,
+    movingPrompt,
+  ]);
+
+  const beforeRecords = await extension.getPromptRecords();
+  const response = await extension.sendRuntimeMessage({
+    type: MOVE_PROMPT_MESSAGE,
+    id: movingPrompt.id,
+    group: 'normal',
+    previousId: 'stale-deleted-boundary',
+    nextId: nextPrompt.id,
+    expectedUpdatedAt: movingPrompt.updatedAt,
+  });
+
+  expect(response).toEqual(
+    expect.objectContaining({
+      type: MOVE_PROMPT_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: movingPrompt.id,
+    }),
+  );
+  expect(await extension.getPromptRecords()).toEqual(beforeRecords);
+});
+
 test('preserves draft input while the initial prompt load resolves', async ({
   extension,
 }) => {
@@ -1285,7 +1664,7 @@ test('preserves draft input while the initial prompt load resolves', async ({
       id: 'loaded-prompt',
       title: '불러온 프롬프트',
       content: '로드가 끝난 뒤 목록에 나타나야 한다.',
-      sortOrder: 7,
+      normalOrder: 7,
     }),
   ]);
 
@@ -1341,13 +1720,13 @@ test('keeps dirty edit draft when selecting another prompt is dismissed', async 
     id: 'dirty-select-first',
     title: '첫 번째 선택 대상',
     content: '첫 번째 원래 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'dirty-select-second',
     title: '두 번째 선택 대상',
     content: '두 번째 원래 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1386,6 +1765,65 @@ test('keeps dirty edit draft when selecting another prompt is dismissed', async 
   await expect(getContentInput(page)).toHaveValue(secondPrompt.content);
 });
 
+test('loads selected prompts through one prompt record runtime request', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'record-load-first',
+    title: '레코드 로드 첫 번째',
+    content: '첫 번째 원자 로드 본문',
+    normalOrder: 1,
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'record-load-second',
+    title: '레코드 로드 두 번째',
+    content: '두 번째 원자 로드 본문',
+    normalOrder: 2,
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await page.evaluate(() => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+    const requestTypes: string[] = [];
+
+    (window as Window & {
+      __promptitSelectionRequestTypes?: string[];
+    }).__promptitSelectionRequestTypes = requestTypes;
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (typeof request === 'object' && request !== null) {
+        requestTypes.push(String((request as { type?: unknown }).type));
+      }
+
+      return await originalSendMessage(...args);
+    };
+  });
+
+  await getPromptCard(page, secondPrompt.title).click();
+
+  await expect(page.getByRole('heading', { name: '프롬프트 수정' })).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(secondPrompt.title);
+  await expect(getContentInput(page)).toHaveValue(secondPrompt.content);
+
+  const requestTypes = await page.evaluate(() =>
+    (window as Window & {
+      __promptitSelectionRequestTypes?: string[];
+    }).__promptitSelectionRequestTypes ?? [],
+  );
+
+  expect(requestTypes).toContain(GET_PROMPT_RECORD_MESSAGE);
+  expect(requestTypes).not.toContain(LIST_PROMPT_METAS_MESSAGE);
+  expect(requestTypes).not.toContain(GET_PROMPT_BODY_MESSAGE);
+});
+
 test('keeps dirty edit draft when edit cancel is dismissed', async ({
   extension,
 }) => {
@@ -1393,7 +1831,7 @@ test('keeps dirty edit draft when edit cancel is dismissed', async ({
     id: 'dirty-cancel-prompt',
     title: '취소 확인 대상',
     content: '취소 확인 원래 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([prompt]);
@@ -1433,14 +1871,14 @@ test('keeps dirty edit draft when edit cancel is dismissed', async ({
   await expect(getContentInput(page)).toHaveValue('');
 });
 
-test('preserves dirty create draft when selected prompt body load fails', async ({
+test('preserves dirty create draft when selected prompt record load fails', async ({
   extension,
 }) => {
   const targetPrompt = createPromptRecord({
     id: 'dirty-create-body-load-failure',
     title: '본문 로드 실패 대상',
     content: '이 본문은 실패 응답 때문에 편집기에 들어오면 안 된다.',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([targetPrompt]);
@@ -1450,7 +1888,7 @@ test('preserves dirty create draft when selected prompt body load fails', async 
   await getContentInput(page).fill('작성 중인 본문');
   await patchRuntimeMessageFailure(
     page,
-    [GET_PROMPT_BODY_MESSAGE],
+    [GET_PROMPT_RECORD_MESSAGE],
     'mock selected body load failure',
   );
 
@@ -1476,13 +1914,13 @@ test('uses prompt-specific accessible names for list delete buttons', async ({
     id: 'list-delete-accessible-name',
     title: '목록 삭제 접근성 첫 번째',
     content: '첫 번째 목록 삭제 버튼 이름을 검증한다.',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'list-delete-accessible-name-second',
     title: '목록 삭제 접근성 두 번째',
     content: '두 번째 목록 삭제 버튼 이름을 검증한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1510,13 +1948,13 @@ test('selects prompt cards by keyboard with specific edit names', async ({
     id: 'keyboard-card-first',
     title: '키보드 카드 첫 번째',
     content: '첫 번째 카드 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'keyboard-card-second',
     title: '키보드 카드 두 번째',
     content: '두 번째 카드 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1550,20 +1988,20 @@ test('selects prompt cards by keyboard with specific edit names', async ({
   await expect(firstCard).toHaveAttribute('aria-current', 'true');
 });
 
-test('blocks save when dirty edit discard is followed by selected body load failure', async ({
+test('blocks save when dirty edit discard is followed by selected record load failure', async ({
   extension,
 }) => {
   const firstPrompt = createPromptRecord({
     id: 'dirty-edit-failed-select-first',
     title: '기존 편집 대상',
     content: '기존 편집 본문',
-    sortOrder: 1,
+    normalOrder: 1,
   });
   const secondPrompt = createPromptRecord({
     id: 'dirty-edit-failed-select-second',
     title: '실패 선택 대상',
     content: '선택 실패 대상 본문',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([firstPrompt, secondPrompt]);
@@ -1577,7 +2015,7 @@ test('blocks save when dirty edit discard is followed by selected body load fail
   await getContentInput(page).fill('버리기로 승인한 수정 본문');
   await patchRuntimeMessageFailure(
     page,
-    [GET_PROMPT_BODY_MESSAGE],
+    [GET_PROMPT_RECORD_MESSAGE],
     'mock selected body load failure',
   );
 
@@ -1611,14 +2049,14 @@ test('blocks save when dirty edit discard is followed by selected body load fail
   expect(await extension.getPromptRecords()).toEqual([firstPrompt, secondPrompt]);
 });
 
-test('disables save when selected prompt body did not load', async ({
+test('disables save when selected prompt record did not load', async ({
   extension,
 }) => {
   const targetPrompt = createPromptRecord({
     id: 'disabled-save-body-load-failure',
     title: '저장 차단 대상',
     content: '본문 로드 실패 뒤 빈 본문으로 저장되면 안 된다.',
-    sortOrder: 1,
+    normalOrder: 1,
   });
 
   await extension.setPromptRecords([targetPrompt]);
@@ -1626,7 +2064,7 @@ test('disables save when selected prompt body did not load', async ({
   const page = await openOptionsPage(extension);
   await patchRuntimeMessageFailure(
     page,
-    [GET_PROMPT_BODY_MESSAGE],
+    [GET_PROMPT_RECORD_MESSAGE],
     'mock selected body load failure',
   );
 
@@ -1672,7 +2110,7 @@ test('cancels and confirms prompt deletion from edit mode', async ({
       id: 'prompt-delete-target',
       title: '삭제 테스트',
       content: '삭제 흐름을 검증한다.',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ]);
 
@@ -1722,13 +2160,13 @@ test('returns to create mode when the editing prompt is deleted elsewhere', asyn
       id: 'prompt-editing',
       title: '편집 중',
       content: '현재 편집 중인 프롬프트',
-      sortOrder: 1,
+      normalOrder: 1,
     }),
     createPromptRecord({
       id: 'prompt-remaining',
       title: '남아있는 프롬프트',
       content: '삭제되지 않는 프롬프트',
-      sortOrder: 5,
+      normalOrder: 5,
     }),
   ];
 
@@ -1761,7 +2199,7 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
     id: 'shared-delete-prompt',
     title: '삭제 충돌 대상',
     content: '두 번째 탭이 오래된 상태로 삭제를 시도한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([initialPrompt]);
@@ -1816,7 +2254,7 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
         id: prompt.id,
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
+        normalOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
@@ -1824,429 +2262,97 @@ test('surfaces a stale delete conflict when a second tab deletes an edited promp
         id: 'shared-delete-prompt',
         title: '최신 삭제 충돌 제목',
         content: '두 번째 탭이 오래된 상태로 삭제를 시도한다.',
-        sortOrder: 2,
+        normalOrder: 2,
       },
     ]);
 });
 
-test('migrates valid legacy storage entries when the options page loads', async ({
+test('keeps the active editor content when non-active delete conflict body load fails', async ({
   extension,
 }) => {
-  await extension.setLegacyRawPrompts([
-    createLegacyPromptItem({
-      id: 'later-prompt',
-      title: '나중 프롬프트',
-      content: '두 번째로 보여야 한다.',
-      sortOrder: 8,
-      createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-    }),
-    {
-      id: STARTER_PROMPT_ID,
-      title: 'starter',
-      content: 'starter content',
-      sortOrder: 0,
-      createdAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
-    },
-    { id: 'broken-prompt', title: '', content: '', sortOrder: 'x' },
-    createLegacyPromptItem({
-      id: 'early-prompt',
-      title: '먼저 프롬프트',
-      content: '첫 번째로 보여야 한다.',
-      sortOrder: 3,
-      createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-    }),
-  ]);
-
-  const page = await openOptionsPage(extension);
-
-  await expect(getPromptCard(page, '먼저 프롬프트')).toBeVisible();
-  await expect(getPromptCard(page, '나중 프롬프트')).toBeVisible();
-  await expect(page.getByText('starter')).toHaveCount(0);
-
-  await expect
-    .poll(async () =>
-      (await extension.getPromptRecords()).map((prompt) => ({
-        id: prompt.id,
-        title: prompt.title,
-        sortOrder: prompt.normalOrder,
-      })),
-    )
-    .toEqual([
-      {
-        id: 'early-prompt',
-        title: '먼저 프롬프트',
-        sortOrder: 1000000,
-      },
-      {
-        id: 'later-prompt',
-        title: '나중 프롬프트',
-        sortOrder: 2000000,
-      },
-    ]);
-});
-
-test('does not reimport legacy prompts after migration is complete', async ({
-  extension,
-}) => {
-  const legacyPrompt = createLegacyPromptItem({
-    id: 'completed-migration-legacy',
-    title: '완료된 마이그레이션 레거시',
-    content: '마이그레이션 완료 뒤 다시 가져오면 안 된다.',
-    sortOrder: 1,
-    createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-    updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+  const activePrompt = createPromptRecord({
+    id: 'delete-conflict-active',
+    title: '활성 삭제 충돌 아님',
+    content: '활성 편집기 본문은 유지되어야 한다.',
+    normalOrder: 1,
   });
-
-  await extension.setLegacyRawPrompts([legacyPrompt]);
-  await extension.setPromptMigrationCompleteMarker();
-
-  const page = await openOptionsPage(extension);
-
-  await expect(
-    page.getByText(
-      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
-    ),
-  ).toBeVisible();
-  await expect(getPromptCard(page, legacyPrompt.title)).toHaveCount(0);
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
-  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual([
-    legacyPrompt,
-  ]);
-});
-
-test('does not resurrect stale legacy prompts after deleting every migrated prompt', async ({
-  extension,
-}) => {
-  const legacyPrompts = [
-    createLegacyPromptItem({
-      id: 'delete-all-legacy-first',
-      title: '전체 삭제 첫 번째',
-      content: '삭제 후 되살아나면 안 된다.',
-      sortOrder: 1,
-      createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-    }),
-    createLegacyPromptItem({
-      id: 'delete-all-legacy-second',
-      title: '전체 삭제 두 번째',
-      content: 'stale legacy key는 남아 있어도 import input이 아니다.',
-      sortOrder: 2,
-      createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-    }),
-  ];
-
-  await extension.setLegacyRawPrompts(legacyPrompts);
-
-  const page = await openOptionsPage(extension);
-  await expect(getPromptCard(page, '전체 삭제 첫 번째')).toBeVisible();
-  await expect(getPromptCard(page, '전체 삭제 두 번째')).toBeVisible();
-
-  const migratedPrompts = await extension.getPromptRecords();
-
-  for (const prompt of migratedPrompts) {
-    const deleteResponse = await extension.sendRuntimeMessage({
-      type: DELETE_PROMPT_MESSAGE,
-      id: prompt.id,
-      expectedUpdatedAt: prompt.updatedAt,
-      expectedBodyUpdatedAt: prompt.bodyUpdatedAt,
-    });
-
-    expect(deleteResponse).toEqual(
-      expect.objectContaining({
-        type: DELETE_PROMPT_MESSAGE,
-        ok: true,
-        status: 'success',
-        id: prompt.id,
-      }),
-    );
-  }
-
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
-  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual(
-    legacyPrompts,
-  );
-  expect(await extension.getPromptMigrationMarker()).toEqual(
-    expect.objectContaining({
-      status: 'complete',
-      completedAt: expect.any(String),
-    }),
-  );
-
-  const freshPage = await openOptionsPage(extension);
-
-  await expect(
-    freshPage.getByText(
-      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
-    ),
-  ).toBeVisible();
-  await expect(getPromptCard(freshPage, '전체 삭제 첫 번째')).toHaveCount(0);
-  await expect(getPromptCard(freshPage, '전체 삭제 두 번째')).toHaveCount(0);
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
-});
-
-test('does not commit the final migrated delete when migration marker repair fails', async ({
-  extension,
-}) => {
-  const legacyPrompt = createLegacyPromptItem({
-    id: 'delete-all-marker-failure',
-    title: '마커 실패 마지막 삭제',
-    content: '마커가 없으면 삭제 성공으로 처리하면 안 된다.',
-    sortOrder: 1,
-    createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-    updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
+  const deleteTarget = createPromptRecord({
+    id: 'delete-conflict-target',
+    title: '목록 삭제 충돌 대상',
+    content: '이 본문은 로드 실패로 편집기에 들어오면 안 된다.',
+    normalOrder: 2,
   });
+  const { content: _content, ...deleteTargetMeta } = deleteTarget;
 
-  await extension.setLegacyRawPrompts([legacyPrompt]);
-  await extension.failPromptStorageKeyWritesOnce(
-    [PROMPT_IDB_MIGRATION_STORAGE_KEY],
-    'mock initial migration marker write failure',
-  );
+  await extension.setPromptRecords([activePrompt, deleteTarget]);
 
   const page = await openOptionsPage(extension);
+  await getPromptCard(page, activePrompt.title).click();
+  await expect(getTitleInput(page)).toHaveValue(activePrompt.title);
+  await expect(getContentInput(page)).toHaveValue(activePrompt.content);
 
-  await expect(getPromptCard(page, legacyPrompt.title)).toBeVisible();
-  expect(await extension.getPromptMigrationMarker()).toBeUndefined();
+  await page.evaluate((config) => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
 
-  const migratedPrompt = await getRequiredPromptRecord(
-    extension,
-    legacyPrompt.id,
-  );
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
 
-  await extension.failPromptStorageKeyWritesOnce(
-    [PROMPT_IDB_MIGRATION_STORAGE_KEY],
-    'mock final delete marker repair failure',
-  );
+      if (typeof request === 'object' && request !== null) {
+        const type = String((request as { type?: unknown }).type);
+        const id = String((request as { id?: unknown }).id);
 
-  const deleteResponse = await extension.sendRuntimeMessage({
-    type: DELETE_PROMPT_MESSAGE,
-    id: migratedPrompt.id,
-    expectedUpdatedAt: migratedPrompt.updatedAt,
-    expectedBodyUpdatedAt: migratedPrompt.bodyUpdatedAt,
-  });
+        if (type === config.deleteMessage && id === config.deleteTargetId) {
+          return config.deleteConflictResponse;
+        }
 
-  expect(deleteResponse).toEqual(
-    expect.objectContaining({
+        if (
+          (type === config.getRecordMessage || type === config.getBodyMessage) &&
+          id === config.deleteTargetId
+        ) {
+          throw new Error('mock delete conflict record load failure');
+        }
+      }
+
+      return await originalSendMessage(...args);
+    };
+  }, {
+    deleteConflictResponse: {
       type: DELETE_PROMPT_MESSAGE,
       ok: false,
-      status: 'error',
-    }),
-  );
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
-    migratedPrompt,
-  ]);
-  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual([
-    legacyPrompt,
-  ]);
-  expect(await extension.getPromptMigrationMarker()).toBeUndefined();
-
-  const freshPage = await openOptionsPage(extension);
-
-  await expect(getPromptCard(freshPage, legacyPrompt.title)).toBeVisible();
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
-    migratedPrompt,
-  ]);
-});
-
-test('keeps migrated prompts readable when the migration marker write fails after IDB commit', async ({
-  extension,
-}) => {
-  await extension.setLegacyRawPrompts([
-    createLegacyPromptItem({
-      id: 'marker-failure-first',
-      title: '마커 실패 첫 번째',
-      content: '마이그레이션 커밋 뒤에도 읽혀야 한다.',
-      sortOrder: 1,
-      createdAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:01:00.000Z').toISOString(),
-    }),
-    createLegacyPromptItem({
-      id: 'marker-failure-second',
-      title: '마커 실패 두 번째',
-      content: '서비스 워커 저장소가 계속 동작해야 한다.',
-      sortOrder: 2,
-      createdAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:02:00.000Z').toISOString(),
-    }),
-  ]);
-  await extension.failPromptStorageKeyWritesOnce(
-    [PROMPT_IDB_MIGRATION_STORAGE_KEY],
-    'mock migration marker write failure',
-  );
-
-  const page = await openOptionsPage(extension);
-
-  await expect(getPromptCard(page, '마커 실패 첫 번째')).toBeVisible();
-  await expect(getPromptCard(page, '마커 실패 두 번째')).toBeVisible();
-  await expect
-    .poll(async () =>
-      (await extension.getPromptRecords()).map((prompt) => ({
-        id: prompt.id,
-        title: prompt.title,
-        content: prompt.content,
-        sortOrder: prompt.normalOrder,
-      })),
-    )
-    .toEqual([
-      {
-        id: 'marker-failure-first',
-        title: '마커 실패 첫 번째',
-        content: '마이그레이션 커밋 뒤에도 읽혀야 한다.',
-        sortOrder: 1000000,
-      },
-      {
-        id: 'marker-failure-second',
-        title: '마커 실패 두 번째',
-        content: '서비스 워커 저장소가 계속 동작해야 한다.',
-        sortOrder: 2000000,
-      },
-    ]);
-  expect(await extension.getPromptStorageRevision()).toEqual(
-    expect.objectContaining({
-      updatedAt: expect.any(String),
-    }),
-  );
-
-  const createResponse = await extension.sendRuntimeMessage({
-    type: CREATE_PROMPT_MESSAGE,
-    draft: {
-      title: '마커 실패 이후 생성',
-      content: '일회성 저장 실패 뒤에도 새 프롬프트를 저장할 수 있어야 한다.',
-      normalOrder: 3000000,
+      status: 'conflict',
+      id: deleteTarget.id,
+      message: 'mock delete conflict',
+      currentMeta: deleteTargetMeta,
     },
+    deleteMessage: DELETE_PROMPT_MESSAGE,
+    deleteTargetId: deleteTarget.id,
+    getBodyMessage: GET_PROMPT_BODY_MESSAGE,
+    getRecordMessage: GET_PROMPT_RECORD_MESSAGE,
   });
 
-  expect(createResponse).toEqual(
-    expect.objectContaining({
-      type: CREATE_PROMPT_MESSAGE,
-      ok: true,
-      status: 'success',
-    }),
-  );
-  expect(await extension.getPromptMigrationMarker()).toEqual(
-    expect.objectContaining({
-      status: 'complete',
-      completedAt: expect.any(String),
-    }),
-  );
-  await expect
-    .poll(async () =>
-      (await extension.getPromptRecords()).map((prompt) => prompt.title),
-    )
-    .toEqual([
-      '마커 실패 첫 번째',
-      '마커 실패 두 번째',
-      '마커 실패 이후 생성',
-    ]);
-});
-
-test('handles malformed legacy storage without creating prompt records', async ({
-  extension,
-}) => {
-  const malformedLegacyValue = {
-    prompts: 'not an array',
-    content: '이 값은 본문으로 저장되면 안 된다.',
-  };
-
-  await extension.setLegacyRawPrompts(malformedLegacyValue);
-
-  const page = await openOptionsPage(extension);
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await getPromptList(page)
+    .getByRole('button', {
+      name: `${deleteTarget.title} 삭제`,
+      exact: true,
+    })
+    .click();
 
   await expect(
-    page.getByText(
-      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
-    ),
+    page.getByRole('alert').filter({ hasText: BODY_LOAD_ERROR_MESSAGE }),
   ).toBeVisible();
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
-  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual(
-    malformedLegacyValue,
-  );
-});
-
-test('legacy compatibility list skips records with missing bodies', async ({
-  extension,
-}) => {
-  const validPrompt = createPromptRecord({
-    id: 'legacy-compatible-valid-body',
-    title: '호환 목록 정상 본문',
-    content: '호환 목록에 남아야 한다.',
-    sortOrder: 1,
-  });
-  const missingBodyPrompt = createPromptRecord({
-    id: 'legacy-compatible-missing-body',
-    title: '호환 목록 본문 없음',
-    content: '이 본문 record는 테스트에서 삭제된다.',
-    sortOrder: 2,
-  });
-
-  await extension.setPromptRecords([validPrompt, missingBodyPrompt]);
-  await extension.deletePromptBody(missingBodyPrompt.id);
-
-  const page = await openOptionsPage(extension);
-
-  const legacyItems = await page.evaluate(async () => {
-    const getPrompts = window.__promptitTestGetPrompts;
-
-    if (!getPrompts) {
-      throw new Error('Legacy prompt compatibility test hook is unavailable.');
-    }
-
-    return await getPrompts();
-  });
-
-  expect(legacyItems).toEqual([
-    expect.objectContaining({
-      id: validPrompt.id,
-      title: validPrompt.title,
-      content: validPrompt.content,
-      sortOrder: validPrompt.normalOrder,
-    }),
+  await expect(getTitleInput(page)).toHaveValue(activePrompt.title);
+  await expect(getContentInput(page)).toHaveValue(activePrompt.content);
+  await expect(getPromptCard(page, deleteTarget.title)).toBeVisible();
+  expect(await extension.getPromptRecords()).toEqual([
+    activePrompt,
+    deleteTarget,
   ]);
-
-  const directBodyResponse = await extension.sendRuntimeMessage({
-    type: GET_PROMPT_BODY_MESSAGE,
-    id: missingBodyPrompt.id,
-  });
-
-  expect(directBodyResponse).toEqual(
-    expect.objectContaining({
-      type: GET_PROMPT_BODY_MESSAGE,
-      ok: false,
-      status: 'not-found',
-      id: missingBodyPrompt.id,
-    }),
-  );
-});
-
-test('aborts legacy migration when any legacy body exceeds the byte limit', async ({
-  extension,
-}) => {
-  const oversizedLegacyPrompt = createLegacyPromptItem({
-    id: 'legacy-oversized',
-    title: '너무 큰 레거시',
-    content: 'a'.repeat(PROMPT_BODY_MAX_BYTES + 1),
-    sortOrder: 1,
-  });
-  const validLegacyPrompt = createLegacyPromptItem({
-    id: 'legacy-valid',
-    title: '정상 레거시',
-    content: '정상 본문',
-    sortOrder: 2,
-  });
-  const rawPrompts = [validLegacyPrompt, oversizedLegacyPrompt];
-
-  await extension.setLegacyRawPrompts(rawPrompts);
-
-  const page = await openOptionsPage(extension);
-
-  await expect(
-    page.getByText(/너무 큰 레거시|legacy-oversized|500|초과/),
-  ).toBeVisible();
-  await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
-  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual(rawPrompts);
 });
 
 test('preserves prompts and shows a load error when prompt storage reads fail', async ({
@@ -2257,7 +2363,7 @@ test('preserves prompts and shows a load error when prompt storage reads fail', 
       id: 'stale-prompt',
       title: '남은 프롬프트',
       content: '이 값은 지워지면 안 된다.',
-      sortOrder: 4,
+      normalOrder: 4,
     }),
   ];
 
@@ -2297,56 +2403,6 @@ test('preserves prompts and shows a load error when prompt storage reads fail', 
   );
 });
 
-test('does not repair malformed storage when the initial read fails', async ({
-  extension,
-}) => {
-  const rawPrompts: unknown[] = [
-    createLegacyPromptItem({
-      id: 'valid-prompt',
-      title: '유효한 프롬프트',
-      content: '이 항목은 유지되어야 한다.',
-      sortOrder: 3,
-    }),
-    {
-      id: STARTER_PROMPT_ID,
-      title: 'starter',
-      content: 'starter content',
-      sortOrder: 0,
-      createdAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
-      updatedAt: new Date('2026-03-29T00:00:00.000Z').toISOString(),
-    },
-    { id: 'broken-prompt', title: '', content: '', sortOrder: 'x' },
-  ];
-
-  await extension.setLegacyRawPrompts(rawPrompts);
-
-  const page = await openOptionsPage(extension, async (nextPage) => {
-    await nextPage.addInitScript(() => {
-      const runtime = chrome.runtime as typeof chrome.runtime & {
-        sendMessage: (...args: unknown[]) => Promise<unknown>;
-      };
-      const originalSendMessage = runtime.sendMessage.bind(runtime);
-
-      runtime.sendMessage = async (...args: unknown[]) => {
-        const [message] = args;
-
-        if (
-          typeof message === 'object' &&
-          message !== null &&
-          (message as { type?: unknown }).type === 'promptit/list-prompt-metas'
-        ) {
-          throw new Error('mock list metas failure');
-        }
-
-        return await originalSendMessage(...args);
-      };
-    });
-  });
-
-  await expect(page.getByText('mock list metas failure')).toBeVisible();
-  await expect.poll(async () => await extension.getLegacyPrompts()).toEqual(rawPrompts);
-});
-
 test('surfaces a conflict when two options tabs save the same prompt stale', async ({
   extension,
 }) => {
@@ -2354,7 +2410,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
     id: 'shared-prompt',
     title: '동시 수정 대상',
     content: '같은 프롬프트를 두 탭에서 편집한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([initialPrompt]);
@@ -2387,7 +2443,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: prompt.id,
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
+        normalOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
@@ -2395,7 +2451,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: 'shared-prompt',
         title: '첫 번째 저장',
         content: '같은 프롬프트를 두 탭에서 편집한다.',
-        sortOrder: 2,
+        normalOrder: 2,
       },
     ]);
 
@@ -2414,7 +2470,7 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: prompt.id,
         title: prompt.title,
         content: prompt.content,
-        sortOrder: prompt.normalOrder,
+        normalOrder: prompt.normalOrder,
       })),
     )
     .toEqual([
@@ -2422,9 +2478,103 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
         id: 'shared-prompt',
         title: '첫 번째 저장',
         content: '같은 프롬프트를 두 탭에서 편집한다.',
-        sortOrder: 2,
+        normalOrder: 2,
       },
     ]);
+});
+
+test('uses atomic record save so conflicts cannot partially commit editor changes', async ({
+  extension,
+}) => {
+  const initialPrompt = createPromptRecord({
+    id: 'atomic-save-conflict',
+    title: '원자 저장 원본',
+    content: '원자 저장 원본 본문',
+    normalOrder: 1,
+    createdAt: '2026-03-29T05:00:00.000Z',
+    updatedAt: '2026-03-29T05:00:00.000Z',
+    bodyUpdatedAt: '2026-03-29T05:00:00.000Z',
+  });
+  const { content: _content, ...initialMeta } = initialPrompt;
+
+  await extension.setPromptRecords([initialPrompt]);
+
+  const page = await openOptionsPage(extension);
+  await getPromptCard(page, initialPrompt.title).click();
+  await expect(getContentInput(page)).toHaveValue(initialPrompt.content);
+
+  await page.evaluate((config) => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+    const requestTypes: string[] = [];
+
+    (window as Window & {
+      __promptitSaveRequestTypes?: string[];
+    }).__promptitSaveRequestTypes = requestTypes;
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (typeof request === 'object' && request !== null) {
+        const type = String((request as { type?: unknown }).type);
+
+        requestTypes.push(type);
+
+        if (type === config.updateRecordMessage) {
+          return config.updateRecordConflictResponse;
+        }
+
+        if (type === config.updateBodyMessage) {
+          return config.updateBodyConflictResponse;
+        }
+      }
+
+      return await originalSendMessage(...args);
+    };
+  }, {
+    updateBodyConflictResponse: {
+      type: UPDATE_PROMPT_BODY_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: initialPrompt.id,
+      message: 'mock body conflict after partial meta save',
+      currentMeta: initialMeta,
+      currentRecord: initialPrompt,
+    },
+    updateBodyMessage: UPDATE_PROMPT_BODY_MESSAGE,
+    updateRecordConflictResponse: {
+      type: UPDATE_PROMPT_RECORD_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: initialPrompt.id,
+      message: 'mock atomic record conflict',
+      currentMeta: initialMeta,
+      currentRecord: initialPrompt,
+    },
+    updateRecordMessage: UPDATE_PROMPT_RECORD_MESSAGE,
+  });
+
+  await getTitleInput(page).fill('부분 커밋되면 안 되는 제목');
+  await getContentInput(page).fill('부분 커밋되면 안 되는 본문');
+  await getPromptSubmitButton(page, '프롬프트 수정').click();
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'mock atomic record conflict' }),
+  ).toBeVisible();
+
+  const requestTypes = await page.evaluate(() =>
+    (window as Window & {
+      __promptitSaveRequestTypes?: string[];
+    }).__promptitSaveRequestTypes ?? [],
+  );
+
+  expect(requestTypes).toContain(UPDATE_PROMPT_RECORD_MESSAGE);
+  expect(requestTypes).not.toContain(UPDATE_PROMPT_META_MESSAGE);
+  expect(requestTypes).not.toContain(UPDATE_PROMPT_BODY_MESSAGE);
+  expect(requestTypes).not.toContain(SET_PROMPT_PINNED_MESSAGE);
+  expect(await extension.getPromptRecords()).toEqual([initialPrompt]);
 });
 
 test('surfaces a conflict when two options tabs save the same body stale', async ({
@@ -2434,7 +2584,7 @@ test('surfaces a conflict when two options tabs save the same body stale', async
     id: 'shared-body-prompt',
     title: '본문 동시 수정 대상',
     content: '두 탭 모두 이 본문에서 시작한다.',
-    sortOrder: 2,
+    normalOrder: 2,
   });
 
   await extension.setPromptRecords([initialPrompt]);
@@ -2502,7 +2652,7 @@ test('shows an error when deleting fails', async ({ extension }) => {
       id: 'delete-failure',
       title: '삭제 실패',
       content: '삭제 실패를 검증한다.',
-      sortOrder: 2,
+      normalOrder: 2,
     }),
   ];
 

@@ -38,7 +38,6 @@ const test = base.extend<{
 
 const SUPPORTED_PRODUCTION_MATCHES = [
   'https://chatgpt.com/*',
-  'https://chat.openai.com/*',
   'https://gemini.google.com/*',
 ];
 const TEST_ONLY_MATCHES = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];

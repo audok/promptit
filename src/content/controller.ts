@@ -1,13 +1,9 @@
 import {
   type BaseAdapter,
-  type AdapterMutationResult,
   cloneTriggerContext,
 } from '../adapters/base';
 import { resolveAdapterForUrl } from '../adapters/registry';
-import {
-  sortPromptMetas,
-  type PromptMeta,
-} from '../prompt/schema';
+import type { PromptMeta } from '../prompt/schema';
 import {
   getPromptBody,
   getPromptMetas,
@@ -24,10 +20,15 @@ import {
   isPromptLauncherItem,
   type LauncherItem,
 } from './launcher-items';
+import { ensureAdapterMutation } from './adapterMutation';
 import { getPopupKeyAction } from './keyboard';
 import { PromptPopup } from './popup';
 import {
-  clampActiveCell,
+  mergePromptMeta,
+  reconcilePopupItems,
+  removePromptMeta,
+} from './popupRefresh';
+import {
   captureOpenPopupActionToken,
   createSessionState,
   getInitialActiveCell,
@@ -38,10 +39,18 @@ import {
   resetSessionState,
   setActiveCell,
   type CloseReason,
-  type PopupActiveCell,
   type PopupSessionState,
 } from './session';
 import { showToast } from './toast';
+import {
+  markTestReady,
+  prepareOpenOptionsFailureForTest,
+  registerTestListeners,
+  shouldFailClipboardWriteForTest,
+  shouldFailPromptBodyReadForTest,
+  shouldFailPromptReadForTest,
+  waitForDeferredPromptBodyRead,
+} from './testControls';
 import { armTrigger, clearTriggerArm } from './trigger';
 
 declare global {
@@ -49,43 +58,6 @@ declare global {
     __promptitContentInitialized__?: boolean;
   }
 }
-
-const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
-const TEST_READY_ATTRIBUTE = 'data-promptit-ready';
-const TEST_OPEN_OPTIONS_EVENT = 'promptit:test-open-options-page';
-const TEST_SET_CONTROLS_EVENT = 'promptit:test-set-controls';
-const TEST_PROMPT_BODY_READ_PENDING_EVENT = 'promptit:test-prompt-body-read-pending';
-const TEST_RELEASE_PROMPT_BODY_READ_EVENT = 'promptit:test-release-prompt-body-read';
-const TEST_FAIL_OPEN_OPTIONS_STORAGE_KEY = 'promptit:test-fail-open-options';
-
-type TestControlState = {
-  deferPromptBodyRead: boolean;
-  failClipboardWrite: boolean;
-  failOpenOptions: boolean;
-  failPromptBodyRead: boolean;
-  failPromptRead: boolean;
-  promptBodyReadRelease: (() => void) | null;
-};
-
-type AdapterMutationRecord = {
-  error?: unknown;
-  kind?: unknown;
-  message?: unknown;
-  ok?: unknown;
-  reason?: unknown;
-  status?: unknown;
-  success?: unknown;
-  type?: unknown;
-};
-
-const testControlState: TestControlState = {
-  deferPromptBodyRead: false,
-  failClipboardWrite: false,
-  failOpenOptions: false,
-  failPromptBodyRead: false,
-  failPromptRead: false,
-  promptBodyReadRelease: null,
-};
 
 const PROMPT_BODY_READ_ERROR_MESSAGE = '프롬프트 본문을 읽지 못했습니다.';
 const IME_PROCESS_KEY = 'Process';
@@ -131,16 +103,8 @@ export function bootstrapContentScript(): void {
 
   registerDocumentListeners(session, popup, adapter);
   registerWindowListeners(session, popup, adapter);
-  registerTestListeners();
+  registerTestListeners(requestOpenOptionsPage);
   markTestReady();
-}
-
-function markTestReady(): void {
-  if (!IS_TEST_MODE) {
-    return;
-  }
-
-  document.documentElement.setAttribute(TEST_READY_ATTRIBUTE, 'true');
 }
 
 function registerDocumentListeners(
@@ -372,63 +336,8 @@ function registerWindowListeners(
   );
 }
 
-function registerTestListeners(): void {
-  if (!IS_TEST_MODE) {
-    return;
-  }
-
-  document.addEventListener(TEST_OPEN_OPTIONS_EVENT, () => {
-    void requestOpenOptionsPage();
-  });
-
-  document.addEventListener(TEST_SET_CONTROLS_EVENT, (event) => {
-    if (!(event instanceof CustomEvent)) {
-      return;
-    }
-
-    const detail = event.detail;
-
-    if (!detail || typeof detail !== 'object') {
-      return;
-    }
-
-    if ('deferPromptBodyRead' in detail) {
-      testControlState.deferPromptBodyRead = Boolean(detail.deferPromptBodyRead);
-
-      if (!testControlState.deferPromptBodyRead) {
-        releaseDeferredPromptBodyRead();
-      }
-    }
-
-    if ('failClipboardWrite' in detail) {
-      testControlState.failClipboardWrite = Boolean(detail.failClipboardWrite);
-    }
-
-    if ('failOpenOptions' in detail) {
-      testControlState.failOpenOptions = Boolean(detail.failOpenOptions);
-    }
-
-    if ('failPromptBodyRead' in detail) {
-      testControlState.failPromptBodyRead = Boolean(detail.failPromptBodyRead);
-    }
-
-    if ('failPromptRead' in detail) {
-      testControlState.failPromptRead = Boolean(detail.failPromptRead);
-    }
-  });
-
-  document.addEventListener(TEST_RELEASE_PROMPT_BODY_READ_EVENT, () => {
-    testControlState.deferPromptBodyRead = false;
-    releaseDeferredPromptBodyRead();
-  });
-}
-
 async function requestOpenOptionsPage(): Promise<void> {
-  if (IS_TEST_MODE) {
-    await chrome.storage.local.set({
-      [TEST_FAIL_OPEN_OPTIONS_STORAGE_KEY]: testControlState.failOpenOptions,
-    });
-  }
+  await prepareOpenOptionsFailureForTest();
 
   const response = parsePromptitRuntimeResponse(
     await chrome.runtime.sendMessage(buildOpenOptionsPageRequest()) as unknown,
@@ -535,7 +444,7 @@ async function readPromptsForTrigger(
   session: PopupSessionState,
 ): Promise<PromptMeta[] | null> {
   try {
-    if (IS_TEST_MODE && testControlState.failPromptRead) {
+    if (shouldFailPromptReadForTest()) {
       throw new Error('mock prompt read failure');
     }
 
@@ -681,7 +590,7 @@ async function handleCopy(
   popup.setBusy(true);
 
   try {
-    if (IS_TEST_MODE && testControlState.failClipboardWrite) {
+    if (shouldFailClipboardWriteForTest()) {
       throw new Error('mock clipboard write failure');
     }
 
@@ -823,7 +732,7 @@ async function handleTogglePinned(
 
 async function readPromptBodyForAction(id: string): Promise<string> {
   try {
-    if (IS_TEST_MODE && testControlState.failPromptBodyRead) {
+    if (shouldFailPromptBodyReadForTest()) {
       throw new Error('mock prompt body read failure');
     }
 
@@ -835,28 +744,6 @@ async function readPromptBodyForAction(id: string): Promise<string> {
     console.error('[promptit] Failed to read prompt body for popup action.', error);
     throw new Error(PROMPT_BODY_READ_ERROR_MESSAGE);
   }
-}
-
-function releaseDeferredPromptBodyRead(): void {
-  const release = testControlState.promptBodyReadRelease;
-
-  if (!release) {
-    return;
-  }
-
-  testControlState.promptBodyReadRelease = null;
-  release();
-}
-
-async function waitForDeferredPromptBodyRead(): Promise<void> {
-  if (!IS_TEST_MODE || !testControlState.deferPromptBodyRead) {
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    testControlState.promptBodyReadRelease = resolve;
-    document.dispatchEvent(new CustomEvent(TEST_PROMPT_BODY_READ_PENDING_EVENT));
-  });
 }
 
 async function openOptionsFromPopup(
@@ -992,55 +879,6 @@ function getSelectedPopupItem(session: PopupSessionState): LauncherItem | null {
   return session.items[session.activeCell.rowIndex] ?? null;
 }
 
-function resolveNextActiveCell(
-  previousItems: LauncherItem[],
-  nextItems: LauncherItem[],
-  currentActiveCell: PopupActiveCell | null,
-): PopupActiveCell | null {
-  if (currentActiveCell) {
-    const currentItem = previousItems[currentActiveCell.rowIndex];
-
-    if (currentItem) {
-      const nextIndex = nextItems.findIndex((item) => item.id === currentItem.id);
-
-      if (nextIndex >= 0) {
-        return clampActiveCell(nextItems, {
-          rowIndex: nextIndex,
-          column: currentActiveCell.column,
-        });
-      }
-    }
-  }
-
-  return clampActiveCell(nextItems, currentActiveCell);
-}
-
-function mergePromptMeta(
-  items: LauncherItem[],
-  nextMeta: PromptMeta,
-): PromptMeta[] {
-  const promptMetas = items.filter(isPromptLauncherItem);
-  const didReplace = promptMetas.some((item) => item.id === nextMeta.id);
-  const nextMetas = promptMetas.map((item) =>
-    item.id === nextMeta.id ? nextMeta : item,
-  );
-
-  if (!didReplace) {
-    nextMetas.push(nextMeta);
-  }
-
-  return sortPromptMetas(nextMetas);
-}
-
-function removePromptMeta(
-  items: LauncherItem[],
-  id: string,
-): PromptMeta[] {
-  return sortPromptMetas(
-    items.filter(isPromptLauncherItem).filter((item) => item.id !== id),
-  );
-}
-
 function applyPromptMetaUpdatesToPopup(
   session: PopupSessionState,
   popup: PromptPopup,
@@ -1051,19 +889,18 @@ function applyPromptMetaUpdatesToPopup(
     return;
   }
 
-  const nextItems = buildLauncherItems(nextUserPrompts);
-  const nextActiveCell = resolveNextActiveCell(
+  const { items, activeCell } = reconcilePopupItems(
     session.items,
-    nextItems,
+    nextUserPrompts,
     session.activeCell,
   );
 
-  session.items = nextItems;
-  session.activeCell = nextActiveCell;
+  session.items = items;
+  session.activeCell = activeCell;
 
   popup.update(
-    nextItems,
-    nextActiveCell,
+    items,
+    activeCell,
     adapter.getPopupAnchorRect(session.activeInput),
   );
 }
@@ -1078,19 +915,18 @@ function handlePromptStorageChange(
     return;
   }
 
-  const nextItems = buildLauncherItems(nextUserPrompts);
-  const nextActiveCell = resolveNextActiveCell(
+  const { items, activeCell } = reconcilePopupItems(
     session.items,
-    nextItems,
+    nextUserPrompts,
     session.activeCell,
   );
 
-  session.items = nextItems;
-  session.activeCell = nextActiveCell;
+  session.items = items;
+  session.activeCell = activeCell;
 
   popup.update(
-    nextItems,
-    nextActiveCell,
+    items,
+    activeCell,
     adapter.getPopupAnchorRect(session.activeInput),
   );
 }
@@ -1110,91 +946,4 @@ function isFocusedInput(input: HTMLElement): boolean {
   const selection = window.getSelection();
 
   return Boolean(selection?.anchorNode && input.contains(selection.anchorNode));
-}
-
-function ensureAdapterMutation(
-  result: AdapterMutationResult,
-  action: string,
-): void {
-  const failureDetail = getAdapterMutationFailureDetail(result);
-
-  if (failureDetail === null) {
-    return;
-  }
-
-  if (failureDetail.length > 0) {
-    console.error(`[promptit] Adapter mutation detail for ${action}: ${failureDetail}`);
-  }
-
-  throw new Error(`[promptit] Adapter failed to ${action}.`);
-}
-
-function getAdapterMutationFailureDetail(
-  result: AdapterMutationResult,
-): string | null {
-  if (result.ok) {
-    return null;
-  }
-
-  const record = result as AdapterMutationRecord;
-  const outcome = resolveAdapterMutationOutcome(record);
-
-  if (outcome === 'success') {
-    return null;
-  }
-
-  if (outcome === 'failure') {
-    return firstNonEmptyString(
-      record.message,
-      record.reason,
-      record.error,
-    ) ?? '';
-  }
-
-  return '';
-}
-
-function resolveAdapterMutationOutcome(
-  record: AdapterMutationRecord,
-): 'success' | 'failure' | 'unknown' {
-  if (record.ok === true || record.success === true) {
-    return 'success';
-  }
-
-  if (record.ok === false || record.success === false) {
-    return 'failure';
-  }
-
-  const discriminator = firstNonEmptyString(
-    record.status,
-    record.type,
-    record.kind,
-  )?.toLowerCase();
-
-  if (
-    discriminator === 'success' ||
-    discriminator === 'ok'
-  ) {
-    return 'success';
-  }
-
-  if (
-    discriminator === 'error' ||
-    discriminator === 'failure' ||
-    discriminator === 'failed'
-  ) {
-    return 'failure';
-  }
-
-  return 'unknown';
-}
-
-function firstNonEmptyString(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (typeof value === 'string' && value.length > 0) {
-      return value;
-    }
-  }
-
-  return null;
 }

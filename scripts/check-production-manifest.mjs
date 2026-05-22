@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 
 const expectedProductionMatches = [
   'https://chatgpt.com/*',
-  'https://chat.openai.com/*',
   'https://gemini.google.com/*',
 ];
 const disallowedTestMatches = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];

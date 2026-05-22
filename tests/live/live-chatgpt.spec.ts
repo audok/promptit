@@ -15,7 +15,6 @@ import {
 
 const CHATGPT_HOME_URL = 'https://chatgpt.com/';
 const CHATGPT_ORIGIN = 'https://chatgpt.com';
-const LEGACY_CHATGPT_URL = 'https://chat.openai.com/';
 
 const test = base.extend<{
   extension: LoadedExtension;
@@ -53,7 +52,7 @@ test.describe('chatgpt.com live smoke', () => {
         id: 'live-insert',
         title: '라이브 삽입',
         content: '실사이트 삽입 검증용 프롬프트',
-        sortOrder: 1,
+        normalOrder: 1,
       }),
     ]);
 
@@ -81,13 +80,13 @@ test.describe('chatgpt.com live smoke', () => {
         id: 'live-copy-1',
         title: '라이브 번역',
         content: '실사이트 복사 검증용 프롬프트',
-        sortOrder: 1,
+        normalOrder: 1,
       }),
       createPromptRecord({
         id: 'live-copy-2',
         title: '라이브 복사',
         content: '클립보드로 복사되는 프롬프트',
-        sortOrder: 2,
+        normalOrder: 2,
       }),
     ]);
 
@@ -128,24 +127,5 @@ test.describe('chatgpt.com live smoke', () => {
 
     await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
     await expect(await getComposerText(page)).toBe('');
-  });
-
-  test('initializes Promptit when navigating from chat.openai.com', async ({
-    extension,
-  }) => {
-    await extension.setPromptRecords([
-      createPromptRecord({
-        id: 'legacy-host',
-        title: '레거시 호스트',
-        content: '레거시 호스트 검증용 프롬프트',
-        sortOrder: 1,
-      }),
-    ]);
-
-    const page = await extension.context.newPage();
-    await openLiveHost(page, LEGACY_CHATGPT_URL);
-
-    await openPromptPopup(page);
-    await expect(await getPopupTitles(page)).toEqual(['레거시 호스트']);
   });
 });

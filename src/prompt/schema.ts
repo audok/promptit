@@ -1,12 +1,3 @@
-export type PromptItem = {
-  id: string;
-  title: string;
-  content: string;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type PromptMeta = {
   id: string;
   title: string;
@@ -32,7 +23,6 @@ export type PromptRecord = PromptMeta & {
 export type PromptDraft = {
   title: string;
   content: string;
-  sortOrder?: number;
   pinned?: boolean;
   normalOrder?: number;
   pinnedOrder?: number | null;
@@ -49,43 +39,19 @@ export type PromptBodyDraft = {
 };
 
 export type PromptDraftErrors = Partial<
-  Record<
-    | 'title'
-    | 'content'
-    | 'sortOrder'
-    | 'normalOrder'
-    | 'pinnedOrder',
-    string
-  >
+  Record<'title' | 'content' | 'normalOrder' | 'pinnedOrder', string>
 >;
 
 export type PromptOrderGroup = 'pinned' | 'normal';
 
-export type DecodedStoredPrompts =
-  | {
-      prompts: PromptItem[];
-      needsRepair: false;
-    }
-  | {
-      prompts: PromptItem[];
-      needsRepair: true;
-    };
-
 export const PROMPT_BODY_MAX_BYTES = 500 * 1024;
 export const PROMPT_ORDER_GAP = 1_000_000;
 export const PROMPT_REVISION_STORAGE_KEY = 'promptit:promptsRevision';
-export const LEGACY_PROMPTS_STORAGE_KEY = 'prompts';
-export const PROMPTS_STORAGE_KEY = LEGACY_PROMPTS_STORAGE_KEY;
-export const STARTER_PROMPT_ID = '__promptit_starter_prompt__';
 
 export function normalizePromptDraft(draft: PromptDraft): PromptDraft {
   return {
     title: draft.title.trim(),
     content: draft.content,
-    sortOrder:
-      typeof draft.sortOrder === 'number'
-        ? Math.trunc(draft.sortOrder)
-        : undefined,
     pinned: draft.pinned,
     normalOrder:
       typeof draft.normalOrder === 'number'
@@ -113,13 +79,6 @@ export function validatePromptDraft(
 
   if (getUtf8ByteLength(draft.content) > PROMPT_BODY_MAX_BYTES) {
     errors.content = '본문은 500KB 이하로 입력해주세요.';
-  }
-
-  if (
-    typeof draft.sortOrder !== 'undefined' &&
-    !isValidPromptOrderValue(draft.sortOrder)
-  ) {
-    errors.sortOrder = '정렬 순서는 정수여야 합니다.';
   }
 
   if (
@@ -184,13 +143,6 @@ export function parsePromptDraft(value: unknown): PromptDraft | null {
   }
 
   if (
-    typeof value.sortOrder !== 'undefined' &&
-    !isValidPromptOrderValue(value.sortOrder)
-  ) {
-    return null;
-  }
-
-  if (
     typeof value.pinned !== 'undefined' &&
     typeof value.pinned !== 'boolean'
   ) {
@@ -215,50 +167,10 @@ export function parsePromptDraft(value: unknown): PromptDraft | null {
   return {
     title: value.title,
     content: value.content,
-    sortOrder: value.sortOrder,
     pinned: value.pinned,
     normalOrder: value.normalOrder,
     pinnedOrder: value.pinnedOrder,
   };
-}
-
-export function decodeStoredPrompts(raw: unknown): DecodedStoredPrompts {
-  if (typeof raw === 'undefined') {
-    return {
-      prompts: [],
-      needsRepair: false,
-    };
-  }
-
-  if (!Array.isArray(raw)) {
-    return {
-      prompts: [],
-      needsRepair: true,
-    };
-  }
-
-  const prompts = sortPrompts(
-    raw
-      .map((value) => parsePromptItem(value))
-      .filter((prompt): prompt is PromptItem => prompt !== null)
-      .filter((prompt) => !isStarterPrompt(prompt)),
-  );
-
-  if (matchesStoredPromptArray(raw, prompts)) {
-    return {
-      prompts,
-      needsRepair: false,
-    };
-  }
-
-  return {
-    prompts,
-    needsRepair: true,
-  };
-}
-
-export function isPromptItem(value: unknown): value is PromptItem {
-  return parsePromptItem(value) !== null;
 }
 
 export function isPromptMeta(value: unknown): value is PromptMeta {
@@ -267,10 +179,6 @@ export function isPromptMeta(value: unknown): value is PromptMeta {
 
 export function isPromptBody(value: unknown): value is PromptBody {
   return parsePromptBody(value) !== null;
-}
-
-export function isStarterPrompt(prompt: PromptItem): boolean {
-  return prompt.id === STARTER_PROMPT_ID;
 }
 
 export function sortPromptMetas(items: PromptMeta[]): PromptMeta[] {
@@ -292,20 +200,6 @@ export function sortPromptMetas(items: PromptMeta[]): PromptMeta[] {
       }
 
       return leftOrder - rightOrder;
-    }
-
-    if (left.createdAt !== right.createdAt) {
-      return left.createdAt.localeCompare(right.createdAt);
-    }
-
-    return left.id.localeCompare(right.id);
-  });
-}
-
-export function sortPrompts(items: PromptItem[]): PromptItem[] {
-  return [...items].sort((left, right) => {
-    if (left.sortOrder !== right.sortOrder) {
-      return left.sortOrder - right.sortOrder;
     }
 
     if (left.createdAt !== right.createdAt) {
@@ -412,84 +306,6 @@ export function toPromptRecord(
     ...meta,
     content: body.content,
   };
-}
-
-export function toLegacyPromptItem(record: PromptRecord): PromptItem {
-  return {
-    id: record.id,
-    title: record.title,
-    content: record.content,
-    sortOrder: record.normalOrder,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  };
-}
-
-export function parsePromptItem(value: unknown): PromptItem | null {
-  if (!isObjectRecord(value)) {
-    return null;
-  }
-
-  if (
-    typeof value.id !== 'string' ||
-    value.id.length < 1 ||
-    typeof value.title !== 'string' ||
-    typeof value.content !== 'string' ||
-    typeof value.sortOrder !== 'number' ||
-    !isValidPromptOrderValue(value.sortOrder) ||
-    !isValidPromptTimestamp(value.createdAt) ||
-    !isValidPromptTimestamp(value.updatedAt)
-  ) {
-    return null;
-  }
-
-  const title = value.title.trim();
-
-  if (
-    title.length < 1 ||
-    title.length > 40 ||
-    value.content.trim().length < 1
-  ) {
-    return null;
-  }
-
-  return {
-    id: value.id,
-    title,
-    content: value.content,
-    sortOrder: value.sortOrder,
-    createdAt: value.createdAt,
-    updatedAt: value.updatedAt,
-  };
-}
-
-function matchesStoredPromptArray(
-  raw: readonly unknown[],
-  prompts: readonly PromptItem[],
-): boolean {
-  if (raw.length !== prompts.length) {
-    return false;
-  }
-
-  return prompts.every((prompt, index) => isExactPromptItem(raw[index], prompt));
-}
-
-function isExactPromptItem(
-  value: unknown,
-  prompt: PromptItem,
-): boolean {
-  if (!isObjectRecord(value)) {
-    return false;
-  }
-
-  return (
-    value.id === prompt.id &&
-    value.title === prompt.title &&
-    value.content === prompt.content &&
-    value.sortOrder === prompt.sortOrder &&
-    value.createdAt === prompt.createdAt &&
-    value.updatedAt === prompt.updatedAt
-  );
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {

@@ -3,7 +3,6 @@ import { defineManifest } from '@crxjs/vite-plugin';
 const isTestMode = process.env.VITE_PROMPTIT_TEST_MODE === '1';
 const defaultMatches = [
   'https://chatgpt.com/*',
-  'https://chat.openai.com/*',
   'https://gemini.google.com/*',
 ];
 const testMatches = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];

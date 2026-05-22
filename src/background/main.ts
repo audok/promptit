@@ -2,12 +2,14 @@ import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
   GET_PROMPT_BODY_MESSAGE,
+  GET_PROMPT_RECORD_MESSAGE,
   LIST_PROMPT_METAS_MESSAGE,
   MOVE_PROMPT_MESSAGE,
   OPEN_OPTIONS_PAGE_MESSAGE,
   SET_PROMPT_PINNED_MESSAGE,
   UPDATE_PROMPT_BODY_MESSAGE,
   UPDATE_PROMPT_META_MESSAGE,
+  UPDATE_PROMPT_RECORD_MESSAGE,
   assertNever,
   buildOpenOptionsPageErrorResponse,
   buildOpenOptionsPageSuccessResponse,
@@ -73,9 +75,11 @@ export function registerBackgroundHandlers(): void {
           return openOptionsPage();
         case LIST_PROMPT_METAS_MESSAGE:
         case GET_PROMPT_BODY_MESSAGE:
+        case GET_PROMPT_RECORD_MESSAGE:
         case CREATE_PROMPT_MESSAGE:
         case UPDATE_PROMPT_META_MESSAGE:
         case UPDATE_PROMPT_BODY_MESSAGE:
+        case UPDATE_PROMPT_RECORD_MESSAGE:
         case DELETE_PROMPT_MESSAGE:
         case MOVE_PROMPT_MESSAGE:
         case SET_PROMPT_PINNED_MESSAGE:
@@ -106,9 +110,11 @@ function buildRuntimeRequestErrorResponse(
       return buildOpenOptionsPageErrorResponse(message);
     case LIST_PROMPT_METAS_MESSAGE:
     case GET_PROMPT_BODY_MESSAGE:
+    case GET_PROMPT_RECORD_MESSAGE:
     case CREATE_PROMPT_MESSAGE:
     case UPDATE_PROMPT_META_MESSAGE:
     case UPDATE_PROMPT_BODY_MESSAGE:
+    case UPDATE_PROMPT_RECORD_MESSAGE:
     case DELETE_PROMPT_MESSAGE:
     case MOVE_PROMPT_MESSAGE:
     case SET_PROMPT_PINNED_MESSAGE:
