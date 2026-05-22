@@ -863,6 +863,18 @@ test('runtime mutations without required conflict timestamps are not accepted', 
     nextId: null,
   });
   await expectRawRuntimeMessageNotAccepted(extension, {
+    type: MOVE_PROMPT_MESSAGE,
+    id: initialPrompt.id,
+    nextId: null,
+    expectedUpdatedAt: initialPrompt.updatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: MOVE_PROMPT_MESSAGE,
+    id: initialPrompt.id,
+    previousId: null,
+    expectedUpdatedAt: initialPrompt.updatedAt,
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
     type: UPDATE_PROMPT_BODY_MESSAGE,
     id: initialPrompt.id,
     content: '반영되면 안 되는 본문',

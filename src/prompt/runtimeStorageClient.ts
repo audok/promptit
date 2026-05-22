@@ -54,8 +54,8 @@ export type DeletePromptOptions = {
 export type MovePromptOptions = {
   expectedUpdatedAt: string;
   group?: PromptOrderGroup;
-  previousId?: string | null;
-  nextId?: string | null;
+  previousId: string | null;
+  nextId: string | null;
 };
 
 export type SetPromptPinnedOptions = {

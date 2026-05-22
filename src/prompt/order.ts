@@ -12,8 +12,8 @@ export type PromptCreateOrders = {
 };
 
 export type PromptMoveOrderRequest = {
-  previousId?: string | null;
-  nextId?: string | null;
+  previousId: string | null;
+  nextId: string | null;
 };
 
 export type PromptMoveBoundaryValidationResult =
@@ -244,7 +244,7 @@ export function validatePromptMoveBoundaries(
 
 function getBoundaryOrder(
   metas: PromptMeta[],
-  id: string | null | undefined,
+  id: string | null,
 ): number | null {
   if (!id) {
     return null;

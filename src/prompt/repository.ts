@@ -56,8 +56,8 @@ export type PromptDeleteOptions = PromptMutationOptions &
 
 export type PromptMoveRequest = PromptMutationOptions & {
   group?: PromptOrderGroup;
-  previousId?: string | null;
-  nextId?: string | null;
+  previousId: string | null;
+  nextId: string | null;
 };
 
 export type PromptMutationResult<T> =

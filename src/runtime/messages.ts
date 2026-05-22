@@ -111,8 +111,8 @@ export type MovePromptRequest = {
   type: typeof MOVE_PROMPT_MESSAGE;
   id: string;
   group?: PromptOrderGroup;
-  previousId?: string | null;
-  nextId?: string | null;
+  previousId: string | null;
+  nextId: string | null;
   expectedUpdatedAt: string;
 };
 
@@ -800,8 +800,8 @@ function parseMovePromptRequest(
   const id = parsePromptId(value.id);
   const expectedUpdatedAt = parseRequiredTimestamp(value.expectedUpdatedAt);
   const group = parseOptionalPromptOrderGroup(value.group);
-  const previousId = parseOptionalPromptId(value.previousId);
-  const nextId = parseOptionalPromptId(value.nextId);
+  const previousId = parsePromptMoveBoundaryId(value.previousId);
+  const nextId = parsePromptMoveBoundaryId(value.nextId);
 
   if (
     !id ||
@@ -1086,8 +1086,8 @@ function parsePromptId(value: unknown): string | null {
   return value;
 }
 
-function parseOptionalPromptId(value: unknown): string | null | false {
-  if (typeof value === 'undefined' || value === null) {
+function parsePromptMoveBoundaryId(value: unknown): string | null | false {
+  if (value === null) {
     return null;
   }
 
