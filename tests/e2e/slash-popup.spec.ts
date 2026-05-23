@@ -1440,10 +1440,10 @@ test('copy success toast uses a compact text-only glass chip', async ({
   await expect
     .poll(async () => await getToastVisualSnapshot(page))
     .toMatchObject({
-      backgroundColor: 'rgba(255, 255, 255, 0.94)',
+      backgroundColor: 'rgb(47, 47, 47)',
       borderTopLeftRadius: '999px',
       childElementCount: 0,
-      color: 'rgba(0, 0, 0, 0.78)',
+      color: 'rgb(250, 250, 249)',
       display: 'inline-flex',
       fontSize: '14px',
       fontWeight: '700',

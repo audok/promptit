@@ -41,11 +41,11 @@ function ensureToastHost(): {
         max-width: min(340px, calc(100vw - 32px));
         min-height: 34px;
         padding: 6px 16px;
-        border: 1px solid rgba(0, 0, 0, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.94);
+        background: #2f2f2f;
         box-shadow: 0 16px 38px rgba(0, 0, 0, 0.14);
-        color: rgba(0, 0, 0, 0.78);
+        color: #fafaf9;
         font-family: var(--promptit-font-family);
         font-size: 14px;
         font-weight: 700;
