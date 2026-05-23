@@ -1057,7 +1057,7 @@ test('accessibility: exposes non-modal popup semantics and active cell live stat
       activeStatusLive: 'polite',
       activeStatusText: 'Insert prompt: 번역',
       cardAriaModal: null,
-      cardLabel: 'Promptit prompt picker',
+      cardLabel: 'promptit prompt picker',
       cardRole: 'region',
       listRole: 'list',
       rowRoles: ['listitem', 'listitem'],
@@ -1754,7 +1754,7 @@ test('opens the options page from the popup empty state', async ({
   const optionsPage = await optionsPagePromise;
   await optionsPage.waitForLoadState('domcontentloaded');
 
-  await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
+  await expect(optionsPage).toHaveTitle(/promptit Settings/i);
   await expect(await getComposerText(page)).toBe('');
 });
 
@@ -1776,7 +1776,7 @@ test('opens options and closes the popup when trigger cleanup fails', async ({
   const optionsPage = await optionsPagePromise;
   await optionsPage.waitForLoadState('domcontentloaded');
 
-  await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
+  await expect(optionsPage).toHaveTitle(/promptit Settings/i);
   await expect(await getComposerText(page)).toBe('x');
 });
 

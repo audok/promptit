@@ -98,7 +98,6 @@
   font-weight: 600;
 }
 
-.promptit-header-text,
 .promptit-header-action,
 .promptit-footer-label {
   color: #000;
@@ -107,8 +106,10 @@
 }
 
 .promptit-header-text {
+  color: #000;
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.18em;
 }
 
 .promptit-header-action,

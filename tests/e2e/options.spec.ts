@@ -58,8 +58,8 @@ async function openOptionsPage(
     waitUntil: 'domcontentloaded',
   });
 
-  await expect(page).toHaveTitle(/Promptit Settings/i);
-  await expect(page.getByText('Promptit')).toBeVisible();
+  await expect(page).toHaveTitle(/promptit Settings/i);
+  await expect(page.getByText('promptit')).toBeVisible();
   await expect(
     page.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
   ).toBeVisible();

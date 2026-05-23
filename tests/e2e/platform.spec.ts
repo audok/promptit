@@ -156,8 +156,8 @@ test('opens the options page when the content script sends the runtime message',
   const optionsPage = await optionsPagePromise;
   await optionsPage.waitForLoadState('domcontentloaded');
 
-  await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
-  await expect(optionsPage.getByText('Promptit')).toBeVisible();
+  await expect(optionsPage).toHaveTitle(/promptit Settings/i);
+  await expect(optionsPage.getByText('promptit')).toBeVisible();
   await expect(
     optionsPage.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
   ).toBeVisible();

@@ -12,10 +12,10 @@ const contentScriptMatches = isTestMode
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Promptit',
+  name: 'promptit',
   version: '0.9.0',
   description:
-    'Promptit is a browser extension for ChatGPT and Gemini. Use slash+space to quickly access and insert saved prompts.',
+    'promptit is a browser extension for ChatGPT and Gemini. Use slash+space to quickly access and insert saved prompts.',
   icons: {
     16: 'icons/icon16.png',
     32: 'icons/icon32.png',
@@ -30,7 +30,7 @@ export default defineManifest({
     },
   ],
   action: {
-    default_title: 'Promptit',
+    default_title: 'promptit',
     default_icon: {
       16: 'icons/icon16.png',
       24: 'icons/icon24.png',

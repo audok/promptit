@@ -268,14 +268,14 @@ export class PromptPopup {
         <section
           class="promptit-card${this.state.isBusy ? ' is-busy' : ''}"
           role="region"
-          aria-label="Promptit prompt picker"
+          aria-label="promptit prompt picker"
           aria-busy="${this.state.isBusy ? 'true' : 'false'}"
           data-testid="promptit-popup"
         >
           <header class="promptit-header">
             <div class="promptit-header-label">
               <span class="promptit-header-slash">/</span>
-              <span class="promptit-header-text">prompt-it</span>
+              <span class="promptit-header-text">promptit</span>
             </div>
             <button
               type="button"

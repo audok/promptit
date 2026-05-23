@@ -125,7 +125,7 @@ test.describe('chatgpt.com live smoke', () => {
     const optionsPage = await optionsPagePromise;
     await optionsPage.waitForLoadState('domcontentloaded');
 
-    await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
+    await expect(optionsPage).toHaveTitle(/promptit Settings/i);
     await expect(await getComposerText(page)).toBe('');
   });
 });

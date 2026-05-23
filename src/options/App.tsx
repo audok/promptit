@@ -222,8 +222,8 @@ export default function App() {
         <section className="rounded-[32px] border border-white/70 bg-white/80 p-8 shadow-[0_28px_70px_rgba(66,53,49,0.10)] backdrop-blur">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
-                Promptit
+              <p className="text-xs font-semibold tracking-[0.3em] text-stone-500">
+                promptit
               </p>
               <div className="space-y-3">
                 <h1 className="text-4xl font-semibold tracking-tight text-stone-900">
