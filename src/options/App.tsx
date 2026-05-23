@@ -1,10 +1,50 @@
-import { useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { type PromptMeta } from '../prompt/schema';
 import { MetricCard } from './components';
+import { OptionsToast, type OptionsToastMessage, type OptionsToastTone } from './OptionsToast';
 import { PromptEditorPanel } from './PromptEditorPanel';
 import { PromptList } from './PromptList';
+import { UPDATE_NOT_FOUND_MESSAGE } from './promptEditorState';
 import { usePromptEditor } from './usePromptEditor';
+
+const DELETE_NOT_FOUND_CREATE_MODE_MESSAGE =
+  '삭제할 프롬프트를 찾지 못했습니다. 프롬프트 추가 모드로 전환했습니다.';
+
+const TOAST_NOTICE_MESSAGES = new Set([
+  '프롬프트를 저장했습니다.',
+  '프롬프트를 업데이트했습니다.',
+  '프롬프트를 삭제했습니다.',
+  '프롬프트를 고정했습니다.',
+  '프롬프트 고정을 해제했습니다.',
+]);
+
+const INFO_TOAST_ALERT_MESSAGES = new Set([
+  UPDATE_NOT_FOUND_MESSAGE,
+  DELETE_NOT_FOUND_CREATE_MODE_MESSAGE,
+]);
+
+const ERROR_TOAST_ALERT_MESSAGES = new Set([
+  '프롬프트 저장 중 오류가 발생했습니다.',
+  '프롬프트 삭제 중 오류가 발생했습니다.',
+  '프롬프트 순서 변경 중 오류가 발생했습니다.',
+  '프롬프트 고정 상태 변경 중 오류가 발생했습니다.',
+]);
+
+function isToastNotice(message: string): boolean {
+  return TOAST_NOTICE_MESSAGES.has(message);
+}
+
+function isToastAlert(message: string): boolean {
+  return (
+    INFO_TOAST_ALERT_MESSAGES.has(message) ||
+    ERROR_TOAST_ALERT_MESSAGES.has(message)
+  );
+}
+
+function getToastToneForAlert(message: string): OptionsToastTone {
+  return INFO_TOAST_ALERT_MESSAGES.has(message) ? 'info' : 'error';
+}
 
 export default function App() {
   const {
@@ -34,7 +74,56 @@ export default function App() {
 
   const statusRegionId = useId();
   const alertRegionId = useId();
-  const [reorderMessage, setReorderMessage] = useState<string | null>(null);
+  const toastIdRef = useRef(0);
+  const toastHideTimerRef = useRef<number | null>(null);
+  const [toastMessage, setToastMessage] = useState<OptionsToastMessage | null>(
+    null,
+  );
+
+  const showOptionsToast = useCallback(
+    (message: string, tone: OptionsToastTone): void => {
+      if (toastHideTimerRef.current !== null) {
+        window.clearTimeout(toastHideTimerRef.current);
+      }
+
+      const id = toastIdRef.current + 1;
+      toastIdRef.current = id;
+      setToastMessage({ id, message, tone });
+
+      const duration = tone === 'error' ? 4000 : 2000;
+      toastHideTimerRef.current = window.setTimeout(() => {
+        setToastMessage((current) => (current?.id === id ? null : current));
+        toastHideTimerRef.current = null;
+      }, duration);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (toastHideTimerRef.current !== null) {
+        window.clearTimeout(toastHideTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notice || !isToastNotice(notice)) {
+      return;
+    }
+
+    showOptionsToast(notice, 'success');
+    clearNotice();
+  }, [clearNotice, notice, showOptionsToast]);
+
+  useEffect(() => {
+    if (!alertMessage || !isToastAlert(alertMessage)) {
+      return;
+    }
+
+    showOptionsToast(alertMessage, getToastToneForAlert(alertMessage));
+    clearAlertMessage();
+  }, [alertMessage, clearAlertMessage, showOptionsToast]);
 
   const loadStatusLabel =
     loadState.status === 'error'
@@ -71,6 +160,9 @@ export default function App() {
     isSaving || isEditorLoading || loadState.status !== 'ready';
   const reorderDisabled =
     isSaving || isEditorLoading || loadState.status !== 'ready';
+  const inlineNotice = notice && !isToastNotice(notice) ? notice : null;
+  const inlineAlertMessage =
+    alertMessage && !isToastAlert(alertMessage) ? alertMessage : null;
 
   function confirmDiscardDirtyForm(): boolean {
     return (
@@ -105,6 +197,23 @@ export default function App() {
     }
 
     await deletePromptById(prompt.id);
+  }
+
+  async function handleTogglePromptPinned(
+    id: string,
+    pinned: boolean,
+  ): Promise<boolean> {
+    const didToggle = await togglePromptPinned(id, pinned);
+
+    if (didToggle) {
+      showOptionsToast(
+        pinned ? '프롬프트를 고정했습니다.' : '프롬프트 고정을 해제했습니다.',
+        'success',
+      );
+      clearNotice();
+    }
+
+    return didToggle;
   }
 
   return (
@@ -151,7 +260,7 @@ export default function App() {
         <div className="sr-only" aria-live="polite" aria-atomic="true" id={statusRegionId}>
           {loadState.status === 'loading'
             ? '저장된 프롬프트를 불러오는 중입니다.'
-            : [notice, reorderMessage].filter(Boolean).join(' ')}
+            : inlineNotice}
         </div>
         <div
           className="sr-only"
@@ -159,7 +268,7 @@ export default function App() {
           aria-atomic="true"
           id={alertRegionId}
         >
-          {alertMessage}
+          {inlineAlertMessage}
         </div>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
@@ -172,17 +281,17 @@ export default function App() {
             movePromptWithinGroup={movePromptWithinGroup}
             onCreatePrompt={handleStartCreateMode}
             onDeletePrompt={handleDelete}
-            onReorderMessageChange={setReorderMessage}
+            onReorderFeedback={showOptionsToast}
             onSelectPrompt={handleSelectPrompt}
             prompts={prompts}
             reorderDisabled={reorderDisabled}
             statusRegionId={statusRegionId}
-            togglePromptPinned={togglePromptPinned}
+            togglePromptPinned={handleTogglePromptPinned}
           />
 
           <PromptEditorPanel
             activePromptMeta={activePromptMeta}
-            alertMessage={alertMessage}
+            alertMessage={inlineAlertMessage}
             bodyLoadState={bodyLoadState}
             clearAlertMessage={clearAlertMessage}
             clearNotice={clearNotice}
@@ -194,7 +303,7 @@ export default function App() {
             isEditorLoading={isEditorLoading}
             isSaving={isSaving}
             loadStateStatus={loadState.status}
-            notice={notice}
+            notice={inlineNotice}
             onCancelEdit={handleStartCreateMode}
             onDeletePrompt={handleDelete}
             onSubmit={submit}
@@ -202,6 +311,7 @@ export default function App() {
           />
         </section>
       </div>
+      <OptionsToast toast={toastMessage} />
     </main>
   );
 }

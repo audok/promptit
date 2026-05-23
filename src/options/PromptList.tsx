@@ -15,6 +15,7 @@ import {
   PinIcon,
   formatTimestamp,
 } from './components';
+import { type OptionsToastTone } from './OptionsToast';
 import { type PromptEditorLoadState } from './usePromptEditor';
 
 type DropPlacement = 'before' | 'after';
@@ -40,7 +41,7 @@ type PromptListProps = {
   ) => Promise<boolean>;
   onCreatePrompt: () => void;
   onDeletePrompt: (prompt: PromptMeta) => Promise<void>;
-  onReorderMessageChange: (message: string | null) => void;
+  onReorderFeedback: (message: string, tone: OptionsToastTone) => void;
   onSelectPrompt: (prompt: PromptMeta) => Promise<void>;
   prompts: PromptMeta[];
   reorderDisabled: boolean;
@@ -110,15 +111,13 @@ export function PromptList(props: PromptListProps) {
     placement: DropPlacement,
   ): Promise<void> {
     if (getPromptGroup(draggedPrompt) !== getPromptGroup(targetPrompt)) {
-      props.onReorderMessageChange(CROSS_GROUP_REORDER_MESSAGE);
+      props.onReorderFeedback(CROSS_GROUP_REORDER_MESSAGE, 'info');
       return;
     }
 
     if (isSamePositionMove(draggedPrompt, targetPrompt, placement)) {
       return;
     }
-
-    props.onReorderMessageChange(null);
 
     try {
       const didMove = await props.movePromptWithinGroup(
@@ -128,12 +127,16 @@ export function PromptList(props: PromptListProps) {
       );
 
       if (didMove) {
-        props.onReorderMessageChange(`${draggedPrompt.title} 순서를 변경했습니다.`);
+        props.onReorderFeedback(
+          `${draggedPrompt.title} 순서를 변경했습니다.`,
+          'success',
+        );
       }
     } catch (error) {
       console.error('[promptit] Failed to reorder prompt in options page.', error);
-      props.onReorderMessageChange(
+      props.onReorderFeedback(
         '프롬프트 순서를 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.',
+        'error',
       );
     }
   }
@@ -152,7 +155,6 @@ export function PromptList(props: PromptListProps) {
     crossGroupDropRef.current = false;
     setDraggingPromptId(prompt.id);
     updateDropIndicator(null);
-    props.onReorderMessageChange(null);
   }
 
   function handleDragOver(
@@ -258,7 +260,7 @@ export function PromptList(props: PromptListProps) {
     updateDropIndicator(null);
 
     if (didAttemptCrossGroupDrop) {
-      props.onReorderMessageChange(CROSS_GROUP_REORDER_MESSAGE);
+      props.onReorderFeedback(CROSS_GROUP_REORDER_MESSAGE, 'info');
     }
   }
 
@@ -278,10 +280,11 @@ export function PromptList(props: PromptListProps) {
         : null;
 
     if (targetPrompt === null) {
-      props.onReorderMessageChange(
+      props.onReorderFeedback(
         direction === 'up'
           ? `${prompt.title}은 이미 ${getPromptGroupLabel(prompt)} 목록의 첫 번째입니다.`
           : `${prompt.title}은 이미 ${getPromptGroupLabel(prompt)} 목록의 마지막입니다.`,
+        'info',
       );
       return;
     }
