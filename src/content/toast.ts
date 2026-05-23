@@ -36,31 +36,59 @@ function ensureToastHost(): {
       .promptit-toast {
         display: inline-flex;
         align-items: center;
-        min-width: 220px;
-        max-width: min(360px, calc(100vw - 32px));
-        padding: 12px 16px;
-        border-radius: 18px;
-        background: rgba(24, 24, 27, 0.92);
-        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
-        color: white;
+        justify-content: center;
+        min-width: 0;
+        max-width: min(340px, calc(100vw - 32px));
+        min-height: 34px;
+        padding: 6px 16px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.14);
+        color: rgba(0, 0, 0, 0.78);
         font-family: var(--promptit-font-family);
-        font-size: 13px;
-        line-height: 1.35;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        backdrop-filter: blur(32px) saturate(170%);
+        -webkit-backdrop-filter: blur(32px) saturate(170%);
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(6px);
         transition:
           opacity 140ms ease,
           transform 140ms ease,
-          background-color 140ms ease;
+          color 140ms ease,
+          background-color 140ms ease,
+          border-color 140ms ease;
       }
 
       .promptit-toast[data-variant="error"] {
-        background: rgba(127, 29, 29, 0.94);
+        border-color: rgba(127, 29, 29, 0.16);
+        background: rgba(255, 255, 255, 0.96);
+        color: rgba(127, 29, 29, 0.92);
       }
 
       .promptit-toast.is-visible {
         opacity: 1;
         transform: translateY(0);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .promptit-toast {
+          transform: none;
+          transition:
+            opacity 140ms ease,
+            color 140ms ease,
+            background-color 140ms ease,
+            border-color 140ms ease;
+        }
+
+        .promptit-toast.is-visible {
+          transform: none;
+        }
       }
     </style>
     <div class="promptit-toast" data-role="toast-content"></div>

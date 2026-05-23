@@ -635,6 +635,57 @@ async function getToastAccessibilitySnapshot(
   });
 }
 
+async function getToastVisualSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  backgroundColor: string;
+  borderTopLeftRadius: string;
+  childElementCount: number;
+  color: string;
+  display: string;
+  fontFamily: string;
+  fontSize: string;
+  fontWeight: string;
+  minHeight: string;
+  paddingBottom: string;
+  paddingLeft: string;
+  paddingRight: string;
+  paddingTop: string;
+  text: string | null;
+  textOverflow: string;
+  whiteSpace: string;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-promptit-toast-host]');
+    const content = host?.shadowRoot?.querySelector('[data-role="toast-content"]');
+
+    if (!(host instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+      throw new Error('Toast visual snapshot could not find the toast.');
+    }
+
+    const style = getComputedStyle(content);
+
+    return {
+      backgroundColor: style.backgroundColor,
+      borderTopLeftRadius: style.borderTopLeftRadius,
+      childElementCount: content.childElementCount,
+      color: style.color,
+      display: style.display,
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      minHeight: style.minHeight,
+      paddingBottom: style.paddingBottom,
+      paddingLeft: style.paddingLeft,
+      paddingRight: style.paddingRight,
+      paddingTop: style.paddingTop,
+      text: content.textContent,
+      textOverflow: style.textOverflow,
+      whiteSpace: style.whiteSpace,
+    };
+  });
+}
+
 async function getActiveElementSnapshot(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<{
@@ -1365,6 +1416,47 @@ test('copies the selected prompt and clears the trigger text', async ({
   await expect(
     await page.evaluate(() => navigator.clipboard.readText()),
   ).toBe('회의록으로 정리해줘.');
+});
+
+test('copy success toast uses a compact text-only glass chip', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Copy prompt: 회의록',
+  );
+
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect
+    .poll(async () => await getToastVisualSnapshot(page))
+    .toMatchObject({
+      backgroundColor: 'rgba(255, 255, 255, 0.94)',
+      borderTopLeftRadius: '999px',
+      childElementCount: 0,
+      color: 'rgba(0, 0, 0, 0.78)',
+      display: 'inline-flex',
+      fontSize: '14px',
+      fontWeight: '700',
+      minHeight: '34px',
+      paddingBottom: '6px',
+      paddingLeft: '16px',
+      paddingRight: '16px',
+      paddingTop: '6px',
+      text: '프롬프트를 복사했습니다.',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    });
+  expect((await getToastVisualSnapshot(page)).fontFamily).toContain('Pretendard');
 });
 
 test('fetches the latest prompt body when copying from an already-open popup', async ({
