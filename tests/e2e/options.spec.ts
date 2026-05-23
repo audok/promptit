@@ -2203,7 +2203,7 @@ test('cancels and confirms prompt deletion from edit mode', async ({
   await expect(getOptionsToast(page)).toHaveCount(0);
   await expect(
     page.getByText(
-      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
+      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 프롬프트를 추가하세요.',
     ),
   ).toBeVisible();
   await expect
@@ -2483,7 +2483,7 @@ test('preserves prompts and shows a load error when prompt storage reads fail', 
   await expect(page.getByText('mock list metas failure')).toBeVisible();
   await expect(
     page.getByText(
-      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.',
+      '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 프롬프트를 추가하세요.',
     ),
   ).toHaveCount(0);
   await expect.poll(async () => await extension.getPromptRecords()).toEqual(

@@ -142,7 +142,7 @@ export default function App() {
       : loadState.status === 'error'
         ? loadState.message
         : prompts.length === 0
-          ? '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 첫 프롬프트를 추가하세요.'
+          ? '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 프롬프트를 추가하세요.'
           : null;
 
   const activePromptId = mode.kind === 'edit' ? mode.promptId : null;

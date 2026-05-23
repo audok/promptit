@@ -201,7 +201,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
             placeholder={
               props.isEditorLoading
                 ? '본문을 불러오는 중입니다.'
-                : '프롬프트 내용을 입력하세요.'
+                : '프롬프트를 입력하세요.'
             }
             disabled={props.editorDisabled}
             aria-invalid={Boolean(props.errors.content)}
