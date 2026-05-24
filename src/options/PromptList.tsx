@@ -320,12 +320,27 @@ export function PromptList(props: PromptListProps) {
         </div>
         <button
           type="button"
-          className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 self-center rounded-full border border-stone-200 bg-white px-[19px] text-[13px] font-bold leading-none text-stone-950 shadow-[0_8px_18px_rgba(68,58,48,0.05)] transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+          className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 self-center rounded-full border border-stone-200 bg-white px-[19px] text-[14px] font-bold leading-none text-stone-950 shadow-[0_8px_18px_rgba(68,58,48,0.05)] transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
           onClick={props.onCreatePrompt}
           disabled={props.isSaving}
         >
-          <span aria-hidden="true" className="text-base leading-none">
-            +
+          <span
+            aria-hidden="true"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              className="h-4 w-4"
+              focusable="false"
+            >
+              <path
+                d="M8 3v10M3 8h10"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth="2.3"
+              />
+            </svg>
           </span>
           <span>프롬프트 추가</span>
         </button>

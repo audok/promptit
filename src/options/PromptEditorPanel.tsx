@@ -216,7 +216,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            className={`rounded-full bg-[#161616] px-7 py-4 text-sm font-bold leading-none text-stone-50 shadow-[0_12px_24px_rgba(22,22,22,0.16)] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:bg-stone-500 ${BUTTON_FOCUS_CLASS}`}
+            className={`inline-flex h-[38px] min-w-[127px] items-center justify-center rounded-full bg-[#161616] px-[19px] text-[14px] font-bold leading-none text-stone-50 shadow-[0_12px_24px_rgba(22,22,22,0.16)] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:bg-stone-500 ${BUTTON_FOCUS_CLASS}`}
             disabled={props.editorDisabled || props.loadStateStatus === 'error'}
           >
             {props.isSaving
