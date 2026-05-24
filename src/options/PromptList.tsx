@@ -309,22 +309,25 @@ export function PromptList(props: PromptListProps) {
       className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
       aria-busy={props.loadStateStatus === 'loading' || props.isSaving}
     >
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs font-medium leading-[17px] text-stone-600">
             프롬프트 목록
           </p>
-          <h2 className="mt-2 text-xl font-semibold text-stone-900">
+          <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-stone-950">
             저장된 프롬프트
           </h2>
         </div>
         <button
           type="button"
-          className={`rounded-full border border-stone-300 bg-stone-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+          className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 self-center rounded-full border border-stone-200 bg-white px-[19px] text-[13px] font-bold leading-none text-stone-950 shadow-[0_8px_18px_rgba(68,58,48,0.05)] transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
           onClick={props.onCreatePrompt}
           disabled={props.isSaving}
         >
-          프롬프트 추가
+          <span aria-hidden="true" className="text-base leading-none">
+            +
+          </span>
+          <span>프롬프트 추가</span>
         </button>
       </div>
 

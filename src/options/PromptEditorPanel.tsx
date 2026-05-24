@@ -75,15 +75,15 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
 
   return (
     <article
-      className="rounded-[28px] border border-stone-200 bg-[linear-gradient(180deg,#fef8f5,#f7eee8)] p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
+      className="rounded-[28px] border border-stone-200 bg-[#F6F8F5] p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
       aria-busy={props.isEditorLoading || props.isSaving}
     >
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+          <p className="text-xs font-medium leading-[17px] text-stone-600">
             편집기
           </p>
-          <h2 className="mt-2 text-xl font-semibold text-stone-900">
+          <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-stone-950">
             {props.isEditing ? '프롬프트 수정' : '프롬프트 추가'}
           </h2>
         </div>
@@ -216,7 +216,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            className={`rounded-full bg-[#2f2f2f] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-stone-50 transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:bg-stone-500 ${BUTTON_FOCUS_CLASS}`}
+            className={`rounded-full bg-[#161616] px-7 py-4 text-sm font-bold leading-none text-stone-50 shadow-[0_12px_24px_rgba(22,22,22,0.16)] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:bg-stone-500 ${BUTTON_FOCUS_CLASS}`}
             disabled={props.editorDisabled || props.loadStateStatus === 'error'}
           >
             {props.isSaving

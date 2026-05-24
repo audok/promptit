@@ -81,13 +81,14 @@ export function DragHandleIcon() {
   );
 }
 
-export function MetricCard(props: { label: string; value: string }) {
+export function MetricCard(props: {
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="rounded-[22px] bg-stone-50 px-4 py-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">
-        {props.label}
-      </p>
-      <p className="mt-3 text-2xl font-semibold tracking-tight text-stone-900">
+    <div className="rounded-[24px] border border-stone-200/80 bg-white/70 px-6 py-6 shadow-[0_18px_38px_rgba(28,25,23,0.04)]">
+      <p className="text-sm font-medium text-stone-600">{props.label}</p>
+      <p className="mt-3 text-2xl font-extrabold leading-none text-stone-950">
         {props.value}
       </p>
     </div>
@@ -147,7 +148,7 @@ export function Field(props: {
   return (
     <div>
       <label htmlFor={props.inputId} className="flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+        <span className="text-sm font-bold leading-5 text-stone-950">
           {props.label}
         </span>
         <span id={`${props.inputId}-hint`} className="text-[11px] text-stone-500">
