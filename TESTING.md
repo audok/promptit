@@ -49,6 +49,7 @@ pnpm test:e2e
 - 현재 커버하는 대표 항목:
   - 옵션 페이지 CRUD, validation, append-by-default, hidden internal order fields, list pin toggle, removed pin checkbox, drag-handle keyboard reorder, drag-handle icon centering, initial load draft preservation, storage sync
   - 옵션 페이지 stale save/delete/move conflict와 storage 실패 UI
+  - 옵션 페이지 i18n: Korean-pinned regression path plus English override for hero/list/editor/validation/save toast/confirm dialogs, fixed literals, and untranslated Korean prompt data
   - production prompt body가 `chrome.storage.local`에 쓰이지 않는 저장소 분리 회귀 테스트
   - selected body load failure와 dirty draft 보호 회귀 테스트
   - `/ ` trigger open/close/cleanup
@@ -61,8 +62,10 @@ pnpm test:e2e
   - prompt read failure, composer detach stale-open regression
   - popup placement, long-list scroll
   - popup pin action persistence, visual active state, ordering, and stale conflict handling
+  - popup/content i18n: explicit English popup chrome/aria labels, English empty state, localized failure toasts, fixed `promptit`/`/`, and untranslated prompt insert/copy data
   - unsupported URL no-op, same-page duplicate initialization guard
   - content script -> runtime message -> options open, malformed runtime message no-op
+  - extension manifest i18n packaging invariants: `default_locale`, raw manifest placeholders, locale file key parity, and fixed `promptit` app name
   - ChatGPT/Gemini composer child-node event bubbling resolve
   - Gemini fixture에서 초기화, `/ ` popup open, insert, cleanup, Enter no-submit host regression, Quill clipboard 무시, wrapper anchoring
 

@@ -140,6 +140,9 @@
 - [x] options coverage includes prompt record storage, body size, failure, conflict, reorder, and hidden internal order field checks
 - [x] slash popup and Gemini fixture coverage includes popup storage, pin, insert/copy, and host adapter flows
 - [x] production manifest policy check rejects `host_permissions` and test-only localhost matches in `dist/manifest.json`
+- [x] production/test manifest locale invariants are checked: `default_locale`, raw `__MSG_*__` placeholders, matching `_locales/ko` and `_locales/en` keys, and fixed `promptit` app name. `Automated` via `scripts/check-production-manifest.mjs` and `tests/e2e/platform.spec.ts`
+- [x] 옵션 페이지 English override keeps fixed literals and Korean prompt data untranslated while localizing hero/list/editor/validation/save toast/confirm dialogs. `Automated` via `tests/e2e/options.spec.ts`
+- [x] popup/content English override localizes popup chrome, aria labels, empty state, success/failure toasts, and preserves prompt insert/copy data unchanged. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [ ] 실사이트 smoke 실행
 - [ ] 브라우저 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `Promptit Settings`인지 확인
