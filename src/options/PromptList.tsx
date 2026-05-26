@@ -135,7 +135,7 @@ export function PromptList(props: PromptListProps) {
     } catch (error) {
       console.error('[promptit] Failed to reorder prompt in options page.', error);
       props.onReorderFeedback(
-        '프롬프트 순서를 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.',
+        '프롬프트 순서 변경 중 오류가 발생했습니다.',
         'error',
       );
     }

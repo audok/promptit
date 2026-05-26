@@ -1665,6 +1665,88 @@ test('shows a generic reorder error in the options toast when move prompt reject
   expect(await extension.getPromptRecords()).toEqual(beforeRecords);
 });
 
+test('shows the approved reorder fallback when the prompt list move handler rejects', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'move-handler-error-first',
+    title: '핸들러 오류 첫 번째',
+    content: '핸들러 오류 첫 번째 본문',
+    normalOrder: 1,
+    createdAt: '2026-03-29T04:00:00.000Z',
+  });
+  const secondPrompt = createPromptRecord({
+    id: 'move-handler-error-second',
+    title: '핸들러 오류 두 번째',
+    content: '핸들러 오류 두 번째 본문',
+    normalOrder: 1,
+    createdAt: '2026-03-29T04:01:00.000Z',
+  });
+
+  await extension.setPromptRecords([firstPrompt, secondPrompt]);
+
+  const page = await openOptionsPage(extension);
+  const beforeRecords = await extension.getPromptRecords();
+
+  await page.evaluate(() => {
+    const originalLocaleCompare = String.prototype.localeCompare;
+
+    (window as Window & {
+      __promptitRestoreLocaleCompare?: () => void;
+    }).__promptitRestoreLocaleCompare = () => {
+      String.prototype.localeCompare = originalLocaleCompare;
+    };
+
+    String.prototype.localeCompare = function (
+      compareString: string,
+      locales?: string | string[],
+      options?: Intl.CollatorOptions,
+    ): number {
+      const leftValue = String(this);
+      const rightValue = String(compareString);
+      const isPromptMovePlanTimestampCompare =
+        (leftValue === '2026-03-29T04:00:00.000Z' &&
+          rightValue === '2026-03-29T04:01:00.000Z') ||
+        (leftValue === '2026-03-29T04:01:00.000Z' &&
+          rightValue === '2026-03-29T04:00:00.000Z');
+
+      if (isPromptMovePlanTimestampCompare) {
+        throw new Error('mock prompt list move handler failure');
+      }
+
+      return originalLocaleCompare.call(this, compareString, locales, options);
+    };
+  });
+
+  try {
+    await pressPromptHandleKey(page, secondPrompt.title, 'ArrowUp');
+
+    await expect(getOptionsToast(page)).toContainText(
+      '프롬프트 순서 변경 중 오류가 발생했습니다.',
+    );
+    await expect(getOptionsToast(page).getByRole('alert')).toHaveAttribute(
+      'aria-live',
+      'assertive',
+    );
+    await expect(
+      getPromptEditor(page)
+        .getByRole('alert')
+        .filter({ hasText: '프롬프트 순서 변경 중 오류가 발생했습니다.' }),
+    ).toHaveCount(0);
+    await expectVisiblePromptOrder(page, [
+      firstPrompt.title,
+      secondPrompt.title,
+    ]);
+    expect(await extension.getPromptRecords()).toEqual(beforeRecords);
+  } finally {
+    await page.evaluate(() => {
+      (window as Window & {
+        __promptitRestoreLocaleCompare?: () => void;
+      }).__promptitRestoreLocaleCompare?.();
+    });
+  }
+});
+
 test('rejects stale reorder boundary requests without moving to an edge', async ({
   extension,
 }) => {
