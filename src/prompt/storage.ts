@@ -5,6 +5,7 @@ export {
   getPromptMetas,
   getPromptRecord,
   movePrompt,
+  PromptitRuntimeError,
   setPromptPinned,
   subscribeToPromptMetas,
   updatePromptBody,

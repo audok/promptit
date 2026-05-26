@@ -1,8 +1,11 @@
+import { PromptitRuntimeError } from '../prompt/storage';
 import type * as promptStorage from '../prompt/storage';
 import type { PromptMeta, PromptRecord } from '../prompt/schema';
+import { type LocalizedMessageDescriptor } from '../shared/i18n';
 import {
   getConflictRetryAlertMessage,
   getNotFoundCreateModeAlertMessage,
+  getRuntimeResponseMessage,
   removePrompt,
   upsertPromptMeta,
   type NormalizedPromptForm,
@@ -26,13 +29,13 @@ export type SaveExistingPromptResult =
       status: 'conflict';
       prompts: PromptMeta[];
       record: PromptRecord;
-      message: string;
-      alertMessage: string;
+      message: LocalizedMessageDescriptor;
+      alertMessage: LocalizedMessageDescriptor;
     }
   | {
       status: 'not-found';
       prompts: PromptMeta[];
-      alertMessage: string;
+      alertMessage: LocalizedMessageDescriptor;
     };
 
 export async function saveExistingPrompt(input: {
@@ -76,6 +79,10 @@ export async function saveExistingPrompt(input: {
   }
 
   if (result.status === 'conflict') {
+    const conflictMessage = getRuntimeResponseMessage(
+      result,
+      'runtime.prompt.updateConflict',
+    );
     const conflictRecord =
       result.currentRecord ??
       await operations.resolveConflictRecord(result.currentMeta, currentRecord);
@@ -84,18 +91,23 @@ export async function saveExistingPrompt(input: {
       status: 'conflict',
       prompts: upsertPromptMeta(prompts, result.currentMeta),
       record: conflictRecord,
-      message: result.message,
-      alertMessage: getConflictRetryAlertMessage(result.message),
+      message: conflictMessage,
+      alertMessage: getConflictRetryAlertMessage(conflictMessage),
     };
   }
 
   if (result.status === 'not-found') {
+    const notFoundMessage = getRuntimeResponseMessage(
+      result,
+      'runtime.prompt.updateNotFound',
+    );
+
     return {
       status: 'not-found',
       prompts: removePrompt(prompts, promptId),
-      alertMessage: getNotFoundCreateModeAlertMessage(result.message),
+      alertMessage: getNotFoundCreateModeAlertMessage(notFoundMessage),
     };
   }
 
-  throw new Error(result.message);
+  throw new PromptitRuntimeError(result.message, result.messageDescriptor);
 }

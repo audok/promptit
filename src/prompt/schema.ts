@@ -1,3 +1,8 @@
+import {
+  describeMessage,
+  type LocalizedMessageDescriptor,
+} from '../shared/i18n';
+
 export type PromptMeta = {
   id: string;
   title: string;
@@ -42,6 +47,13 @@ export type PromptDraftErrors = Partial<
   Record<'title' | 'content' | 'normalOrder' | 'pinnedOrder', string>
 >;
 
+export type PromptDraftValidationMessages = Partial<
+  Record<
+    'title' | 'content' | 'normalOrder' | 'pinnedOrder',
+    LocalizedMessageDescriptor
+  >
+>;
+
 export type PromptOrderGroup = 'pinned' | 'normal';
 
 export const PROMPT_BODY_MAX_BYTES = 500 * 1024;
@@ -67,25 +79,40 @@ export function normalizePromptDraft(draft: PromptDraft): PromptDraft {
 export function validatePromptDraft(
   draft: PromptDraft,
 ): PromptDraftErrors {
+  const messageErrors = validatePromptDraftMessages(draft);
   const errors: PromptDraftErrors = {};
 
+  for (const [field, message] of Object.entries(messageErrors)) {
+    errors[field as keyof PromptDraftErrors] = message.fallback;
+  }
+
+  return errors;
+}
+
+export function validatePromptDraftMessages(
+  draft: PromptDraft,
+): PromptDraftValidationMessages {
+  const errors: PromptDraftValidationMessages = {};
+
   if (draft.title.trim().length < 1 || draft.title.trim().length > 40) {
-    errors.title = '제목은 1자 이상 40자 이하로 입력해주세요.';
+    errors.title = describeMessage('prompt.validation.titleLength');
   }
 
   if (draft.content.trim().length < 1) {
-    errors.content = '본문은 비워둘 수 없습니다.';
+    errors.content = describeMessage('prompt.validation.contentRequired');
   }
 
   if (getUtf8ByteLength(draft.content) > PROMPT_BODY_MAX_BYTES) {
-    errors.content = '본문은 500KB 이하로 입력해주세요.';
+    errors.content = describeMessage('prompt.validation.contentMaxBytes');
   }
 
   if (
     typeof draft.normalOrder !== 'undefined' &&
     !isValidPromptOrderValue(draft.normalOrder)
   ) {
-    errors.normalOrder = '정렬 순서는 0 이상의 정수여야 합니다.';
+    errors.normalOrder = describeMessage(
+      'prompt.validation.normalOrderInvalid',
+    );
   }
 
   if (
@@ -93,7 +120,9 @@ export function validatePromptDraft(
     typeof draft.pinnedOrder !== 'undefined' &&
     !isValidPromptOrderValue(draft.pinnedOrder)
   ) {
-    errors.pinnedOrder = '고정 정렬 순서는 0 이상의 정수여야 합니다.';
+    errors.pinnedOrder = describeMessage(
+      'prompt.validation.pinnedOrderInvalid',
+    );
   }
 
   return errors;

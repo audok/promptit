@@ -11,6 +11,13 @@ import {
   type PromptOrderGroup,
   type PromptRecord,
 } from '../prompt/schema';
+import {
+  isI18nKey,
+  type I18nValues,
+  type RuntimeMessageDescriptor,
+} from '../shared/i18n';
+
+export type { RuntimeMessageDescriptor } from '../shared/i18n';
 
 export const OPEN_OPTIONS_PAGE_MESSAGE = 'promptit/open-options-page';
 export const LIST_PROMPT_METAS_MESSAGE = 'promptit/list-prompt-metas';
@@ -160,6 +167,7 @@ export type OpenOptionsPageErrorResponse = {
   ok: false;
   code: OpenOptionsPageErrorCode;
   message: string;
+  messageDescriptor?: RuntimeMessageDescriptor;
 };
 
 export type OpenOptionsPageResponse =
@@ -235,6 +243,7 @@ type PromptNotFoundResponse<T extends ExistingPromptMessageType> = {
   status: 'not-found';
   id: string;
   message: string;
+  messageDescriptor?: RuntimeMessageDescriptor;
 };
 
 type PromptConflictResponse<T extends PromptConflictMessageType> = {
@@ -243,6 +252,7 @@ type PromptConflictResponse<T extends PromptConflictMessageType> = {
   status: 'conflict';
   id: string;
   message: string;
+  messageDescriptor?: RuntimeMessageDescriptor;
   currentMeta: PromptMeta;
   currentRecord?: PromptRecord;
 };
@@ -253,6 +263,7 @@ type PromptErrorResponse<T extends PromptMessageType> = {
   status: 'error';
   code: PromptErrorCode;
   message: string;
+  messageDescriptor?: RuntimeMessageDescriptor;
 };
 
 export type ListPromptMetasResponse =
@@ -461,12 +472,14 @@ export function buildOpenOptionsPageSuccessResponse(): OpenOptionsPageSuccessRes
 export function buildOpenOptionsPageErrorResponse(
   message: string,
   code: OpenOptionsPageErrorCode = 'open-options-failed',
+  messageDescriptor?: RuntimeMessageDescriptor,
 ): OpenOptionsPageErrorResponse {
   return {
     type: OPEN_OPTIONS_PAGE_MESSAGE,
     ok: false,
     code,
     message,
+    messageDescriptor,
   };
 }
 
@@ -565,6 +578,7 @@ export function buildPromptNotFoundResponse<T extends ExistingPromptMessageType>
   type: T,
   id: string,
   message: string,
+  messageDescriptor?: RuntimeMessageDescriptor,
 ): PromptNotFoundResponse<T> {
   return {
     type,
@@ -572,6 +586,7 @@ export function buildPromptNotFoundResponse<T extends ExistingPromptMessageType>
     status: 'not-found',
     id,
     message,
+    messageDescriptor,
   };
 }
 
@@ -581,6 +596,7 @@ export function buildPromptConflictResponse<T extends PromptConflictMessageType>
   currentMeta: PromptMeta,
   message: string,
   currentRecord?: PromptRecord,
+  messageDescriptor?: RuntimeMessageDescriptor,
 ): PromptConflictResponse<T> {
   return {
     type,
@@ -588,6 +604,7 @@ export function buildPromptConflictResponse<T extends PromptConflictMessageType>
     status: 'conflict',
     id,
     message,
+    messageDescriptor,
     currentMeta,
     currentRecord,
   };
@@ -597,6 +614,7 @@ export function buildPromptErrorResponse<T extends PromptMessageType>(
   type: T,
   message: string,
   code: PromptErrorCode = 'storage-failed',
+  messageDescriptor?: RuntimeMessageDescriptor,
 ): PromptErrorResponse<T> {
   return {
     type,
@@ -604,6 +622,7 @@ export function buildPromptErrorResponse<T extends PromptMessageType>(
     status: 'error',
     code,
     message,
+    messageDescriptor,
   };
 }
 
@@ -846,7 +865,11 @@ function parseOpenOptionsPageResponse(
     value.code === 'open-options-failed' &&
     typeof value.message === 'string'
   ) {
-    return buildOpenOptionsPageErrorResponse(value.message, value.code);
+    return buildOpenOptionsPageErrorResponse(
+      value.message,
+      value.code,
+      parseRuntimeMessageDescriptor(value.messageDescriptor),
+    );
   }
 
   return null;
@@ -988,7 +1011,12 @@ function parseNotFoundResponse<T extends ExistingPromptMessageType>(
     id &&
     typeof value.message === 'string'
   ) {
-    return buildPromptNotFoundResponse(type, id, value.message);
+    return buildPromptNotFoundResponse(
+      type,
+      id,
+      value.message,
+      parseRuntimeMessageDescriptor(value.messageDescriptor),
+    );
   }
 
   return null;
@@ -1026,6 +1054,7 @@ function parseConflictResponse<T extends PromptConflictMessageType>(
     currentMeta,
     value.message,
     currentRecord,
+    parseRuntimeMessageDescriptor(value.messageDescriptor),
   );
 }
 
@@ -1039,10 +1068,57 @@ function parsePromptErrorResponse<T extends PromptMessageType>(
     value.code === 'storage-failed' &&
     typeof value.message === 'string'
   ) {
-    return buildPromptErrorResponse(type, value.message, value.code);
+    return buildPromptErrorResponse(
+      type,
+      value.message,
+      value.code,
+      parseRuntimeMessageDescriptor(value.messageDescriptor),
+    );
   }
 
   return null;
+}
+
+function parseRuntimeMessageDescriptor(
+  value: unknown,
+): RuntimeMessageDescriptor | undefined {
+  if (!isObjectRecord(value) || !isI18nKey(value.key)) {
+    return undefined;
+  }
+
+  const values = parseRuntimeMessageValues(value.values);
+
+  if (values === null) {
+    return undefined;
+  }
+
+  return typeof values === 'undefined'
+    ? { key: value.key }
+    : { key: value.key, values };
+}
+
+function parseRuntimeMessageValues(
+  value: unknown,
+): I18nValues | undefined | null {
+  if (typeof value === 'undefined') {
+    return undefined;
+  }
+
+  if (!isObjectRecord(value)) {
+    return null;
+  }
+
+  const parsedValues: I18nValues = {};
+
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (typeof entryValue !== 'string' && typeof entryValue !== 'number') {
+      return null;
+    }
+
+    parsedValues[key] = entryValue;
+  }
+
+  return parsedValues;
 }
 
 function parsePromptMetaDraft(value: unknown): PromptMetaDraft | null {

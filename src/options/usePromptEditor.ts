@@ -6,6 +6,7 @@ import {
   type PromptRecord,
 } from '../prompt/schema';
 import {
+  PromptitRuntimeError,
   createPrompt,
   deletePrompt,
   getPromptMetas,
@@ -15,10 +16,20 @@ import {
   subscribeToPromptMetas,
   updatePromptRecord,
 } from '../prompt/storage';
+import { type LocalizedMessageDescriptor } from '../shared/i18n';
 import {
   BODY_LOAD_ERROR_MESSAGE,
+  DELETE_ERROR_MESSAGE,
   DELETE_RECOVERY_MESSAGE,
   EXTERNAL_CHANGE_MESSAGE,
+  PIN_ERROR_MESSAGE,
+  PROMPT_CREATED_MESSAGE,
+  PROMPT_DELETED_MESSAGE,
+  PROMPT_PINNED_MESSAGE,
+  PROMPT_UNPINNED_MESSAGE,
+  PROMPT_UPDATED_MESSAGE,
+  REORDER_ERROR_MESSAGE,
+  SAVE_ERROR_MESSAGE,
   UPDATE_NOT_FOUND_MESSAGE,
   buildCreateDraft,
   buildPromptMovePlan,
@@ -26,9 +37,11 @@ import {
   createFormFromPrompt,
   createLoadingFormFromMeta,
   getConflictRetryAlertMessage,
+  getCaughtErrorMessage,
   getEditSubmitBlockReason,
   getLoadErrorMessage,
   getNotFoundCreateModeAlertMessage,
+  getRuntimeResponseMessage,
   mergeMetaIntoRecord,
   parsePromptForm,
   removePrompt,
@@ -57,7 +70,7 @@ export type {
 
 export type UsePromptEditorResult = {
   activePrompt: PromptRecord | null;
-  alertMessage: string | null;
+  alertMessage: LocalizedMessageDescriptor | null;
   bodyLoadState: PromptEditorBodyLoadState;
   conflictState: PromptEditorConflictState;
   errors: PromptFormErrors;
@@ -68,7 +81,7 @@ export type UsePromptEditorResult = {
   isSaving: boolean;
   loadState: PromptEditorLoadState;
   mode: PromptEditorMode;
-  notice: string | null;
+  notice: LocalizedMessageDescriptor | null;
   prompts: PromptMeta[];
   clearAlertMessage: () => void;
   clearNotice: () => void;
@@ -101,7 +114,7 @@ async function resolveConflictRecord(
       };
     }
 
-    throw new Error(BODY_LOAD_ERROR_MESSAGE);
+    throw new Error(BODY_LOAD_ERROR_MESSAGE.fallback);
   }
 }
 
@@ -120,8 +133,9 @@ export function usePromptEditor(): UsePromptEditorResult {
   const [mode, setMode] = useState<PromptEditorMode>({ kind: 'create' });
   const [form, setForm] = useState<PromptFormState>(() => createEmptyForm());
   const [errors, setErrors] = useState<PromptFormErrors>({});
-  const [notice, setNotice] = useState<string | null>(null);
-  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<LocalizedMessageDescriptor | null>(null);
+  const [alertMessage, setAlertMessage] =
+    useState<LocalizedMessageDescriptor | null>(null);
   const [conflictState, setConflictState] = useState<PromptEditorConflictState>({
     status: 'idle',
   });
@@ -188,7 +202,7 @@ export function usePromptEditor(): UsePromptEditorResult {
   function syncConflictPrompt(
     prompt: PromptRecord,
     reason: 'save-conflict' | 'delete-conflict',
-    message: string,
+    message: LocalizedMessageDescriptor,
   ): void {
     bodyLoadRequestIdRef.current += 1;
     setMode({
@@ -511,7 +525,7 @@ export function usePromptEditor(): UsePromptEditorResult {
         startTransition(() => {
           setPrompts(saveResult.prompts);
           syncEditingPrompt(saveResult.record);
-          setNotice('프롬프트를 업데이트했습니다.');
+          setNotice(PROMPT_UPDATED_MESSAGE);
           setAlertMessage(null);
         });
         savedPromptEchoRef.current = {
@@ -529,16 +543,12 @@ export function usePromptEditor(): UsePromptEditorResult {
       startTransition(() => {
         setPrompts(nextPrompts);
         moveToCreateMode();
-        setNotice('프롬프트를 저장했습니다.');
+        setNotice(PROMPT_CREATED_MESSAGE);
         setAlertMessage(null);
       });
     } catch (error) {
       console.error('[promptit] Failed to save prompt.', error);
-      setAlertMessage(
-        error instanceof Error
-          ? error.message
-          : '프롬프트 저장 중 오류가 발생했습니다.',
-      );
+      setAlertMessage(getCaughtErrorMessage(error, SAVE_ERROR_MESSAGE));
     } finally {
       savingPromptIdRef.current = null;
       setSaveState({ status: 'idle' });
@@ -605,6 +615,10 @@ export function usePromptEditor(): UsePromptEditorResult {
       }
 
       if (result.status === 'conflict') {
+        const conflictMessage = getRuntimeResponseMessage(
+          result,
+          'runtime.prompt.updateConflict',
+        );
         const nextPrompts = upsertPromptMeta(
           promptsRef.current,
           result.currentMeta,
@@ -626,13 +640,17 @@ export function usePromptEditor(): UsePromptEditorResult {
           }
 
           setAlertMessage(
-            getConflictRetryAlertMessage(result.message),
+            getConflictRetryAlertMessage(conflictMessage),
           );
         });
         return false;
       }
 
       if (result.status === 'not-found') {
+        const notFoundMessage = getRuntimeResponseMessage(
+          result,
+          'runtime.prompt.updateNotFound',
+        );
         const nextPrompts = removePrompt(promptsRef.current, id);
 
         startTransition(() => {
@@ -641,24 +659,20 @@ export function usePromptEditor(): UsePromptEditorResult {
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
             moveToCreateMode();
             setAlertMessage(
-              getNotFoundCreateModeAlertMessage(result.message),
+              getNotFoundCreateModeAlertMessage(notFoundMessage),
             );
             return;
           }
 
-          setAlertMessage(result.message);
+          setAlertMessage(notFoundMessage);
         });
         return false;
       }
 
-      throw new Error(result.message);
+      throw new PromptitRuntimeError(result.message, result.messageDescriptor);
     } catch (error) {
       console.error('[promptit] Failed to move prompt.', error);
-      setAlertMessage(
-        error instanceof Error
-          ? error.message
-          : '프롬프트 순서 변경 중 오류가 발생했습니다.',
-      );
+      setAlertMessage(getCaughtErrorMessage(error, REORDER_ERROR_MESSAGE));
       return false;
     } finally {
       setSaveState({ status: 'idle' });
@@ -718,8 +732,8 @@ export function usePromptEditor(): UsePromptEditorResult {
 
           setNotice(
             result.meta.pinned
-              ? '프롬프트를 고정했습니다.'
-              : '프롬프트 고정을 해제했습니다.',
+              ? PROMPT_PINNED_MESSAGE
+              : PROMPT_UNPINNED_MESSAGE,
           );
           setAlertMessage(null);
         });
@@ -727,6 +741,10 @@ export function usePromptEditor(): UsePromptEditorResult {
       }
 
       if (result.status === 'conflict') {
+        const conflictMessage = getRuntimeResponseMessage(
+          result,
+          'runtime.prompt.pinConflict',
+        );
         const nextPrompts = upsertPromptMeta(
           promptsRef.current,
           result.currentMeta,
@@ -748,13 +766,17 @@ export function usePromptEditor(): UsePromptEditorResult {
           }
 
           setAlertMessage(
-            getConflictRetryAlertMessage(result.message),
+            getConflictRetryAlertMessage(conflictMessage),
           );
         });
         return false;
       }
 
       if (result.status === 'not-found') {
+        const notFoundMessage = getRuntimeResponseMessage(
+          result,
+          'runtime.prompt.pinNotFound',
+        );
         const nextPrompts = removePrompt(promptsRef.current, id);
 
         startTransition(() => {
@@ -763,24 +785,20 @@ export function usePromptEditor(): UsePromptEditorResult {
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
             moveToCreateMode();
             setAlertMessage(
-              getNotFoundCreateModeAlertMessage(result.message),
+              getNotFoundCreateModeAlertMessage(notFoundMessage),
             );
             return;
           }
 
-          setAlertMessage(result.message);
+          setAlertMessage(notFoundMessage);
         });
         return false;
       }
 
-      throw new Error(result.message);
+      throw new PromptitRuntimeError(result.message, result.messageDescriptor);
     } catch (error) {
       console.error('[promptit] Failed to toggle prompt pinned state.', error);
-      setAlertMessage(
-        error instanceof Error
-          ? error.message
-          : '프롬프트 고정 상태 변경 중 오류가 발생했습니다.',
-      );
+      setAlertMessage(getCaughtErrorMessage(error, PIN_ERROR_MESSAGE));
       return false;
     } finally {
       setSaveState({ status: 'idle' });
@@ -823,12 +841,16 @@ export function usePromptEditor(): UsePromptEditorResult {
             moveToCreateMode();
           }
 
-          setNotice('프롬프트를 삭제했습니다.');
+          setNotice(PROMPT_DELETED_MESSAGE);
         });
         return;
       }
 
       if (result.status === 'conflict') {
+        const conflictMessage = getRuntimeResponseMessage(
+          result,
+          'runtime.prompt.deleteConflict',
+        );
         const fallbackRecord =
           activePromptRef.current?.id === id ? activePromptRef.current : null;
         const nextPrompts = upsertPromptMeta(promptsRef.current, result.currentMeta);
@@ -853,18 +875,22 @@ export function usePromptEditor(): UsePromptEditorResult {
           setPrompts(nextPrompts);
 
           setAlertMessage(
-            getConflictRetryAlertMessage(result.message),
+            getConflictRetryAlertMessage(conflictMessage),
           );
           syncConflictPrompt(
             conflictRecord,
             'delete-conflict',
-            result.message,
+            conflictMessage,
           );
         });
         return;
       }
 
       if (result.status === 'not-found') {
+        const notFoundMessage = getRuntimeResponseMessage(
+          result,
+          'runtime.prompt.deleteNotFound',
+        );
         const nextPrompts = removePrompt(promptsRef.current, id);
 
         startTransition(() => {
@@ -873,24 +899,20 @@ export function usePromptEditor(): UsePromptEditorResult {
           if (currentMode.kind === 'edit' && currentMode.promptId === id) {
             moveToCreateMode();
             setAlertMessage(
-              getNotFoundCreateModeAlertMessage(result.message),
+              getNotFoundCreateModeAlertMessage(notFoundMessage),
             );
             return;
           }
 
-          setAlertMessage(result.message);
+          setAlertMessage(notFoundMessage);
         });
         return;
       }
 
-      throw new Error(result.message);
+      throw new PromptitRuntimeError(result.message, result.messageDescriptor);
     } catch (error) {
       console.error('[promptit] Failed to delete prompt.', error);
-      setAlertMessage(
-        error instanceof Error
-          ? error.message
-          : '프롬프트 삭제 중 오류가 발생했습니다.',
-      );
+      setAlertMessage(getCaughtErrorMessage(error, DELETE_ERROR_MESSAGE));
     } finally {
       setSaveState({ status: 'idle' });
     }

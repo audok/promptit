@@ -1,0 +1,10 @@
+{
+  "appName": {
+    "message": "promptit",
+    "description": "Fixed extension product name."
+  },
+  "extensionDescription": {
+    "message": "promptit is a browser extension for ChatGPT and Gemini. Use / Space to quickly access and insert saved prompts.",
+    "description": "Extension description shown by the browser."
+  }
+}

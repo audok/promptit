@@ -8,57 +8,74 @@ import {
 } from 'react';
 
 import { type PromptMeta } from '../prompt/schema';
+import {
+  PRODUCT_NAME,
+  SERVICE_CHATGPT,
+  SERVICE_GEMINI,
+  TRIGGER_SLASH,
+  TRIGGER_SPACE,
+  describeMessage,
+  getIntlLocale,
+  translate,
+  translateLocalizedMessage,
+  type I18nKey,
+  type LanguagePreference,
+  type LocalizedMessageDescriptor,
+} from '../shared/i18n';
 import { BUTTON_FOCUS_CLASS, MetricCard } from './components';
 import { OptionsToast, type OptionsToastMessage, type OptionsToastTone } from './OptionsToast';
 import { PromptEditorPanel } from './PromptEditorPanel';
 import { PromptList } from './PromptList';
-import { UPDATE_NOT_FOUND_MESSAGE } from './promptEditorState';
+import { useLanguagePreference } from './useLanguagePreference';
 import { usePromptEditor } from './usePromptEditor';
 
-const DELETE_NOT_FOUND_CREATE_MODE_MESSAGE =
-  '삭제할 프롬프트를 찾지 못했습니다. 프롬프트 추가 모드로 전환했습니다.';
+const LANGUAGE_OPTIONS: readonly LanguagePreference[] = [
+  'system',
+  'ko',
+  'en',
+];
 
-const TOAST_NOTICE_MESSAGES = new Set([
-  '프롬프트를 저장했습니다.',
-  '프롬프트를 업데이트했습니다.',
-  '프롬프트를 삭제했습니다.',
-  '프롬프트를 고정했습니다.',
-  '프롬프트 고정을 해제했습니다.',
+const TOAST_NOTICE_KEYS = new Set<I18nKey>([
+  'options.toast.promptCreated',
+  'options.toast.promptUpdated',
+  'options.toast.promptDeleted',
+  'options.toast.promptPinned',
+  'options.toast.promptUnpinned',
 ]);
 
-const INFO_TOAST_ALERT_MESSAGES = new Set([
-  UPDATE_NOT_FOUND_MESSAGE,
-  DELETE_NOT_FOUND_CREATE_MODE_MESSAGE,
+const INFO_TOAST_ALERT_KEYS = new Set<I18nKey>([
+  'options.alert.updateNotFoundCreateMode',
+  'options.alert.deleteNotFoundCreateMode',
+  'options.alert.pinNotFoundCreateMode',
 ]);
 
-const ERROR_TOAST_ALERT_MESSAGES = new Set([
-  '프롬프트 저장 중 오류가 발생했습니다.',
-  '프롬프트 삭제 중 오류가 발생했습니다.',
-  '프롬프트 순서 변경 중 오류가 발생했습니다.',
-  '프롬프트 고정 상태 변경 중 오류가 발생했습니다.',
+const ERROR_TOAST_ALERT_KEYS = new Set<I18nKey>([
+  'options.error.savePrompt',
+  'options.error.deletePrompt',
+  'options.error.reorderPrompt',
+  'options.error.pinPrompt',
+  'runtime.prompt.saveFailed',
+  'runtime.prompt.deleteFailed',
+  'runtime.prompt.pinFailed',
 ]);
 
-type LanguageCode = 'en' | 'ko';
 type ThemeIcon = 'moon' | 'sun';
 
-const LANGUAGE_LABELS: Record<LanguageCode, string> = {
-  en: 'English',
-  ko: '한국어',
-};
-
-function isToastNotice(message: string): boolean {
-  return TOAST_NOTICE_MESSAGES.has(message);
+function isToastNotice(message: LocalizedMessageDescriptor): boolean {
+  return TOAST_NOTICE_KEYS.has(message.key);
 }
 
-function isToastAlert(message: string): boolean {
+function isToastAlert(message: LocalizedMessageDescriptor): boolean {
   return (
-    INFO_TOAST_ALERT_MESSAGES.has(message) ||
-    ERROR_TOAST_ALERT_MESSAGES.has(message)
+    INFO_TOAST_ALERT_KEYS.has(message.key) ||
+    ERROR_TOAST_ALERT_KEYS.has(message.key)
   );
 }
 
-function getToastToneForAlert(message: string): OptionsToastTone {
-  return INFO_TOAST_ALERT_MESSAGES.has(message) ? 'info' : 'error';
+function getToastToneForAlert(
+  message: LocalizedMessageDescriptor,
+): OptionsToastTone {
+  return INFO_TOAST_ALERT_KEYS.has(message.key) ? 'info' : 'error';
 }
 
 function ChevronDownIcon(props: { className: string }) {
@@ -179,6 +196,11 @@ export default function App() {
     clearNotice,
     clearAlertMessage,
   } = usePromptEditor();
+  const {
+    locale,
+    preference: languagePreference,
+    setPreference: setLanguagePreference,
+  } = useLanguagePreference();
 
   const statusRegionId = useId();
   const alertRegionId = useId();
@@ -188,9 +210,18 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<OptionsToastMessage | null>(
     null,
   );
-  const [language, setLanguage] = useState<LanguageCode>('ko');
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [themeIcon, setThemeIcon] = useState<ThemeIcon>('sun');
+  const t = useCallback(
+    (key: I18nKey, values?: Record<string, string | number>): string =>
+      translate(locale, key, values),
+    [locale],
+  );
+  const formatMessage = useCallback(
+    (message: LocalizedMessageDescriptor): string =>
+      translateLocalizedMessage(locale, message),
+    [locale],
+  );
 
   const showOptionsToast = useCallback(
     (message: string, tone: OptionsToastTone): void => {
@@ -210,6 +241,12 @@ export default function App() {
     },
     [],
   );
+  const showLocalizedOptionsToast = useCallback(
+    (message: LocalizedMessageDescriptor, tone: OptionsToastTone): void => {
+      showOptionsToast(formatMessage(message), tone);
+    },
+    [formatMessage, showOptionsToast],
+  );
 
   useEffect(() => {
     return () => {
@@ -224,37 +261,40 @@ export default function App() {
       return;
     }
 
-    showOptionsToast(notice, 'success');
+    showOptionsToast(formatMessage(notice), 'success');
     clearNotice();
-  }, [clearNotice, notice, showOptionsToast]);
+  }, [clearNotice, formatMessage, notice, showOptionsToast]);
 
   useEffect(() => {
     if (!alertMessage || !isToastAlert(alertMessage)) {
       return;
     }
 
-    showOptionsToast(alertMessage, getToastToneForAlert(alertMessage));
+    showOptionsToast(
+      formatMessage(alertMessage),
+      getToastToneForAlert(alertMessage),
+    );
     clearAlertMessage();
-  }, [alertMessage, clearAlertMessage, showOptionsToast]);
+  }, [alertMessage, clearAlertMessage, formatMessage, showOptionsToast]);
 
   const loadStatusLabel =
     loadState.status === 'error'
-      ? '불러오기 실패'
+      ? t('options.status.loadFailed')
       : loadState.status === 'loading'
-        ? '불러오는 중'
+        ? t('options.status.loading')
         : isEditorLoading
-          ? '본문 불러오는 중'
+          ? t('options.status.loadingBody')
         : isSaving
-          ? '저장 중'
-          : '대기 중';
+          ? t('options.status.saving')
+          : t('options.status.idle');
 
   const listMessage =
     loadState.status === 'loading'
-      ? '저장된 프롬프트를 불러오는 중입니다.'
+      ? t('options.list.loading')
       : loadState.status === 'error'
-        ? loadState.message
+        ? formatMessage(loadState.message)
         : prompts.length === 0
-          ? '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 프롬프트를 추가하세요.'
+          ? t('options.list.empty')
           : null;
 
   const activePromptId = mode.kind === 'edit' ? mode.promptId : null;
@@ -275,7 +315,18 @@ export default function App() {
   const inlineNotice = notice && !isToastNotice(notice) ? notice : null;
   const inlineAlertMessage =
     alertMessage && !isToastAlert(alertMessage) ? alertMessage : null;
-  const selectedLanguageLabel = LANGUAGE_LABELS[language];
+  const inlineNoticeText = inlineNotice ? formatMessage(inlineNotice) : null;
+  const inlineAlertMessageText = inlineAlertMessage
+    ? formatMessage(inlineAlertMessage)
+    : null;
+  const selectedLanguageLabel = getLanguagePreferenceLabel(
+    languagePreference,
+  );
+  const resolvedLocaleLabel = t(
+    locale === 'ko'
+      ? 'options.language.localeName.ko'
+      : 'options.language.localeName.en',
+  );
   const heroSectionClassName =
     'rounded-[32px] border border-stone-200/80 bg-white/90 px-7 py-7 text-stone-950 shadow-[0_28px_70px_rgba(66,53,49,0.08)] backdrop-blur sm:px-8 lg:px-10 lg:py-8';
   const heroCopyClassName = 'max-w-3xl text-base leading-6 text-stone-600';
@@ -287,9 +338,7 @@ export default function App() {
   function confirmDiscardDirtyForm(): boolean {
     return (
       !isDirty ||
-      window.confirm(
-        '저장하지 않은 변경사항이 있습니다. 변경사항을 버리고 이동할까요?',
-      )
+      window.confirm(t('options.confirm.discardDirty'))
     );
   }
 
@@ -310,7 +359,11 @@ export default function App() {
   }
 
   async function handleDelete(prompt: PromptMeta): Promise<void> {
-    const shouldDelete = window.confirm(`"${prompt.title}" 프롬프트를 삭제할까요?`);
+    const shouldDelete = window.confirm(
+      t('options.confirm.deletePrompt', {
+        title: prompt.title,
+      }),
+    );
 
     if (!shouldDelete) {
       return;
@@ -326,8 +379,11 @@ export default function App() {
     const didToggle = await togglePromptPinned(id, pinned);
 
     if (didToggle) {
+      const message = describeMessage(
+        pinned ? 'options.toast.promptPinned' : 'options.toast.promptUnpinned',
+      );
       showOptionsToast(
-        pinned ? '프롬프트를 고정했습니다.' : '프롬프트 고정을 해제했습니다.',
+        formatMessage(message),
         'success',
       );
       clearNotice();
@@ -336,8 +392,19 @@ export default function App() {
     return didToggle;
   }
 
-  function getLanguageOptionClassName(option: LanguageCode): string {
-    return language === option
+  function getLanguagePreferenceLabel(preference: LanguagePreference): string {
+    switch (preference) {
+      case 'system':
+        return t('options.language.option.system');
+      case 'ko':
+        return t('options.language.option.ko');
+      case 'en':
+        return t('options.language.option.en');
+    }
+  }
+
+  function getLanguageOptionClassName(option: LanguagePreference): string {
+    return languagePreference === option
       ? `flex w-full items-center justify-between rounded-full bg-stone-950 px-4 py-2.5 text-left text-sm font-semibold text-white ${BUTTON_FOCUS_CLASS}`
       : `flex w-full items-center justify-between rounded-full px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition hover:bg-stone-100 ${BUTTON_FOCUS_CLASS}`;
   }
@@ -346,8 +413,11 @@ export default function App() {
     setIsLanguageMenuOpen((isOpen) => !isOpen);
   }
 
-  function handleSelectLanguage(nextLanguage: LanguageCode): void {
-    setLanguage(nextLanguage);
+  function handleSelectLanguage(nextLanguage: LanguagePreference): void {
+    void setLanguagePreference(nextLanguage).catch((error) => {
+      console.error('[promptit] Failed to save language preference.', error);
+      showOptionsToast(t('options.error.languagePreference'), 'error');
+    });
     setIsLanguageMenuOpen(false);
   }
 
@@ -370,7 +440,7 @@ export default function App() {
           <div className="flex flex-col gap-[27px]">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
               <p className="text-[30px] font-black leading-none">
-                promptit
+                {PRODUCT_NAME}
               </p>
 
               <div className="flex flex-wrap items-center gap-3 sm:justify-end">
@@ -385,7 +455,10 @@ export default function App() {
                     aria-controls={languageMenuId}
                     aria-expanded={isLanguageMenuOpen}
                     aria-haspopup="menu"
-                    aria-label={`언어 메뉴 열기: 현재 ${selectedLanguageLabel}`}
+                    aria-label={t('options.language.menuButtonAria', {
+                      preference: selectedLanguageLabel,
+                      locale: resolvedLocaleLabel,
+                    })}
                   >
                     <GlobeIcon className="h-[18px] w-[18px]" />
                     <span>{selectedLanguageLabel}</span>
@@ -395,21 +468,24 @@ export default function App() {
                     <div
                       id={languageMenuId}
                       role="menu"
+                      aria-label={t('options.language.menuLabel')}
                       className="absolute right-0 top-[calc(100%+8px)] z-20 w-36 rounded-[20px] border border-stone-200 bg-white p-1.5 shadow-[0_18px_40px_rgba(28,25,23,0.12)]"
                     >
-                      {(['ko', 'en'] as const).map((option) => (
+                      {LANGUAGE_OPTIONS.map((option) => (
                         <button
                           key={option}
                           type="button"
                           role="menuitemradio"
-                          aria-checked={language === option}
+                          aria-checked={languagePreference === option}
                           className={getLanguageOptionClassName(option)}
                           onClick={() => {
                             handleSelectLanguage(option);
                           }}
                         >
-                          <span>{LANGUAGE_LABELS[option]}</span>
-                          {language === option ? <span aria-hidden="true">✓</span> : null}
+                          <span>{getLanguagePreferenceLabel(option)}</span>
+                          {languagePreference === option ? (
+                            <span aria-hidden="true">✓</span>
+                          ) : null}
                         </button>
                       ))}
                     </div>
@@ -421,8 +497,8 @@ export default function App() {
                   onClick={handleToggleTheme}
                   aria-label={
                     themeIcon === 'sun'
-                      ? '테마 아이콘을 달로 전환'
-                      : '테마 아이콘을 해로 전환'
+                      ? t('options.theme.switchToMoon')
+                      : t('options.theme.switchToSun')
                   }
                 >
                   {themeIcon === 'moon' ? (
@@ -437,35 +513,44 @@ export default function App() {
             <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
               <div className="space-y-5">
                 <h1 className="text-[28px] font-extrabold leading-tight">
-                  프롬프트를 저장하고 붙여 넣으세요.
+                  {t('options.hero.title')}
                 </h1>
                 <p className={heroCopyClassName}>
-                  이 페이지에서 프롬프트를 저장하고 수정하세요. ChatGPT, Gemini
-                  사이트에서{' '}
-                  <span className="inline-flex items-center gap-1 align-middle" aria-label="/ space">
+                  {t('options.hero.copyBeforeShortcut', {
+                    chatgpt: SERVICE_CHATGPT,
+                    gemini: SERVICE_GEMINI,
+                  })}{' '}
+                  <span
+                    className="inline-flex items-center gap-1 align-middle"
+                    aria-label={`${TRIGGER_SLASH} ${TRIGGER_SPACE}`}
+                  >
                     <kbd className={keyboardTokenClassName}>
-                      /
+                      {TRIGGER_SLASH}
                     </kbd>
                     <kbd className={keyboardTokenClassName}>
-                      Space
+                      {TRIGGER_SPACE}
                     </kbd>
                   </span>
-                  를 입력하여 쉽게 붙여넣으세요. 목록에서 프롬프트를 끌어 순서를
-                  변경할 수 있습니다.
+                  {locale === 'en' ? ' ' : ''}
+                  {t('options.hero.copyAfterShortcut')}
                 </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3 lg:min-w-[490px]">
                 <MetricCard
-                  label="저장된 프롬프트"
-                  value={`${prompts.length}`}
+                  label={t('options.metric.savedPrompts')}
+                  value={prompts.length.toLocaleString(getIntlLocale(locale))}
                 />
                 <MetricCard
-                  label="편집 상태"
-                  value={isEditing ? '수정 중' : '추가 중'}
+                  label={t('options.metric.editState')}
+                  value={
+                    isEditing
+                      ? t('options.metric.editing')
+                      : t('options.metric.creating')
+                  }
                 />
                 <MetricCard
-                  label="상태"
+                  label={t('options.metric.status')}
                   value={loadStatusLabel}
                 />
               </div>
@@ -475,8 +560,8 @@ export default function App() {
 
         <div className="sr-only" aria-live="polite" aria-atomic="true" id={statusRegionId}>
           {loadState.status === 'loading'
-            ? '저장된 프롬프트를 불러오는 중입니다.'
-            : inlineNotice}
+            ? t('options.list.loading')
+            : inlineNoticeText}
         </div>
         <div
           className="sr-only"
@@ -484,7 +569,7 @@ export default function App() {
           aria-atomic="true"
           id={alertRegionId}
         >
-          {inlineAlertMessage}
+          {inlineAlertMessageText}
         </div>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
@@ -493,11 +578,12 @@ export default function App() {
             isSaving={isSaving}
             listActionDisabled={listActionDisabled}
             listMessage={listMessage}
+            locale={locale}
             loadStateStatus={loadState.status}
             movePromptWithinGroup={movePromptWithinGroup}
             onCreatePrompt={handleStartCreateMode}
             onDeletePrompt={handleDelete}
-            onReorderFeedback={showOptionsToast}
+            onReorderFeedback={showLocalizedOptionsToast}
             onSelectPrompt={handleSelectPrompt}
             prompts={prompts}
             reorderDisabled={reorderDisabled}
@@ -518,6 +604,7 @@ export default function App() {
             isEditing={isEditing}
             isEditorLoading={isEditorLoading}
             isSaving={isSaving}
+            locale={locale}
             loadStateStatus={loadState.status}
             notice={inlineNotice}
             onCancelEdit={handleStartCreateMode}

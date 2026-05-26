@@ -1,4 +1,9 @@
 import type { PromptMeta } from '../prompt/schema';
+import {
+  FALLBACK_LOCALE,
+  translate,
+  type Locale,
+} from '../shared/i18n';
 
 export type PromptLauncherItem = PromptMeta & {
   kind: 'prompt';
@@ -17,17 +22,17 @@ export type LauncherItem = PromptLauncherItem | EmptyStateLauncherItem;
 
 export const EMPTY_STATE_LAUNCHER_ITEM_ID = '__promptit_empty_state__';
 
-const EMPTY_STATE_TITLE = '저장된 프롬프트가 없습니다.';
-const EMPTY_STATE_DESCRIPTION = '설정에서 첫 프롬프트를 추가하세요.';
-
-export function buildLauncherItems(userPrompts: PromptMeta[]): LauncherItem[] {
+export function buildLauncherItems(
+  userPrompts: PromptMeta[],
+  locale: Locale = FALLBACK_LOCALE,
+): LauncherItem[] {
   if (userPrompts.length === 0) {
     return [
       {
         kind: 'empty-state',
         id: EMPTY_STATE_LAUNCHER_ITEM_ID,
-        title: EMPTY_STATE_TITLE,
-        description: EMPTY_STATE_DESCRIPTION,
+        title: translate(locale, 'content.popup.emptyTitle'),
+        description: translate(locale, 'content.popup.emptyDescription'),
         action: 'open-options',
       },
     ];

@@ -1,25 +1,63 @@
 import {
-  hasPromptDraftErrors,
   normalizePromptDraft,
   sortPromptMetas,
-  validatePromptDraft,
+  validatePromptDraftMessages,
   type PromptDraft,
   type PromptMeta,
   type PromptMetaDraft,
   type PromptOrderGroup,
   type PromptRecord,
 } from '../prompt/schema';
+import {
+  describeMessage,
+  isI18nKey,
+  type I18nKey,
+  type LocalizedMessageDescriptor,
+  type RuntimeMessageDescriptor,
+} from '../shared/i18n';
 
-export const LOAD_ERROR_MESSAGE =
-  '저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요.';
-export const BODY_LOAD_ERROR_MESSAGE =
-  '프롬프트 본문을 읽지 못했습니다. 잠시 후 다시 시도해주세요.';
-export const UPDATE_NOT_FOUND_MESSAGE =
-  '수정할 프롬프트를 찾지 못했습니다. 프롬프트 추가 모드로 전환했습니다.';
-export const DELETE_RECOVERY_MESSAGE =
-  '편집 중인 프롬프트가 삭제되어 프롬프트 추가 모드로 전환했습니다.';
-export const EXTERNAL_CHANGE_MESSAGE =
-  '다른 창의 변경이 먼저 저장되었습니다. 현재 입력은 유지되며 저장 시 충돌이 발생할 수 있습니다.';
+export const LOAD_ERROR_MESSAGE = describeMessage('options.error.loadPrompts');
+export const BODY_LOAD_ERROR_MESSAGE = describeMessage(
+  'options.error.loadPromptBody',
+);
+export const SAVE_ERROR_MESSAGE = describeMessage('options.error.savePrompt');
+export const DELETE_ERROR_MESSAGE = describeMessage(
+  'options.error.deletePrompt',
+);
+export const REORDER_ERROR_MESSAGE = describeMessage(
+  'options.error.reorderPrompt',
+);
+export const PIN_ERROR_MESSAGE = describeMessage('options.error.pinPrompt');
+export const PROMPT_CREATED_MESSAGE = describeMessage(
+  'options.toast.promptCreated',
+);
+export const PROMPT_UPDATED_MESSAGE = describeMessage(
+  'options.toast.promptUpdated',
+);
+export const PROMPT_DELETED_MESSAGE = describeMessage(
+  'options.toast.promptDeleted',
+);
+export const PROMPT_PINNED_MESSAGE = describeMessage(
+  'options.toast.promptPinned',
+);
+export const PROMPT_UNPINNED_MESSAGE = describeMessage(
+  'options.toast.promptUnpinned',
+);
+export const UPDATE_NOT_FOUND_MESSAGE = describeMessage(
+  'options.alert.updateNotFoundCreateMode',
+);
+export const DELETE_NOT_FOUND_CREATE_MODE_MESSAGE = describeMessage(
+  'options.alert.deleteNotFoundCreateMode',
+);
+export const PIN_NOT_FOUND_CREATE_MODE_MESSAGE = describeMessage(
+  'options.alert.pinNotFoundCreateMode',
+);
+export const DELETE_RECOVERY_MESSAGE = describeMessage(
+  'options.notice.deleteRecoveryCreateMode',
+);
+export const EXTERNAL_CHANGE_MESSAGE = describeMessage(
+  'options.alert.externalChange',
+);
 
 export type PromptFormState = {
   title: string;
@@ -28,7 +66,7 @@ export type PromptFormState = {
 };
 
 export type PromptFormErrors = Partial<
-  Record<Exclude<keyof PromptFormState, 'pinned'>, string>
+  Record<Exclude<keyof PromptFormState, 'pinned'>, LocalizedMessageDescriptor>
 >;
 
 export type PromptMovePlacement = 'before' | 'after';
@@ -36,12 +74,16 @@ export type PromptMovePlacement = 'before' | 'after';
 export type PromptEditorLoadState =
   | { status: 'loading' }
   | { status: 'ready' }
-  | { status: 'error'; message: string };
+  | { status: 'error'; message: LocalizedMessageDescriptor };
 
 export type PromptEditorBodyLoadState =
   | { status: 'idle' }
   | { status: 'loading'; promptId: string }
-  | { status: 'error'; promptId: string; message: string };
+  | {
+      status: 'error';
+      promptId: string;
+      message: LocalizedMessageDescriptor;
+    };
 
 export type PromptEditorSaveState =
   | { status: 'idle' }
@@ -62,7 +104,7 @@ export type PromptEditorConflictState =
       status: 'stale';
       reason: 'external-update' | 'save-conflict' | 'delete-conflict';
       promptId: string;
-      message: string;
+      message: LocalizedMessageDescriptor;
       currentPrompt: PromptMeta;
     };
 
@@ -195,13 +237,13 @@ export function parsePromptForm(form: PromptFormState): ParsedPromptForm {
     content: form.content,
     pinned: form.pinned,
   });
-  const draftErrors = validatePromptDraft(normalizedDraft);
+  const draftErrors = validatePromptDraftMessages(normalizedDraft);
   const errors: PromptFormErrors = {
     title: draftErrors.title,
     content: draftErrors.content,
   };
 
-  if (hasPromptDraftErrors(errors)) {
+  if (hasPromptFormErrors(errors)) {
     return {
       ok: false,
       errors,
@@ -260,20 +302,43 @@ export function mergeMetaIntoRecord(
   };
 }
 
-export function getLoadErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
+export function getLoadErrorMessage(
+  error: unknown,
+): LocalizedMessageDescriptor {
+  return getCaughtErrorMessage(error, LOAD_ERROR_MESSAGE);
+}
+
+export function getConflictRetryAlertMessage(
+  message: LocalizedMessageDescriptor,
+): LocalizedMessageDescriptor {
+  if (
+    message.key === 'runtime.prompt.updateConflict' ||
+    message.key === 'runtime.prompt.deleteConflict' ||
+    message.key === 'runtime.prompt.pinConflict'
+  ) {
+    return message;
   }
 
-  return LOAD_ERROR_MESSAGE;
+  return describeMessage('options.alert.conflictRetry', {
+    message: message.fallback,
+  });
 }
 
-export function getConflictRetryAlertMessage(message: string): string {
-  return `${message} 최신 저장본을 확인한 뒤 다시 시도해주세요.`;
-}
-
-export function getNotFoundCreateModeAlertMessage(message: string): string {
-  return `${message} 프롬프트 추가 모드로 전환했습니다.`;
+export function getNotFoundCreateModeAlertMessage(
+  message: LocalizedMessageDescriptor,
+): LocalizedMessageDescriptor {
+  switch (message.key) {
+    case 'runtime.prompt.updateNotFound':
+      return UPDATE_NOT_FOUND_MESSAGE;
+    case 'runtime.prompt.deleteNotFound':
+      return DELETE_NOT_FOUND_CREATE_MODE_MESSAGE;
+    case 'runtime.prompt.pinNotFound':
+      return PIN_NOT_FOUND_CREATE_MODE_MESSAGE;
+    default:
+      return describeMessage('options.alert.notFoundCreateMode', {
+        message: message.fallback,
+      });
+  }
 }
 
 export function getEditSubmitBlockReason(
@@ -298,4 +363,111 @@ export function getEditSubmitBlockReason(
   }
 
   return null;
+}
+
+export function getRuntimeResponseMessage(
+  response: {
+    message: string;
+    messageDescriptor?: RuntimeMessageDescriptor;
+  },
+  fallbackKey: I18nKey,
+): LocalizedMessageDescriptor {
+  const fallbackMessage = describeMessage(fallbackKey);
+  const fallback =
+    response.message.trim().length > 0
+      ? response.message
+      : fallbackMessage.fallback;
+
+  if (response.messageDescriptor && isI18nKey(response.messageDescriptor.key)) {
+    return {
+      key: response.messageDescriptor.key,
+      values: response.messageDescriptor.values,
+      fallback,
+    };
+  }
+
+  return {
+    ...fallbackMessage,
+    fallback,
+  };
+}
+
+export function getCaughtErrorMessage(
+  error: unknown,
+  fallbackMessage: LocalizedMessageDescriptor,
+): LocalizedMessageDescriptor {
+  const message = error instanceof Error ? error.message.trim() : '';
+  const messageDescriptor = getErrorMessageDescriptor(error);
+
+  if (messageDescriptor) {
+    return {
+      key: messageDescriptor.key,
+      values: messageDescriptor.values,
+      fallback: message.length > 0 ? message : fallbackMessage.fallback,
+    };
+  }
+
+  if (message.length > 0) {
+    return {
+      ...fallbackMessage,
+      fallback: message,
+    };
+  }
+
+  return fallbackMessage;
+}
+
+function getErrorMessageDescriptor(
+  error: unknown,
+): RuntimeMessageDescriptor | undefined {
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    !('messageDescriptor' in error)
+  ) {
+    return undefined;
+  }
+
+  const descriptor = (error as { messageDescriptor?: unknown })
+    .messageDescriptor;
+
+  if (
+    typeof descriptor !== 'object' ||
+    descriptor === null ||
+    !('key' in descriptor) ||
+    !isI18nKey((descriptor as { key?: unknown }).key)
+  ) {
+    return undefined;
+  }
+
+  const values = (descriptor as { values?: unknown }).values;
+
+  if (typeof values === 'undefined') {
+    return {
+      key: (descriptor as { key: I18nKey }).key,
+    };
+  }
+
+  if (typeof values !== 'object' || values === null) {
+    return undefined;
+  }
+
+  const parsedValues: Record<string, string | number> = {};
+
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      return undefined;
+    }
+
+    parsedValues[key] = value;
+  }
+
+  return {
+    key: (descriptor as { key: I18nKey }).key,
+    values: parsedValues,
+  };
+}
+
+function hasPromptFormErrors(errors: PromptFormErrors): boolean {
+  return Object.values(errors).some(Boolean);
 }

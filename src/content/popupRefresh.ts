@@ -2,6 +2,7 @@ import {
   sortPromptMetas,
   type PromptMeta,
 } from '../prompt/schema';
+import type { Locale } from '../shared/i18n';
 import {
   buildLauncherItems,
   isPromptLauncherItem,
@@ -70,8 +71,9 @@ export function reconcilePopupItems(
   previousItems: LauncherItem[],
   nextUserPrompts: PromptMeta[],
   currentActiveCell: PopupActiveCell | null,
+  locale?: Locale,
 ): PopupItemsRefresh {
-  const items = buildLauncherItems(nextUserPrompts);
+  const items = buildLauncherItems(nextUserPrompts, locale);
 
   return {
     items,

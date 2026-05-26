@@ -7,6 +7,14 @@ import {
 
 import { type PromptMeta } from '../prompt/schema';
 import {
+  describeMessage,
+  getIntlLocale,
+  translate,
+  type I18nKey,
+  type Locale,
+  type LocalizedMessageDescriptor,
+} from '../shared/i18n';
+import {
   BUTTON_FOCUS_CLASS,
   DragHandleIcon,
   EmptyPanel,
@@ -25,9 +33,6 @@ type DropIndicatorState = {
   targetId: string;
 } | null;
 
-const CROSS_GROUP_REORDER_MESSAGE =
-  '고정됨 목록과 일반 목록 사이에서는 끌어서 순서를 바꿀 수 없습니다.';
-
 type PromptListProps = {
   activePromptId: string | null;
   isSaving: boolean;
@@ -39,9 +44,13 @@ type PromptListProps = {
     targetId: string,
     placement: DropPlacement,
   ) => Promise<boolean>;
+  locale: Locale;
   onCreatePrompt: () => void;
   onDeletePrompt: (prompt: PromptMeta) => Promise<void>;
-  onReorderFeedback: (message: string, tone: OptionsToastTone) => void;
+  onReorderFeedback: (
+    message: LocalizedMessageDescriptor,
+    tone: OptionsToastTone,
+  ) => void;
   onSelectPrompt: (prompt: PromptMeta) => Promise<void>;
   prompts: PromptMeta[];
   reorderDisabled: boolean;
@@ -54,6 +63,14 @@ export function PromptList(props: PromptListProps) {
   const [dropIndicator, setDropIndicator] = useState<DropIndicatorState>(null);
   const crossGroupDropRef = useRef(false);
   const dropIndicatorRef = useRef<DropIndicatorState>(null);
+  const t = (key: I18nKey, values?: Record<string, string | number>) =>
+    translate(props.locale, key, values);
+  const compactLabelClassName =
+    props.locale === 'ko'
+      ? 'font-extrabold tracking-[0.22em] uppercase'
+      : 'font-semibold tracking-[0.18em] uppercase';
+  const metaLabelClassName =
+    props.locale === 'ko' ? 'font-extrabold' : 'font-semibold';
 
   function updateDropIndicator(nextDropIndicator: DropIndicatorState): void {
     dropIndicatorRef.current = nextDropIndicator;
@@ -65,7 +82,9 @@ export function PromptList(props: PromptListProps) {
   }
 
   function getPromptGroupLabel(prompt: PromptMeta): string {
-    return prompt.pinned ? '고정됨' : '일반';
+    return prompt.pinned
+      ? t('options.list.group.pinned')
+      : t('options.list.group.normal');
   }
 
   function getPromptGroupPrompts(prompt: PromptMeta): PromptMeta[] {
@@ -111,7 +130,10 @@ export function PromptList(props: PromptListProps) {
     placement: DropPlacement,
   ): Promise<void> {
     if (getPromptGroup(draggedPrompt) !== getPromptGroup(targetPrompt)) {
-      props.onReorderFeedback(CROSS_GROUP_REORDER_MESSAGE, 'info');
+      props.onReorderFeedback(
+        describeMessage('options.list.reorder.crossGroup'),
+        'info',
+      );
       return;
     }
 
@@ -128,14 +150,16 @@ export function PromptList(props: PromptListProps) {
 
       if (didMove) {
         props.onReorderFeedback(
-          `${draggedPrompt.title} 순서를 변경했습니다.`,
+          describeMessage('options.list.reorder.success', {
+            title: draggedPrompt.title,
+          }),
           'success',
         );
       }
     } catch (error) {
       console.error('[promptit] Failed to reorder prompt in options page.', error);
       props.onReorderFeedback(
-        '프롬프트 순서 변경 중 오류가 발생했습니다.',
+        describeMessage('options.error.reorderPrompt'),
         'error',
       );
     }
@@ -260,7 +284,10 @@ export function PromptList(props: PromptListProps) {
     updateDropIndicator(null);
 
     if (didAttemptCrossGroupDrop) {
-      props.onReorderFeedback(CROSS_GROUP_REORDER_MESSAGE, 'info');
+      props.onReorderFeedback(
+        describeMessage('options.list.reorder.crossGroup'),
+        'info',
+      );
     }
   }
 
@@ -281,9 +308,15 @@ export function PromptList(props: PromptListProps) {
 
     if (targetPrompt === null) {
       props.onReorderFeedback(
-        direction === 'up'
-          ? `${prompt.title}은 이미 ${getPromptGroupLabel(prompt)} 목록의 첫 번째입니다.`
-          : `${prompt.title}은 이미 ${getPromptGroupLabel(prompt)} 목록의 마지막입니다.`,
+        describeMessage(
+          direction === 'up'
+            ? 'options.list.reorder.first'
+            : 'options.list.reorder.last',
+          {
+            title: prompt.title,
+            group: getPromptGroupLabel(prompt),
+          },
+        ),
         'info',
       );
       return;
@@ -312,10 +345,10 @@ export function PromptList(props: PromptListProps) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs font-medium leading-[17px] text-stone-600">
-            프롬프트 목록
+            {t('options.list.eyebrow')}
           </p>
           <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-stone-950">
-            저장된 프롬프트
+            {t('options.list.heading')}
           </h2>
         </div>
         <button
@@ -342,7 +375,7 @@ export function PromptList(props: PromptListProps) {
               />
             </svg>
           </span>
-          <span>프롬프트 추가</span>
+          <span>{t('options.list.addButton')}</span>
         </button>
       </div>
 
@@ -374,7 +407,9 @@ export function PromptList(props: PromptListProps) {
                     void handleDrop(event, prompt);
                   }}
                 >
-                  {showBeforeIndicator ? <InsertionIndicator /> : null}
+                  {showBeforeIndicator ? (
+                    <InsertionIndicator label={t('options.list.dropHere')} />
+                  ) : null}
                   <div
                     className={`rounded-[24px] border px-4 py-4 transition ${
                       isActive
@@ -401,11 +436,19 @@ export function PromptList(props: PromptListProps) {
                           disabled={props.listActionDisabled}
                           aria-label={
                             prompt.pinned
-                              ? `${prompt.title} 고정 해제`
-                              : `${prompt.title} 고정`
+                              ? t('options.list.unpinAria', {
+                                  title: prompt.title,
+                                })
+                              : t('options.list.pinAria', {
+                                  title: prompt.title,
+                                })
                           }
                           aria-pressed={prompt.pinned}
-                          title={prompt.pinned ? '고정 해제' : '고정'}
+                          title={
+                            prompt.pinned
+                              ? t('options.list.unpinTitle')
+                              : t('options.list.pinTitle')
+                          }
                           data-testid="prompt-pin-toggle"
                         >
                           <PinIcon filled={prompt.pinned} />
@@ -440,9 +483,11 @@ export function PromptList(props: PromptListProps) {
                             );
                           }}
                           disabled={props.reorderDisabled}
-                          aria-label={`${prompt.title} 순서 변경`}
+                          aria-label={t('options.list.reorderAria', {
+                            title: prompt.title,
+                          })}
                           aria-describedby={props.statusRegionId}
-                          title="순서 변경"
+                          title={t('options.list.reorderTitle')}
                           data-testid="prompt-drag-handle"
                         >
                           <DragHandleIcon />
@@ -455,21 +500,24 @@ export function PromptList(props: PromptListProps) {
                           void props.onSelectPrompt(prompt);
                         }}
                         disabled={props.isSaving}
-                        aria-label={`${prompt.title} 편집`}
+                        aria-label={t('options.list.editAria', {
+                          title: prompt.title,
+                        })}
                         aria-current={isActive ? 'true' : undefined}
                         data-testid="prompt-card"
                       >
-                        <span className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
+                        <span className="flex flex-wrap items-center gap-2 text-xs">
                           <span
-                            className={`rounded-full px-2 py-1 tracking-[0.12em] ${
+                            className={`rounded-full px-2 py-1 ${compactLabelClassName} ${
                               isActive
                                 ? 'bg-white/10 text-stone-200'
                                 : prompt.pinned
                                   ? 'bg-stone-900 text-stone-50'
                                   : 'bg-white text-stone-500'
                             }`}
+                            data-testid="prompt-group-label"
                           >
-                            {prompt.pinned ? '고정됨' : '일반'}
+                            {getPromptGroupLabel(prompt)}
                           </span>
                           <span
                             className={
@@ -479,11 +527,16 @@ export function PromptList(props: PromptListProps) {
                             •
                           </span>
                           <span
-                            className={
+                            className={`${compactLabelClassName} ${
                               isActive ? 'text-stone-300' : 'text-stone-500'
-                            }
+                            }`}
+                            data-testid="prompt-char-count"
                           >
-                            {prompt.charCount.toLocaleString('ko-KR')}자
+                            {t('options.list.charCount', {
+                              count: prompt.charCount.toLocaleString(
+                                getIntlLocale(props.locale),
+                              ),
+                            })}
                           </span>
                         </span>
                         <span className="mt-3 block text-lg font-semibold tracking-tight">
@@ -494,17 +547,28 @@ export function PromptList(props: PromptListProps) {
                             isActive ? 'text-stone-300' : 'text-stone-600'
                           }`}
                         >
-                          <MetaLine label="수정" value={formatTimestamp(prompt.updatedAt)} />
                           <MetaLine
-                            label="추가"
-                            value={formatTimestamp(prompt.createdAt)}
+                            label={t('options.list.updatedLabel')}
+                            labelClassName={metaLabelClassName}
+                            value={formatTimestamp(
+                              prompt.updatedAt,
+                              props.locale,
+                            )}
+                          />
+                          <MetaLine
+                            label={t('options.list.createdLabel')}
+                            labelClassName={metaLabelClassName}
+                            value={formatTimestamp(
+                              prompt.createdAt,
+                              props.locale,
+                            )}
                           />
                         </span>
                       </button>
 
                       <button
                         type="button"
-                        className={`rounded-full border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                        className={`rounded-full border px-3 py-2 text-[11px] transition ${compactLabelClassName} ${
                           isActive
                             ? 'border-rose-200/20 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25'
                             : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
@@ -513,13 +577,18 @@ export function PromptList(props: PromptListProps) {
                           void props.onDeletePrompt(prompt);
                         }}
                         disabled={props.isSaving}
-                        aria-label={`${prompt.title} 삭제`}
+                        aria-label={t('options.list.deleteAria', {
+                          title: prompt.title,
+                        })}
+                        data-testid="prompt-delete-button"
                       >
-                        삭제
+                        {t('options.list.deleteButton')}
                       </button>
                     </div>
                   </div>
-                  {showAfterIndicator ? <InsertionIndicator /> : null}
+                  {showAfterIndicator ? (
+                    <InsertionIndicator label={t('options.list.dropHere')} />
+                  ) : null}
                 </div>
               );
             })}

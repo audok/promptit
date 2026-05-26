@@ -31,6 +31,7 @@ import {
   type UpdatePromptMetaResponse,
   type UpdatePromptRecordResponse,
 } from '../runtime/messages';
+import type { RuntimeMessageDescriptor } from '../shared/i18n';
 
 export type UpdatePromptOptions = {
   expectedUpdatedAt: string;
@@ -64,6 +65,25 @@ export type SetPromptPinnedOptions = {
 
 export type DeletePromptResponse = RuntimeDeletePromptResponse;
 
+type RuntimeFailureResponse = {
+  message: string;
+  messageDescriptor?: RuntimeMessageDescriptor;
+};
+
+export class PromptitRuntimeError extends Error {
+  readonly messageDescriptor?: RuntimeMessageDescriptor;
+
+  constructor(
+    message: string,
+    messageDescriptor?: RuntimeMessageDescriptor,
+  ) {
+    super(message);
+    this.name = 'PromptitRuntimeError';
+    this.messageDescriptor = messageDescriptor;
+    Object.setPrototypeOf(this, PromptitRuntimeError.prototype);
+  }
+}
+
 function hasRuntimeApi(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
 }
@@ -80,7 +100,7 @@ export async function getPromptMetas(): Promise<PromptMeta[]> {
   }
 
   if (!response.ok) {
-    throw new Error(response.message);
+    throwRuntimeResponseError(response);
   }
 
   return sortPromptMetas(response.metas);
@@ -94,7 +114,7 @@ export async function getPromptBody(id: string): Promise<PromptBody> {
   }
 
   if (!response.ok) {
-    throw new Error(response.message);
+    throwRuntimeResponseError(response);
   }
 
   return response.body;
@@ -108,7 +128,7 @@ export async function getPromptRecord(id: string): Promise<PromptRecord> {
   }
 
   if (!response.ok) {
-    throw new Error(response.message);
+    throwRuntimeResponseError(response);
   }
 
   return response.prompt;
@@ -127,7 +147,7 @@ export async function createPrompt(
   }
 
   if (!response.ok) {
-    throw new Error(response.message);
+    throwRuntimeResponseError(response);
   }
 
   return response.prompt;
@@ -304,6 +324,13 @@ function validateExpectedUpdatedAt(value: string | undefined): void {
   if (typeof value !== 'undefined' && !isValidPromptTimestamp(value)) {
     throw new Error('Invalid prompt updatedAt timestamp.');
   }
+}
+
+function throwRuntimeResponseError(response: RuntimeFailureResponse): never {
+  throw new PromptitRuntimeError(
+    response.message,
+    response.messageDescriptor,
+  );
 }
 
 async function sendRuntimeRequest(

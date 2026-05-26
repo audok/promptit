@@ -5,6 +5,7 @@ import {
 import { resolveAdapterForUrl } from '../adapters/registry';
 import type { PromptMeta } from '../prompt/schema';
 import {
+  PromptitRuntimeError,
   getPromptBody,
   getPromptMetas,
   setPromptPinned,
@@ -15,6 +16,19 @@ import {
   buildOpenOptionsPageRequest,
   parsePromptitRuntimeResponse,
 } from '../runtime/messages';
+import {
+  FALLBACK_LOCALE,
+  getBrowserUiLanguage,
+  readLanguagePreference,
+  resolveLocale,
+  subscribeToLanguagePreference,
+  translate,
+  translateRuntimeMessage,
+  type I18nKey,
+  type LanguagePreference,
+  type Locale,
+  type RuntimeMessageDescriptor,
+} from '../shared/i18n';
 import {
   buildLauncherItems,
   isPromptLauncherItem,
@@ -59,12 +73,22 @@ declare global {
   }
 }
 
-const PROMPT_BODY_READ_ERROR_MESSAGE = '프롬프트 본문을 읽지 못했습니다.';
 const IME_PROCESS_KEY = 'Process';
+
+let currentLocale: Locale = FALLBACK_LOCALE;
+let contentUiLanguage: string | undefined;
 
 type ClosePopupOptions = {
   reopenOnCleanupFailure?: boolean;
 };
+
+class PromptBodyReadError extends Error {
+  constructor() {
+    super('Prompt body read failed.');
+    this.name = 'PromptBodyReadError';
+    Object.setPrototypeOf(this, PromptBodyReadError.prototype);
+  }
+}
 
 export function bootstrapContentScript(): void {
   const adapter = resolveAdapterForUrl(window.location.href);
@@ -74,6 +98,7 @@ export function bootstrapContentScript(): void {
   }
 
   window.__promptitContentInitialized__ = true;
+  initializeContentLanguageState();
 
   const session = createSessionState();
   const popup = new PromptPopup({
@@ -100,11 +125,76 @@ export function bootstrapContentScript(): void {
   subscribeToPromptMetas((nextItems) => {
     handlePromptStorageChange(nextItems, session, popup, adapter);
   });
+  void readLanguagePreference()
+    .then((preference) => {
+      applyContentLanguagePreference(preference, session, popup, adapter);
+    })
+    .catch((error) => {
+      console.error('[promptit] Failed to read language preference.', error);
+    });
+  subscribeToLanguagePreference((preference) => {
+    applyContentLanguagePreference(preference, session, popup, adapter);
+  });
 
   registerDocumentListeners(session, popup, adapter);
   registerWindowListeners(session, popup, adapter);
   registerTestListeners(requestOpenOptionsPage);
   markTestReady();
+}
+
+function initializeContentLanguageState(): void {
+  contentUiLanguage = getBrowserUiLanguage();
+  currentLocale = resolveLocale({
+    preference: 'system',
+    uiLanguage: contentUiLanguage,
+  });
+}
+
+function applyContentLanguagePreference(
+  preference: LanguagePreference,
+  session: PopupSessionState,
+  popup: PromptPopup,
+  adapter: BaseAdapter,
+): void {
+  const nextLocale = resolveLocale({
+    preference,
+    uiLanguage: contentUiLanguage,
+  });
+
+  if (nextLocale === currentLocale) {
+    return;
+  }
+
+  currentLocale = nextLocale;
+  refreshOpenPopupLocalization(session, popup, adapter);
+}
+
+function refreshOpenPopupLocalization(
+  session: PopupSessionState,
+  popup: PromptPopup,
+  adapter: BaseAdapter,
+): void {
+  if (session.status !== 'open' || !session.activeInput?.isConnected) {
+    return;
+  }
+
+  const nextUserPrompts = session.items.filter(isPromptLauncherItem);
+  const { items, activeCell } = reconcilePopupItems(
+    session.items,
+    nextUserPrompts,
+    session.activeCell,
+    currentLocale,
+  );
+
+  session.items = items;
+  session.activeCell = activeCell;
+
+  popup.update(
+    items,
+    activeCell,
+    adapter.getPopupAnchorRect(session.activeInput),
+    currentLocale,
+  );
 }
 
 function registerDocumentListeners(
@@ -320,6 +410,7 @@ function registerWindowListeners(
         session.items,
         session.activeCell,
         adapter.getPopupAnchorRect(session.activeInput),
+        currentLocale,
       );
     },
     true,
@@ -350,7 +441,10 @@ async function requestOpenOptionsPage(): Promise<void> {
   switch (response.type) {
     case OPEN_OPTIONS_PAGE_MESSAGE:
       if (!response.ok) {
-        throw new Error(response.message);
+        throw new PromptitRuntimeError(
+          response.message,
+          response.messageDescriptor,
+        );
       }
       return;
   }
@@ -412,7 +506,7 @@ async function resolveTriggerCheck(
     return;
   }
 
-  const items = buildLauncherItems(userPrompts);
+  const items = buildLauncherItems(userPrompts, currentLocale);
 
   clearTriggerArm(session);
   session.status = 'open';
@@ -421,7 +515,12 @@ async function resolveTriggerCheck(
   session.items = items;
   session.activeCell = getInitialActiveCell(items);
 
-  popup.show(items, session.activeCell, adapter.getPopupAnchorRect(input));
+  popup.show(
+    items,
+    session.activeCell,
+    adapter.getPopupAnchorRect(input),
+    currentLocale,
+  );
 
   const observer = new MutationObserver(() => {
     if (session.status === 'open' && session.activeInput && !session.activeInput.isConnected) {
@@ -454,7 +553,10 @@ async function readPromptsForTrigger(
 
     if (!shouldAbortTriggerCheck(input, requestId, session)) {
       clearTriggerForInput(input, session);
-      showToast('프롬프트 목록을 읽지 못했습니다.', 'error');
+      showToast(
+        translate(currentLocale, 'content.toast.promptListReadFailed'),
+        'error',
+      );
     }
 
     return null;
@@ -557,12 +659,7 @@ async function handleSelection(
     if (activeInput.isConnected) {
       adapter.focusInput(activeInput);
     }
-    showToast(
-      error instanceof Error
-        ? error.message
-        : '프롬프트 처리 중 오류가 발생했습니다.',
-      'error',
-    );
+    showToast(getSelectionErrorToastMessage(error), 'error');
   } finally {
     queueMicrotask(() => {
       session.isInternalChange = false;
@@ -616,7 +713,7 @@ async function handleCopy(
       return;
     }
 
-    showToast('프롬프트를 복사했습니다.');
+    showToast(translate(currentLocale, 'content.toast.copySuccess'));
   } catch (error) {
     if (!isCurrentPopupActionToken(session, actionToken)) {
       return;
@@ -628,13 +725,53 @@ async function handleCopy(
     if (session.activeInput?.isConnected) {
       adapter.focusInput(session.activeInput);
     }
-    showToast(
-      error instanceof Error && error.message === PROMPT_BODY_READ_ERROR_MESSAGE
-        ? PROMPT_BODY_READ_ERROR_MESSAGE
-        : '프롬프트 복사에 실패했습니다.',
-      'error',
+    showToast(getCopyErrorToastMessage(error), 'error');
+  }
+}
+
+function getSelectionErrorToastMessage(error: unknown): string {
+  if (error instanceof PromptBodyReadError) {
+    return translate(currentLocale, 'content.toast.promptBodyReadFailed');
+  }
+
+  return getRuntimeErrorToastMessage(error, 'content.toast.insertFailed');
+}
+
+function getCopyErrorToastMessage(error: unknown): string {
+  if (error instanceof PromptBodyReadError) {
+    return translate(currentLocale, 'content.toast.promptBodyReadFailed');
+  }
+
+  return getRuntimeErrorToastMessage(error, 'content.toast.copyFailed');
+}
+
+function getRuntimeErrorToastMessage(
+  error: unknown,
+  fallbackKey: I18nKey,
+): string {
+  if (error instanceof PromptitRuntimeError) {
+    return getRuntimeResponseToastMessage(
+      error.messageDescriptor,
+      error.message,
+      fallbackKey,
     );
   }
+
+  return translate(currentLocale, fallbackKey);
+}
+
+function getRuntimeResponseToastMessage(
+  descriptor: RuntimeMessageDescriptor | undefined,
+  fallback: string,
+  fallbackKey: I18nKey,
+): string {
+  return translateRuntimeMessage(
+    currentLocale,
+    descriptor,
+    fallback.trim().length > 0
+      ? fallback
+      : translate(currentLocale, fallbackKey),
+  );
 }
 
 async function handleTogglePinned(
@@ -677,8 +814,8 @@ async function handleTogglePinned(
         );
         showToast(
           response.meta.pinned
-            ? '프롬프트를 고정했습니다.'
-            : '프롬프트 고정을 해제했습니다.',
+            ? translate(currentLocale, 'content.toast.pinSuccess')
+            : translate(currentLocale, 'content.toast.unpinSuccess'),
         );
         break;
       case 'conflict':
@@ -689,7 +826,11 @@ async function handleTogglePinned(
           mergePromptMeta(session.items, response.currentMeta),
         );
         showToast(
-          '프롬프트가 다른 곳에서 변경되었습니다. 다시 시도해 주세요.',
+          getRuntimeResponseToastMessage(
+            response.messageDescriptor,
+            response.message,
+            'content.toast.pinConflict',
+          ),
           'error',
         );
         break;
@@ -700,11 +841,22 @@ async function handleTogglePinned(
           adapter,
           removePromptMeta(session.items, response.id),
         );
-        showToast('고정 상태를 변경할 프롬프트를 찾지 못했습니다.', 'error');
+        showToast(
+          getRuntimeResponseToastMessage(
+            response.messageDescriptor,
+            response.message,
+            'content.toast.pinNotFound',
+          ),
+          'error',
+        );
         break;
       case 'error':
         showToast(
-          response.message || '프롬프트 고정 상태를 변경하지 못했습니다.',
+          getRuntimeResponseToastMessage(
+            response.messageDescriptor,
+            response.message,
+            'content.toast.pinFailed',
+          ),
           'error',
         );
         break;
@@ -715,7 +867,10 @@ async function handleTogglePinned(
     }
 
     console.error('[promptit] Failed to toggle prompt pinned state.', error);
-    showToast('프롬프트 고정 상태를 변경하지 못했습니다.', 'error');
+    showToast(
+      getRuntimeErrorToastMessage(error, 'content.toast.pinFailed'),
+      'error',
+    );
   } finally {
     if (!isCurrentPopupActionToken(session, actionToken)) {
       return;
@@ -742,7 +897,7 @@ async function readPromptBodyForAction(id: string): Promise<string> {
     return body.content;
   } catch (error) {
     console.error('[promptit] Failed to read prompt body for popup action.', error);
-    throw new Error(PROMPT_BODY_READ_ERROR_MESSAGE);
+    throw new PromptBodyReadError();
   }
 }
 
@@ -796,7 +951,10 @@ async function closePopup(
       );
     } catch (error) {
       console.error('[promptit] Failed to clean up trigger text.', error);
-      showToast('입력창 정리에 실패했습니다.', 'error');
+      showToast(
+        translate(currentLocale, 'content.toast.cleanupFailed'),
+        'error',
+      );
       if (options.reopenOnCleanupFailure !== false) {
         if (activeInput.isConnected) {
           adapter.focusInput(activeInput);
@@ -866,7 +1024,10 @@ async function performOpenOptionsAction(
     if (activeInput?.isConnected) {
       adapter.focusInput(activeInput);
     }
-    showToast('설정 페이지를 열지 못했습니다.', 'error');
+    showToast(
+      getRuntimeErrorToastMessage(error, 'content.toast.openOptionsFailed'),
+      'error',
+    );
     return false;
   }
 }
@@ -893,6 +1054,7 @@ function applyPromptMetaUpdatesToPopup(
     session.items,
     nextUserPrompts,
     session.activeCell,
+    currentLocale,
   );
 
   session.items = items;
@@ -902,6 +1064,7 @@ function applyPromptMetaUpdatesToPopup(
     items,
     activeCell,
     adapter.getPopupAnchorRect(session.activeInput),
+    currentLocale,
   );
 }
 
@@ -919,6 +1082,7 @@ function handlePromptStorageChange(
     session.items,
     nextUserPrompts,
     session.activeCell,
+    currentLocale,
   );
 
   session.items = items;
@@ -928,6 +1092,7 @@ function handlePromptStorageChange(
     items,
     activeCell,
     adapter.getPopupAnchorRect(session.activeInput),
+    currentLocale,
   );
 }
 

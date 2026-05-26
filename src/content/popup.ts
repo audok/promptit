@@ -4,6 +4,13 @@ import {
   type LauncherItem,
 } from './launcher-items';
 import {
+  FALLBACK_LOCALE,
+  PRODUCT_NAME,
+  TRIGGER_SLASH,
+  translate,
+  type Locale,
+} from '../shared/i18n';
+import {
   isSameActiveCell,
   type ActiveCellColumn,
   type PopupActiveCell,
@@ -24,6 +31,7 @@ type RenderState = {
   items: LauncherItem[];
   activeCell: PopupActiveCell | null;
   isBusy: boolean;
+  locale: Locale;
 };
 
 const VIEWPORT_MARGIN_PX = 12;
@@ -36,6 +44,25 @@ const LIST_MAX_HEIGHT_PX = LIST_ROW_HEIGHT_PX * LIST_MAX_ROWS + LIST_VERTICAL_PA
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case '\'':
+        return '&#39;';
+      default:
+        return character;
+    }
+  });
 }
 
 function cloneActiveCell(
@@ -89,6 +116,7 @@ export class PromptPopup {
     items: [],
     activeCell: null,
     isBusy: false,
+    locale: FALLBACK_LOCALE,
   };
 
   constructor(private readonly options: PopupOptions) {}
@@ -97,11 +125,13 @@ export class PromptPopup {
     items: LauncherItem[],
     activeCell: PopupActiveCell | null,
     anchorRect: DOMRect,
+    locale: Locale,
   ): void {
     this.state = {
       items,
       activeCell: cloneActiveCell(activeCell),
       isBusy: false,
+      locale,
     };
     this.activeCellAnnouncement = '';
 
@@ -117,9 +147,10 @@ export class PromptPopup {
     items: LauncherItem[],
     activeCell: PopupActiveCell | null,
     anchorRect: DOMRect,
+    locale: Locale,
   ): void {
     if (!this.host) {
-      this.show(items, activeCell, anchorRect);
+      this.show(items, activeCell, anchorRect, locale);
       return;
     }
 
@@ -127,6 +158,7 @@ export class PromptPopup {
       items,
       activeCell: cloneActiveCell(activeCell),
       isBusy: this.state.isBusy,
+      locale,
     };
 
     this.render();
@@ -142,6 +174,7 @@ export class PromptPopup {
       items: [],
       activeCell: null,
       isBusy: false,
+      locale: FALLBACK_LOCALE,
     };
   }
 
@@ -259,8 +292,14 @@ export class PromptPopup {
       return;
     }
 
+    const locale = this.state.locale;
     const savedCount = this.state.items.filter(isPromptLauncherItem).length;
-    const savedCountLabel = `${savedCount} saved`;
+    const regionLabel = translate(locale, 'content.popup.regionLabel', {
+      product: PRODUCT_NAME,
+    });
+    const savedCountLabel = translate(locale, 'content.popup.savedCount', {
+      count: savedCount,
+    });
 
     this.shadowRoot.innerHTML = `
       <style>${popupStyles}${getPromptitFontStyles()}</style>
@@ -268,14 +307,14 @@ export class PromptPopup {
         <section
           class="promptit-card${this.state.isBusy ? ' is-busy' : ''}"
           role="region"
-          aria-label="promptit prompt picker"
+          aria-label="${escapeHtml(regionLabel)}"
           aria-busy="${this.state.isBusy ? 'true' : 'false'}"
           data-testid="promptit-popup"
         >
           <header class="promptit-header">
             <div class="promptit-header-label">
-              <span class="promptit-header-slash">/</span>
-              <span class="promptit-header-text">promptit</span>
+              <span class="promptit-header-slash">${TRIGGER_SLASH}</span>
+              <span class="promptit-header-text">${PRODUCT_NAME}</span>
             </div>
             <button
               type="button"
@@ -283,7 +322,7 @@ export class PromptPopup {
               data-action="exit"
               tabindex="-1"
             >
-              Exit
+              ${escapeHtml(translate(locale, 'content.popup.exitButton'))}
             </button>
           </header>
           <div
@@ -291,7 +330,7 @@ export class PromptPopup {
             data-role="prompt-list"
             data-testid="promptit-popup-list"
             role="list"
-            aria-label="Saved prompts"
+            aria-label="${escapeHtml(translate(locale, 'content.popup.listLabel'))}"
           ></div>
           <div
             class="promptit-sr-only"
@@ -300,12 +339,12 @@ export class PromptPopup {
             aria-atomic="true"
           ></div>
           <footer class="promptit-footer">
-            <span class="promptit-footer-label">${savedCountLabel}</span>
+            <span class="promptit-footer-label">${escapeHtml(savedCountLabel)}</span>
             <button
               type="button"
               class="promptit-footer-button"
               data-action="open-options"
-              aria-label="Open settings"
+              aria-label="${escapeHtml(translate(locale, 'content.popup.openSettingsAria'))}"
               tabindex="-1"
             >
               ${renderSettingsIcon()}
@@ -324,7 +363,12 @@ export class PromptPopup {
     const fragment = document.createDocumentFragment();
 
     this.state.items.forEach((item, index) => {
-      fragment.append(createLauncherRow(item, index, this.state.activeCell));
+      fragment.append(createLauncherRow(
+        item,
+        index,
+        this.state.activeCell,
+        locale,
+      ));
     });
 
     list.replaceChildren(fragment);
@@ -518,6 +562,7 @@ function createLauncherRow(
   item: LauncherItem,
   index: number,
   activeCell: PopupActiveCell | null,
+  locale: Locale,
 ): HTMLElement {
   const isActiveRow = activeCell?.rowIndex === index;
   const isActiveTitleCell =
@@ -559,8 +604,8 @@ function createLauncherRow(
     leadingButton.dataset.column = 'pin';
     leadingButton.dataset.testid = 'promptit-pin-cell';
     leadingButton.ariaLabel = item.pinned
-      ? `Unpin prompt: ${item.title}`
-      : `Pin prompt: ${item.title}`;
+      ? translate(locale, 'content.popup.unpinAria', { title: item.title })
+      : translate(locale, 'content.popup.pinAria', { title: item.title });
     leadingButton.setAttribute('aria-pressed', String(item.pinned));
   }
 
@@ -583,8 +628,11 @@ function createLauncherRow(
   titleButton.dataset.testid = 'promptit-title-cell';
   titleButton.tabIndex = -1;
   titleButton.ariaLabel = isPromptLauncherItem(item)
-    ? `Insert prompt: ${item.title}`
-    : `${item.title} ${item.description}`;
+    ? translate(locale, 'content.popup.insertAria', { title: item.title })
+    : translate(locale, 'content.popup.emptyItemAria', {
+        title: item.title,
+        description: item.description,
+      });
 
   const titleText = document.createElement('span');
   titleText.className = 'promptit-row-title';
@@ -613,7 +661,9 @@ function createLauncherRow(
     copyButton.dataset.rowIndex = String(index);
     copyButton.dataset.column = 'copy';
     copyButton.dataset.testid = 'promptit-copy-cell';
-    copyButton.ariaLabel = `Copy prompt: ${item.title}`;
+    copyButton.ariaLabel = translate(locale, 'content.popup.copyAria', {
+      title: item.title,
+    });
   }
 
   const copyBadge = document.createElement('span');

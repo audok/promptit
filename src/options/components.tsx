@@ -1,10 +1,12 @@
 import { type ReactNode } from 'react';
 
+import { getIntlLocale, type Locale } from '../shared/i18n';
+
 export const BUTTON_FOCUS_CLASS =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
 
-export function formatTimestamp(value: string): string {
-  return new Date(value).toLocaleString('ko-KR', {
+export function formatTimestamp(value: string, locale: Locale): string {
+  return new Date(value).toLocaleString(getIntlLocale(locale), {
     dateStyle: 'medium',
     timeStyle: 'medium',
   });
@@ -31,7 +33,7 @@ export function getDescribedBy(
   return ids.join(' ');
 }
 
-export function InsertionIndicator() {
+export function InsertionIndicator(props: { label: string }) {
   return (
     <div
       className="my-2 flex items-center gap-3 text-xs font-semibold text-stone-700"
@@ -39,7 +41,7 @@ export function InsertionIndicator() {
     >
       <span className="h-0.5 flex-1 rounded-full bg-stone-900" />
       <span className="rounded-full border border-stone-300 bg-white px-2 py-1">
-        여기에 놓기
+        {props.label}
       </span>
       <span className="h-0.5 flex-1 rounded-full bg-stone-900" />
     </div>
@@ -103,16 +105,36 @@ export function EmptyPanel(props: { message: string }) {
   );
 }
 
-export function MetaLine(props: { label: string; value: string }) {
+export function MetaLine(props: {
+  label: string;
+  labelClassName?: string;
+  value: string;
+}) {
   return (
-    <span className="flex min-w-0 items-center gap-2">
-      <span className="shrink-0 font-semibold">{props.label}</span>
-      <span className="min-w-0 truncate">{props.value}</span>
+    <span
+      className="grid min-w-0 gap-0 leading-4"
+      data-testid="prompt-meta-line"
+    >
+      <span
+        className={props.labelClassName ?? 'font-semibold'}
+        data-testid="prompt-meta-label"
+      >
+        {props.label}
+      </span>
+      <span
+        className="min-w-0 whitespace-normal break-words"
+        data-testid="prompt-meta-value"
+        title={props.value}
+      >
+        {props.value}
+      </span>
     </span>
   );
 }
 
 export function Banner(props: {
+  dismissLabel: string;
+  dismissText: string;
   message: string;
   onDismiss: () => void;
   role: 'alert' | 'status';
@@ -130,9 +152,9 @@ export function Banner(props: {
         type="button"
         className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] hover:bg-black/5 ${BUTTON_FOCUS_CLASS}`}
         onClick={props.onDismiss}
-        aria-label="메시지 닫기"
+        aria-label={props.dismissLabel}
       >
-        닫기
+        {props.dismissText}
       </button>
     </div>
   );

@@ -13,7 +13,18 @@ import {
   formatTimestamp,
   getDescribedBy,
 } from './components';
+import {
+  translate,
+  translateLocalizedMessage,
+  type I18nKey,
+  type Locale,
+  type LocalizedMessageDescriptor,
+} from '../shared/i18n';
 import { type UsePromptEditorResult } from './usePromptEditor';
+
+type PromptFormErrorText = Partial<
+  Record<'title' | 'content', LocalizedMessageDescriptor>
+>;
 
 type PromptEditorPanelProps = {
   activePromptMeta: PromptMeta | null;
@@ -23,11 +34,12 @@ type PromptEditorPanelProps = {
   clearNotice: UsePromptEditorResult['clearNotice'];
   conflictState: UsePromptEditorResult['conflictState'];
   editorDisabled: boolean;
-  errors: UsePromptEditorResult['errors'];
+  errors: PromptFormErrorText;
   form: UsePromptEditorResult['form'];
   isEditing: boolean;
   isEditorLoading: boolean;
   isSaving: boolean;
+  locale: Locale;
   loadStateStatus: UsePromptEditorResult['loadState']['status'];
   notice: UsePromptEditorResult['notice'];
   onCancelEdit: () => void;
@@ -44,6 +56,10 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const contentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingInvalidFocusRef = useRef(false);
+  const t = (key: I18nKey, values?: Record<string, string | number>) =>
+    translate(props.locale, key, values);
+  const formatMessage = (message: LocalizedMessageDescriptor) =>
+    translateLocalizedMessage(props.locale, message);
 
   useEffect(() => {
     if (!pendingInvalidFocusRef.current) {
@@ -81,10 +97,12 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-xs font-medium leading-[17px] text-stone-600">
-            편집기
+            {t('options.editor.eyebrow')}
           </p>
           <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-stone-950">
-            {props.isEditing ? '프롬프트 수정' : '프롬프트 추가'}
+            {props.isEditing
+              ? t('options.editor.heading.edit')
+              : t('options.editor.heading.add')}
           </h2>
         </div>
         {props.isEditing ? (
@@ -94,7 +112,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
             onClick={props.onCancelEdit}
             disabled={props.isSaving}
           >
-            편집 취소
+            {t('options.editor.cancelEdit')}
           </button>
         ) : null}
       </div>
@@ -103,8 +121,10 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         <Banner
           tone="success"
           role="status"
-          message={props.notice}
+          message={formatMessage(props.notice)}
           onDismiss={props.clearNotice}
+          dismissLabel={t('options.editor.bannerDismissLabel')}
+          dismissText={t('options.editor.bannerDismissText')}
         />
       ) : null}
 
@@ -112,8 +132,10 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         <Banner
           tone="danger"
           role="alert"
-          message={props.alertMessage}
+          message={formatMessage(props.alertMessage)}
           onDismiss={props.clearAlertMessage}
+          dismissLabel={t('options.editor.bannerDismissLabel')}
+          dismissText={t('options.editor.bannerDismissText')}
         />
       ) : null}
 
@@ -124,10 +146,17 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
           aria-live="polite"
           id={conflictHintId}
         >
-          <p className="font-semibold">충돌 감지됨</p>
-          <p className="mt-2 leading-6">{props.conflictState.message}</p>
+          <p className="font-semibold">{t('options.editor.conflictHeading')}</p>
+          <p className="mt-2 leading-6">
+            {formatMessage(props.conflictState.message)}
+          </p>
           <p className="mt-2 text-xs uppercase tracking-[0.16em] text-amber-700">
-            최신 저장본 {formatTimestamp(props.conflictState.currentPrompt.updatedAt)}
+            {t('options.editor.latestSaved', {
+              timestamp: formatTimestamp(
+                props.conflictState.currentPrompt.updatedAt,
+                props.locale,
+              ),
+            })}
           </p>
         </div>
       ) : null}
@@ -138,7 +167,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
           role="status"
           aria-live="polite"
         >
-          선택한 프롬프트 본문을 불러오는 중입니다.
+          {t('options.editor.bodyLoading')}
         </div>
       ) : null}
 
@@ -148,7 +177,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
           role="status"
           aria-live="polite"
         >
-          {props.bodyLoadState.message}
+          {formatMessage(props.bodyLoadState.message)}
         </div>
       ) : null}
 
@@ -159,9 +188,11 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
       >
         <Field
           inputId={titleInputId}
-          label="제목"
-          error={props.errors.title}
-          hint="1자 이상 40자 이하"
+          label={t('options.editor.titleLabel')}
+          error={
+            props.errors.title ? formatMessage(props.errors.title) : undefined
+          }
+          hint={t('options.editor.titleHint')}
         >
           <input
             ref={titleInputRef}
@@ -172,7 +203,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
               props.updateField('title', event.target.value);
             }}
             className="w-full rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-            placeholder="예: 회의록 정리"
+            placeholder={t('options.editor.titlePlaceholder')}
             maxLength={40}
             disabled={props.editorDisabled}
             aria-invalid={Boolean(props.errors.title)}
@@ -186,9 +217,13 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
 
         <Field
           inputId={contentInputId}
-          label="본문"
-          error={props.errors.content}
-          hint="실제로 삽입할 프롬프트 본문"
+          label={t('options.editor.contentLabel')}
+          error={
+            props.errors.content
+              ? formatMessage(props.errors.content)
+              : undefined
+          }
+          hint={t('options.editor.contentHint')}
         >
           <textarea
             ref={contentInputRef}
@@ -200,8 +235,8 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
             className="min-h-[220px] w-full rounded-[22px] border border-stone-200 bg-white px-4 py-4 text-sm leading-6 text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
             placeholder={
               props.isEditorLoading
-                ? '본문을 불러오는 중입니다.'
-                : '프롬프트를 입력하세요.'
+                ? t('options.editor.contentLoadingPlaceholder')
+                : t('options.editor.contentPlaceholder')
             }
             disabled={props.editorDisabled}
             aria-invalid={Boolean(props.errors.content)}
@@ -220,12 +255,12 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
             disabled={props.editorDisabled || props.loadStateStatus === 'error'}
           >
             {props.isSaving
-              ? '저장 중...'
+              ? t('options.editor.submitSaving')
               : props.isEditorLoading
-                ? '본문 불러오는 중'
+                ? t('options.editor.submitLoadingBody')
                 : props.isEditing
-                  ? '프롬프트 수정'
-                  : '프롬프트 추가'}
+                  ? t('options.editor.submitEdit')
+                  : t('options.editor.submitAdd')}
           </button>
 
           {props.isEditing ? (
@@ -241,7 +276,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
                 props.isSaving || props.isEditorLoading || !props.activePromptMeta
               }
             >
-              프롬프트 삭제
+              {t('options.editor.deleteButton')}
             </button>
           ) : null}
         </div>

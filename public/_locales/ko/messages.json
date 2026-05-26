@@ -1,0 +1,10 @@
+{
+  "appName": {
+    "message": "promptit",
+    "description": "Fixed extension product name."
+  },
+  "extensionDescription": {
+    "message": "ChatGPT와 Gemini에서 / Space로 저장한 프롬프트를 빠르게 찾고 삽입하는 promptit 브라우저 확장 프로그램입니다.",
+    "description": "Extension description shown by the browser."
+  }
+}
