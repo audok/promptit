@@ -24,6 +24,7 @@ const test = base.extend<{
 }>({
   extension: async ({}, use) => {
     const extension = await launchExtension();
+    await extension.setLanguagePreference('en');
     await use(extension);
     await extension.close();
   },
@@ -608,6 +609,70 @@ async function getPopupAccessibilitySnapshot(
   });
 }
 
+async function getPopupChromeSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  activeCellLabel: string | null;
+  cardLabel: string | null;
+  emptyDescription: string | null;
+  exitText: string | null;
+  footerText: string | null;
+  headerSlash: string | null;
+  headerText: string | null;
+  listLabel: string | null;
+  settingsLabel: string | null;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const root = host?.shadowRoot;
+    const card = root?.querySelector('[data-testid="promptit-popup"]');
+    const list = root?.querySelector('[data-role="prompt-list"]');
+    const activeCell = root?.querySelector(
+      '[data-role="prompt-cell"][aria-current="true"]',
+    );
+    const settingsButton = root?.querySelector('[class~="promptit-footer-button"]');
+
+    if (
+      !(host instanceof HTMLElement) ||
+      !root ||
+      !(card instanceof HTMLElement)
+    ) {
+      throw new Error('Popup chrome snapshot could not find the popup.');
+    }
+
+    return {
+      activeCellLabel:
+        activeCell instanceof HTMLElement
+          ? activeCell.getAttribute('aria-label')
+          : null,
+      cardLabel: card.getAttribute('aria-label'),
+      emptyDescription:
+        root.querySelector('[class~="promptit-row-description"]')?.textContent ??
+        null,
+      exitText:
+        root.querySelector('[data-action="exit"]')?.textContent?.trim() ?? null,
+      footerText:
+        root.querySelector('[class~="promptit-footer-label"]')?.textContent ??
+        null,
+      headerSlash:
+        root.querySelector('[class~="promptit-header-slash"]')?.textContent ??
+        null,
+      headerText:
+        root.querySelector('[class~="promptit-header-text"]')?.textContent ??
+        null,
+      listLabel:
+        list instanceof HTMLElement
+          ? list.getAttribute('aria-label') ??
+            list.getAttribute('aria-labelledby')
+          : null,
+      settingsLabel:
+        settingsButton instanceof HTMLElement
+          ? settingsButton.getAttribute('aria-label')
+          : null,
+    };
+  });
+}
+
 async function getToastAccessibilitySnapshot(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<{
@@ -1038,6 +1103,97 @@ test('opens the slash popup from the contenteditable fixture', async ({
   await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
 });
 
+test('localizes the Korean popup saved count with count first', async ({
+  extension,
+}) => {
+  await extension.setLanguagePreference('ko');
+  await extension.setPromptRecords([basePrompts[0]]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+
+  await expect
+    .poll(async () => await getPopupChromeSnapshot(page))
+    .toMatchObject({
+      footerText: '1개 저장됨',
+    });
+});
+
+test('localizes popup chrome in English without translating prompt data', async ({
+  extension,
+}) => {
+  const koreanPrompt = createPromptRecord({
+    id: 'english-popup-korean-prompt',
+    title: '한국어 팝업 제목',
+    content: '한국어 팝업 본문은 그대로 복사됩니다.',
+    normalOrder: 1,
+  });
+
+  await extension.setLanguagePreference('en');
+  await extension.setPromptRecords([koreanPrompt]);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+
+  await expect(await getPopupTitles(page)).toEqual([koreanPrompt.title]);
+  await expect
+    .poll(async () => await getPopupChromeSnapshot(page))
+    .toMatchObject({
+      activeCellLabel: `Insert prompt: ${koreanPrompt.title}`,
+      cardLabel: 'promptit prompt picker',
+      exitText: 'Exit',
+      footerText: '1 saved',
+      headerSlash: '/',
+      headerText: 'promptit',
+      listLabel: 'Saved prompts',
+      settingsLabel: 'Open settings',
+    });
+
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    `Copy prompt: ${koreanPrompt.title}`,
+  );
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe('');
+  await expect(
+    await page.evaluate(() => navigator.clipboard.readText()),
+  ).toBe(koreanPrompt.content);
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('Prompt copied.');
+});
+
+test('localizes the popup empty state in English', async ({ extension }) => {
+  await extension.setLanguagePreference('en');
+  await extension.setPromptRecords([]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+
+  await expect(await getPopupTitles(page)).toEqual(['No saved prompts.']);
+  await expect
+    .poll(async () => await getPopupChromeSnapshot(page))
+    .toMatchObject({
+      activeCellLabel: 'No saved prompts. Add your first prompt in settings.',
+      cardLabel: 'promptit prompt picker',
+      emptyDescription: 'Add your first prompt in settings.',
+      footerText: '0 saved',
+      headerSlash: '/',
+      headerText: 'promptit',
+      listLabel: 'Saved prompts',
+      settingsLabel: 'Open settings',
+    });
+});
+
 test('accessibility: exposes non-modal popup semantics and active cell live status', async ({
   extension,
 }) => {
@@ -1101,7 +1257,7 @@ test('toast live region attributes mark success announcements as polite status',
       atomic: 'true',
       live: 'polite',
       role: 'status',
-      text: '프롬프트를 고정했습니다.',
+      text: 'Prompt pinned.',
       variant: 'success',
     });
 });
@@ -1127,7 +1283,7 @@ test('toast live region attributes mark error announcements as assertive alerts'
       atomic: 'true',
       live: 'assertive',
       role: 'alert',
-      text: '프롬프트 복사에 실패했습니다.',
+      text: 'Could not copy the prompt.',
       variant: 'error',
     });
 });
@@ -1224,7 +1380,7 @@ test('opens from metadata when body reads fail and keeps the popup open on selec
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('프롬프트 본문을 읽지 못했습니다.');
+    .toBe('Could not read the prompt body.');
   await expect(await getComposerText(page)).toBe('/ ');
   await expect.poll(async () => {
     return await page.evaluate(() => document.activeElement?.id ?? null);
@@ -1452,7 +1608,7 @@ test('copy success toast uses a compact text-only glass chip', async ({
       paddingLeft: '16px',
       paddingRight: '16px',
       paddingTop: '6px',
-      text: '프롬프트를 복사했습니다.',
+      text: 'Prompt copied.',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
     });
@@ -1737,6 +1893,7 @@ test('updates the open popup when prompt storage changes', async ({
 test('opens the options page from the popup empty state', async ({
   extension,
 }) => {
+  await extension.setLanguagePreference('ko');
   await extension.setPromptRecords([]);
 
   const page = await extension.context.newPage();
@@ -1800,7 +1957,7 @@ test('shows an error toast when the background fails to open options and keeps t
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('설정 페이지를 열지 못했습니다.');
+    .toBe('Could not open the settings page.');
   await expect(optionsPagePromise).rejects.toThrow(/Timeout/);
   await expect.poll(async () => {
     return await page.evaluate(() => document.activeElement?.id ?? null);
@@ -1845,7 +2002,7 @@ test('shows an error toast when prompt insertion fails', async ({
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('[promptit] Adapter failed to insert prompt content.');
+    .toBe('Could not insert the prompt.');
   await expect(await getComposerText(page)).toBe('x');
 });
 
@@ -1881,7 +2038,7 @@ test('blocks contenteditable insertion when the live selection moved outside the
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('[promptit] Adapter failed to insert prompt content.');
+    .toBe('Could not insert the prompt.');
   await expect(await getComposerText(page)).toBe('/ ');
 });
 
@@ -1919,7 +2076,7 @@ test('blocks contenteditable insertion when the live selection is not collapsed'
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('[promptit] Adapter failed to insert prompt content.');
+    .toBe('Could not insert the prompt.');
   await expect(await getComposerText(page)).toBe('/ ');
 });
 
@@ -1957,7 +2114,7 @@ test('keeps the trigger when same-root cleanup selection is not at the trigger e
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('입력창 정리에 실패했습니다.');
+    .toBe('Could not clean up the input field.');
   await expect(await getComposerText(page)).toBe('/ ');
 });
 
@@ -2235,10 +2392,10 @@ test('shows an error and preserves external pin state on stale popup activation'
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toContain('다른 곳에서 변경되었습니다');
+    .toContain('changed elsewhere');
   const conflictToastText = await getToastText(page);
-  expect(conflictToastText).toContain('다시 시도');
-  expect(conflictToastText).not.toBe('프롬프트를 고정했습니다.');
+  expect(conflictToastText).toContain('try again');
+  expect(conflictToastText).not.toBe('Prompt pinned.');
   await expect
     .poll(async () => {
       const prompt = (await extension.getPromptRecords()).find(
@@ -2276,7 +2433,7 @@ test('shows an error toast when copying fails and keeps the popup open', async (
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('프롬프트 복사에 실패했습니다.');
+    .toBe('Could not copy the prompt.');
   await expect.poll(async () => {
     return await page.evaluate(() => document.activeElement?.id ?? null);
   }).toBe('prompt-textarea');
@@ -2301,7 +2458,7 @@ test('keeps the popup open when body read fails before copying', async ({
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('프롬프트 본문을 읽지 못했습니다.');
+    .toBe('Could not read the prompt body.');
   await expect(await getComposerText(page)).toBe('/ ');
   await expect(
     await page.evaluate(() => navigator.clipboard.readText()),
@@ -2345,7 +2502,7 @@ test('shows an error toast when prompt storage cannot be read for the trigger', 
 
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('프롬프트 목록을 읽지 못했습니다.');
+    .toBe('Could not read the prompt list.');
   await waitForPromptPopupToClose(page);
   await expect(await getComposerText(page)).toBe('/ ');
 });
@@ -2365,7 +2522,7 @@ test('shows an error toast when trigger cleanup fails', async ({
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('입력창 정리에 실패했습니다.');
+    .toBe('Could not clean up the input field.');
   await expect(await getComposerText(page)).toBe('x');
 });
 

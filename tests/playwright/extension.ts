@@ -16,6 +16,10 @@ import {
   type PromptitRuntimeRequest,
   type PromptitRuntimeResponse,
 } from '../../src/runtime/messages';
+import {
+  LANGUAGE_PREFERENCE_STORAGE_KEY,
+  type LanguagePreference,
+} from '../../src/shared/i18n';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = path.dirname(currentFilePath);
@@ -50,6 +54,10 @@ export type LoadedExtension = {
   getPromptRecords: () => Promise<PromptRecord[]>;
   setPromptRecords: (records: PromptRecord[]) => Promise<void>;
   deletePromptBody: (id: string) => Promise<void>;
+  getLanguagePreference: () => Promise<unknown>;
+  setLanguagePreference: (preference: LanguagePreference) => Promise<void>;
+  clearLanguagePreference: () => Promise<void>;
+  getBrowserUiLanguage: () => Promise<string>;
   getPromptStorageRevision: () => Promise<unknown>;
   getChromeStorageLocalSnapshot: () => Promise<Record<string, unknown>>;
   failPromptStorageRevisionWrites: (message?: string) => Promise<void>;
@@ -58,6 +66,10 @@ export type LoadedExtension = {
   ) => Promise<PromptitRuntimeResponse>;
   sendRawRuntimeMessage: (message: unknown) => Promise<unknown>;
   close: () => Promise<void>;
+};
+
+export type LaunchExtensionOptions = {
+  browserLocale?: string;
 };
 
 const PROMPT_DATABASE_NAME = 'promptit';
@@ -116,7 +128,9 @@ async function configureBrowserEnvironment(): Promise<() => void> {
   return () => restoreBrowserEnvironment(previousEnvironment);
 }
 
-export async function launchExtension(): Promise<LoadedExtension> {
+export async function launchExtension(
+  options: LaunchExtensionOptions = {},
+): Promise<LoadedExtension> {
   assertBuiltExtension();
   const restoreConfiguredEnvironment = await configureBrowserEnvironment();
   let context: BrowserContext | null = null;
@@ -128,9 +142,11 @@ export async function launchExtension(): Promise<LoadedExtension> {
     );
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: !isHeaded,
+      locale: options.browserLocale,
       args: [
         `--disable-extensions-except=${extensionPath}`,
         `--load-extension=${extensionPath}`,
+        ...(options.browserLocale ? [`--lang=${options.browserLocale}`] : []),
       ],
     });
   } catch (error) {
@@ -498,6 +514,38 @@ export async function launchExtension(): Promise<LoadedExtension> {
     async deletePromptBody(id) {
       await evaluatePromptDatabase<void>('delete-body', id);
       await publishPromptStorageRevision();
+    },
+    async getLanguagePreference() {
+      const serviceWorker = await getServiceWorker();
+
+      return await serviceWorker.evaluate(async (storageKey) => {
+        const result = await chrome.storage.local.get(storageKey);
+        return result[storageKey] as unknown;
+      }, LANGUAGE_PREFERENCE_STORAGE_KEY);
+    },
+    async setLanguagePreference(preference) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async ({ storageKey, nextPreference }) => {
+        await chrome.storage.local.set({
+          [storageKey]: nextPreference,
+        });
+      }, {
+        storageKey: LANGUAGE_PREFERENCE_STORAGE_KEY,
+        nextPreference: preference,
+      });
+    },
+    async clearLanguagePreference() {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async (storageKey) => {
+        await chrome.storage.local.remove(storageKey);
+      }, LANGUAGE_PREFERENCE_STORAGE_KEY);
+    },
+    async getBrowserUiLanguage() {
+      const serviceWorker = await getServiceWorker();
+
+      return await serviceWorker.evaluate(() => chrome.i18n.getUILanguage());
     },
     async getPromptStorageRevision() {
       const serviceWorker = await getServiceWorker();

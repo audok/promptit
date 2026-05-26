@@ -108,6 +108,7 @@ test.describe('chatgpt.com live smoke', () => {
   test('opens the options page from the empty state on chatgpt.com', async ({
     extension,
   }) => {
+    await extension.setLanguagePreference('ko');
     await extension.setPromptRecords([]);
 
     const page = await extension.context.newPage();

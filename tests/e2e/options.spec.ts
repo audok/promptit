@@ -34,6 +34,7 @@ const test = base.extend<{
 }>({
   extension: async ({}, use) => {
     const extension = await launchExtension();
+    await extension.setLanguagePreference('ko');
     await use(extension);
     await extension.close();
   },
@@ -44,7 +45,7 @@ const BODY_LOAD_ERROR_MESSAGE =
 const PROMPT_GROUP_CROSS_REORDER_MESSAGE =
   '고정됨 목록과 일반 목록 사이에서는 끌어서 순서를 바꿀 수 없습니다.';
 
-async function openOptionsPage(
+async function openOptionsPageShell(
   extension: LoadedExtension,
   setupPage?: (page: Page) => Promise<void>,
 ): Promise<Page> {
@@ -60,6 +61,11 @@ async function openOptionsPage(
 
   await expect(page).toHaveTitle(/promptit Settings/i);
   await expect(page.getByText('promptit')).toBeVisible();
+
+  return page;
+}
+
+async function expectKoreanOptionsLanding(page: Page): Promise<void> {
   await expect(
     page.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
   ).toBeVisible();
@@ -69,7 +75,24 @@ async function openOptionsPage(
   await expect(page.getByLabel('/ space')).toBeVisible();
   await expect(page.locator('kbd').filter({ hasText: '/' })).toBeVisible();
   await expect(page.locator('kbd').filter({ hasText: 'Space' })).toBeVisible();
+}
 
+async function expectEnglishOptionsLanding(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('heading', { name: 'Save and paste prompts.' }),
+  ).toBeVisible();
+  await expect(page.getByText(/ChatGPT and Gemini/)).toBeVisible();
+  await expect(page.getByLabel('/ Space')).toBeVisible();
+  await expect(page.locator('kbd').filter({ hasText: '/' })).toBeVisible();
+  await expect(page.locator('kbd').filter({ hasText: 'Space' })).toBeVisible();
+}
+
+async function openOptionsPage(
+  extension: LoadedExtension,
+  setupPage?: (page: Page) => Promise<void>,
+): Promise<Page> {
+  const page = await openOptionsPageShell(extension, setupPage);
+  await expectKoreanOptionsLanding(page);
   return page;
 }
 
@@ -227,6 +250,131 @@ function getPromptListCreateButton(page: Page): Locator {
 
 function getPromptCard(page: Page, title: string): Locator {
   return getPromptListButtons(page).filter({ hasText: title }).first();
+}
+
+async function expectPromptMetaValuesToUseTwoLineLayout(
+  promptCard: Locator,
+): Promise<void> {
+  await expect(promptCard.getByTestId('prompt-meta-line')).toHaveCount(2);
+
+  const metaLineLayout = await promptCard
+    .getByTestId('prompt-meta-line')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const element = node as HTMLElement;
+        const label = element.querySelector('[data-testid="prompt-meta-label"]');
+        const value = element.querySelector('[data-testid="prompt-meta-value"]');
+        const style = getComputedStyle(element);
+        const valueStyle =
+          value instanceof HTMLElement ? getComputedStyle(value) : null;
+        const labelRect =
+          label instanceof HTMLElement ? label.getBoundingClientRect() : null;
+        const valueRect =
+          value instanceof HTMLElement ? value.getBoundingClientRect() : null;
+
+        return {
+          display: style.display,
+          lineHeight: style.lineHeight,
+          overflow: style.overflow,
+          textOverflow: valueStyle?.textOverflow ?? null,
+          valueStartsAfterLabel:
+            labelRect !== null && valueRect !== null
+              ? valueRect.top >= labelRect.bottom - 1
+              : false,
+          verticalGap:
+            labelRect !== null && valueRect !== null
+              ? valueRect.top - labelRect.bottom
+              : null,
+          whiteSpace: valueStyle?.whiteSpace ?? null,
+        };
+      }),
+    );
+  const metaLineOverflowStates = await promptCard
+    .getByTestId('prompt-meta-line')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const element = node as HTMLElement;
+
+        return element.scrollWidth > element.clientWidth + 1;
+      }),
+    );
+
+  expect(metaLineLayout).toHaveLength(2);
+  expect(metaLineOverflowStates).toEqual([false, false]);
+
+  for (const layout of metaLineLayout) {
+    expect(layout.display).toBe('grid');
+    expect(layout.lineHeight).toBe('16px');
+    expect(layout.overflow).toBe('visible');
+    expect(layout.textOverflow).not.toBe('ellipsis');
+    expect(layout.valueStartsAfterLabel).toBe(true);
+    expect(layout.verticalGap).not.toBeNull();
+    expect(layout.verticalGap as number).toBeLessThanOrEqual(2);
+    expect(layout.whiteSpace).not.toBe('nowrap');
+  }
+}
+
+async function getTypographyStyle(locator: Locator): Promise<{
+  fontWeight: number;
+  letterSpacing: number;
+  textTransform: string;
+}> {
+  return await locator.evaluate((node) => {
+    const style = getComputedStyle(node as HTMLElement);
+
+    return {
+      fontWeight: Number(style.fontWeight),
+      letterSpacing: Number.parseFloat(style.letterSpacing),
+      textTransform: style.textTransform,
+    };
+  });
+}
+
+async function expectPromptListMicrocopyTypography(
+  page: Page,
+  promptTitle: string,
+  locale: 'ko' | 'en',
+): Promise<void> {
+  const promptCard = page
+    .getByTestId('prompt-card')
+    .filter({ hasText: promptTitle })
+    .first();
+  const compactLabelLocators = [
+    promptCard.getByTestId('prompt-group-label'),
+    promptCard.getByTestId('prompt-char-count'),
+    page.getByTestId('prompt-delete-button').first(),
+  ];
+
+  for (const labelLocator of compactLabelLocators) {
+    const style = await getTypographyStyle(labelLocator);
+
+    expect(style.textTransform).toBe('uppercase');
+    expect(style.letterSpacing).toBeGreaterThan(1);
+
+    if (locale === 'ko') {
+      expect(style.fontWeight).toBeGreaterThanOrEqual(800);
+    } else {
+      expect(style.fontWeight).toBeGreaterThanOrEqual(600);
+      expect(style.fontWeight).toBeLessThanOrEqual(700);
+    }
+  }
+
+  const metaLabelWeights = await promptCard
+    .getByTestId('prompt-meta-label')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => Number(getComputedStyle(node as HTMLElement).fontWeight)),
+    );
+
+  expect(metaLabelWeights).toHaveLength(2);
+
+  for (const fontWeight of metaLabelWeights) {
+    if (locale === 'ko') {
+      expect(fontWeight).toBeGreaterThanOrEqual(800);
+    } else {
+      expect(fontWeight).toBeGreaterThanOrEqual(600);
+      expect(fontWeight).toBeLessThanOrEqual(700);
+    }
+  }
 }
 
 function getPromptDragHandle(page: Page, title: string): Locator {
@@ -425,6 +573,174 @@ async function expectRawRuntimeMessageNotAccepted(
 
 test('opens the options page', async ({ extension }) => {
   await openOptionsPage(extension);
+});
+
+test('uses English browser UI language when preference is browser default', async () => {
+  const extension = await launchExtension({ browserLocale: 'en-US' });
+
+  try {
+    await extension.clearLanguagePreference();
+
+    await expect
+      .poll(async () => await extension.getLanguagePreference())
+      .toBeUndefined();
+    await expect
+      .poll(async () => await extension.getBrowserUiLanguage())
+      .toMatch(/^en(?:-|$)/i);
+
+    const page = await openOptionsPageShell(extension);
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expectEnglishOptionsLanding(page);
+    await expect(
+      page.getByRole('button', {
+        name: /Open language menu: System, current English/,
+      }),
+    ).toBeVisible();
+  } finally {
+    await extension.close();
+  }
+});
+
+test('falls back to Korean for unsupported browser UI language in browser default mode', async () => {
+  const extension = await launchExtension();
+
+  try {
+    await extension.clearLanguagePreference();
+
+    const page = await openOptionsPage(extension, async (nextPage) => {
+      await nextPage.addInitScript(() => {
+        Object.defineProperty(chrome.i18n, 'getUILanguage', {
+          configurable: true,
+          value: () => 'fr-FR',
+        });
+      });
+    });
+
+    await expect
+      .poll(async () => await extension.getLanguagePreference())
+      .toBeUndefined();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
+    await expect(
+      page.getByRole('button', { name: /언어 메뉴 열기: 시스템, 현재 한국어/ }),
+    ).toBeVisible();
+    expect(await page.evaluate(() => chrome.i18n.getUILanguage())).toBe('fr-FR');
+  } finally {
+    await extension.close();
+  }
+});
+
+test('uses heavier Korean prompt list microcopy to match English visual density', async ({
+  extension,
+}) => {
+  const koreanPrompt = createPromptRecord({
+    id: 'korean-list-microcopy-density',
+    title: '한국어 라벨',
+    content: '본문',
+    normalOrder: 1,
+  });
+
+  await extension.setPromptRecords([koreanPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await expectPromptListMicrocopyTypography(page, koreanPrompt.title, 'ko');
+});
+
+test('switches options UI to English while keeping fixed literals and Korean prompt data unchanged', async ({
+  extension,
+}) => {
+  const koreanPrompt = createPromptRecord({
+    id: 'english-options-korean-prompt',
+    title: '한국어 제목',
+    content: '한국어 본문은 번역되면 안 됩니다.',
+    createdAt: '2026-05-24T10:17:00.000Z',
+    updatedAt: '2026-05-26T08:44:00.000Z',
+    normalOrder: 1,
+  });
+
+  await extension.setPromptRecords([koreanPrompt]);
+
+  const page = await openOptionsPage(extension);
+
+  await page.getByRole('button', { name: /언어 메뉴 열기/ }).click();
+  await page.getByRole('menuitemradio', { name: 'English' }).click();
+
+  await expect.poll(async () => await extension.getLanguagePreference()).toBe('en');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(
+    page.getByRole('heading', { name: 'Save and paste prompts.' }),
+  ).toBeVisible();
+  await expect(page.getByText(/ChatGPT and Gemini/)).toBeVisible();
+  await expect(page.getByText('promptit')).toBeVisible();
+  await expect(page.getByLabel('/ Space')).toBeVisible();
+  await expect(page.locator('kbd').filter({ hasText: '/' })).toBeVisible();
+  await expect(page.locator('kbd').filter({ hasText: 'Space' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Saved prompts' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add prompt' })).toBeVisible();
+  await expect(page.getByText('Prompt list')).toBeVisible();
+  await expect(page.getByText('Editor').first()).toBeVisible();
+
+  await expect(page.getByText(koreanPrompt.title)).toBeVisible();
+  await expectPromptMetaValuesToUseTwoLineLayout(
+    page.getByTestId('prompt-card').filter({ hasText: koreanPrompt.title }).first(),
+  );
+  await expectPromptListMicrocopyTypography(page, koreanPrompt.title, 'en');
+  await page.getByRole('button', { name: `Edit ${koreanPrompt.title}` }).click();
+  await expect(page.getByRole('heading', { name: 'Edit prompt' })).toBeVisible();
+  await expect(page.locator('form').getByRole('textbox', { name: /Title/ }))
+    .toHaveValue(koreanPrompt.title);
+  await expect(page.locator('form').getByRole('textbox', { name: /Body/ }))
+    .toHaveValue(koreanPrompt.content);
+
+  const englishPromptList = page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name: 'Saved prompts' }) });
+  await englishPromptList.getByRole('button', {
+    name: 'Add prompt',
+    exact: true,
+  }).click();
+  await page.locator('form').getByRole('textbox', { name: /Title/ }).fill('   ');
+  await page.locator('form').getByRole('textbox', { name: /Body/ }).fill('   ');
+  await page.locator('form').getByRole('button', { name: 'Add prompt' }).click();
+  await expect(page.getByText('Body cannot be empty.')).toBeVisible();
+
+  await page.locator('form').getByRole('textbox', { name: /Title/ })
+    .fill('새 한국어 제목');
+  await page.locator('form').getByRole('textbox', { name: /Body/ })
+    .fill('새 한국어 본문도 그대로 저장됩니다.');
+  await page.locator('form').getByRole('button', { name: 'Add prompt' }).click();
+  await expect(getOptionsToast(page)).toContainText('Prompt saved.');
+
+  await page.locator('form').getByRole('textbox', { name: /Title/ })
+    .fill('Unsaved draft');
+  await page.locator('form').getByRole('textbox', { name: /Body/ })
+    .fill('Unsaved body');
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      'You have unsaved changes. Discard them and continue?',
+    );
+    await dialog.dismiss();
+  });
+  await page.getByRole('button', { name: `Edit ${koreanPrompt.title}` }).click();
+  await expect(page.locator('form').getByRole('textbox', { name: /Title/ }))
+    .toHaveValue('Unsaved draft');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      'You have unsaved changes. Discard them and continue?',
+    );
+    await dialog.accept();
+  });
+  await page.getByRole('button', { name: `Edit ${koreanPrompt.title}` }).click();
+  await expect(page.locator('form').getByRole('textbox', { name: /Title/ }))
+    .toHaveValue(koreanPrompt.title);
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(`Delete "${koreanPrompt.title}" prompt?`);
+    await dialog.dismiss();
+  });
+  await page.getByRole('button', { name: 'Delete prompt', exact: true }).click();
 });
 
 test('creates and updates prompts from the options page', async ({
@@ -1591,7 +1907,9 @@ test('does not announce reorder success or mutate storage when move prompt confl
   await pressPromptHandleKey(page, '충돌 두 번째', 'ArrowUp');
 
   await expect(
-    page.getByRole('alert').filter({ hasText: 'mock move conflict' }),
+    page.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
   ).toBeVisible();
   await expect(
     page.locator('body'),
@@ -2562,7 +2880,9 @@ test('preserves prompts and shows a load error when prompt storage reads fail', 
     });
   });
 
-  await expect(page.getByText('mock list metas failure')).toBeVisible();
+  await expect(page.getByText(
+    '저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요.',
+  )).toBeVisible();
   await expect(
     page.getByText(
       '아직 저장된 프롬프트가 없습니다. 오른쪽 편집기에서 프롬프트를 추가하세요.',
@@ -2734,7 +3054,9 @@ test('uses atomic record save so conflicts cannot partially commit editor change
   await getPromptSubmitButton(page, '프롬프트 수정').click();
 
   await expect(
-    page.getByRole('alert').filter({ hasText: 'mock atomic record conflict' }),
+    page.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
   ).toBeVisible();
 
   const requestTypes = await page.evaluate(() =>
@@ -2813,7 +3135,9 @@ test('shows an error when saving fails', async ({ extension }) => {
 
   await createPromptFromOptions(page, '저장 실패', '저장 실패를 검증한다.');
 
-  await expect(page.getByRole('alert').filter({ hasText: 'mock create failure' })).toBeVisible();
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트 저장 중 오류가 발생했습니다.',
+  );
   await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
 });
 
@@ -2844,7 +3168,9 @@ test('shows an error when deleting fails', async ({ extension }) => {
     .getByRole('button', { name: '프롬프트 삭제', exact: true })
     .click();
 
-  await expect(page.getByRole('alert').filter({ hasText: 'mock delete failure' })).toBeVisible();
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트 삭제 중 오류가 발생했습니다.',
+  );
   await expect
     .poll(async () => (await extension.getPromptRecords()).map((prompt) => prompt.id))
     .toEqual(['delete-failure']);
