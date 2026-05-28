@@ -20,6 +20,10 @@ import {
   LANGUAGE_PREFERENCE_STORAGE_KEY,
   type LanguagePreference,
 } from '../../src/shared/i18n';
+import {
+  THEME_PREFERENCE_STORAGE_KEY,
+  type ThemePreference,
+} from '../../src/shared/theme';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = path.dirname(currentFilePath);
@@ -57,6 +61,9 @@ export type LoadedExtension = {
   getLanguagePreference: () => Promise<unknown>;
   setLanguagePreference: (preference: LanguagePreference) => Promise<void>;
   clearLanguagePreference: () => Promise<void>;
+  getThemePreference: () => Promise<unknown>;
+  setThemePreference: (preference: ThemePreference) => Promise<void>;
+  clearThemePreference: () => Promise<void>;
   getBrowserUiLanguage: () => Promise<string>;
   getPromptStorageRevision: () => Promise<unknown>;
   getChromeStorageLocalSnapshot: () => Promise<Record<string, unknown>>;
@@ -541,6 +548,33 @@ export async function launchExtension(
       await serviceWorker.evaluate(async (storageKey) => {
         await chrome.storage.local.remove(storageKey);
       }, LANGUAGE_PREFERENCE_STORAGE_KEY);
+    },
+    async getThemePreference() {
+      const serviceWorker = await getServiceWorker();
+
+      return await serviceWorker.evaluate(async (storageKey) => {
+        const result = await chrome.storage.local.get(storageKey);
+        return result[storageKey] as unknown;
+      }, THEME_PREFERENCE_STORAGE_KEY);
+    },
+    async setThemePreference(preference) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async ({ storageKey, nextPreference }) => {
+        await chrome.storage.local.set({
+          [storageKey]: nextPreference,
+        });
+      }, {
+        storageKey: THEME_PREFERENCE_STORAGE_KEY,
+        nextPreference: preference,
+      });
+    },
+    async clearThemePreference() {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async (storageKey) => {
+        await chrome.storage.local.remove(storageKey);
+      }, THEME_PREFERENCE_STORAGE_KEY);
     },
     async getBrowserUiLanguage() {
       const serviceWorker = await getServiceWorker();

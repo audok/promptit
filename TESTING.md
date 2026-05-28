@@ -122,6 +122,7 @@ pnpm test:e2e:live
 ```
 
 `test:e2e`와 `test:e2e:live`는 동시에 돌리지 않는 편이 좋다. 둘 다 fixture web server를 쓰기 때문에 병렬 실행 시 포트 바인드 경고가 날 수 있다.
+`pnpm build`, `pnpm build:test`, `pnpm test:e2e`, `pnpm test:e2e:live`는 같은 `dist/`를 공유하므로 같은 작업트리에서 병렬 실행하지 않는다. 실행 중 `dist/`가 production manifest로 바뀌면 localhost fixture가 content script match에서 빠져 `data-promptit-ready`가 붙지 않는 실패처럼 보일 수 있다. 이 경우 제품 회귀로 판단하기 전에 `pnpm build:test` 후 실패한 e2e를 다시 실행한다.
 확장을 수동으로 로드하거나 패키징할 때는 마지막 명령이 production `pnpm build`와 `pnpm check:manifest`를 완료한 상태여야 한다.
 
 ## 수동 최종 체크

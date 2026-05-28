@@ -237,6 +237,125 @@ function getOptionsToast(page: Page): Locator {
   return page.getByTestId('options-toast');
 }
 
+async function getOptionsThemeSnapshot(page: Page): Promise<{
+  bodyBackgroundImage: string;
+  colorScheme: string;
+  heroBorderColor: string;
+  mainBackgroundColor: string;
+  rootTheme: string | null;
+  textColor: string;
+}> {
+  return await page.evaluate(() => {
+    const hero = document.querySelector('section');
+    const main = document.querySelector('main');
+
+    if (!(hero instanceof HTMLElement) || !(main instanceof HTMLElement)) {
+      throw new Error('Options theme snapshot could not find required elements.');
+    }
+
+    const rootStyle = getComputedStyle(document.documentElement);
+    const bodyStyle = getComputedStyle(document.body);
+    const heroStyle = getComputedStyle(hero);
+    const mainStyle = getComputedStyle(main);
+
+    return {
+      bodyBackgroundImage: bodyStyle.backgroundImage,
+      colorScheme: rootStyle.colorScheme,
+      heroBorderColor: heroStyle.borderTopColor,
+      mainBackgroundColor: mainStyle.backgroundColor,
+      rootTheme: document.documentElement.dataset.promptitTheme ?? null,
+      textColor: mainStyle.color,
+    };
+  });
+}
+
+function parseRgbChannels(value: string): number[] {
+  const match = /^rgba?\((\d+), (\d+), (\d+)(?:, [\d.]+)?\)$/.exec(value);
+
+  expect(match).not.toBeNull();
+
+  return match?.slice(1, 4).map(Number) ?? [];
+}
+
+function parseRgbColor(value: string): {
+  alpha: number;
+  blue: number;
+  green: number;
+  red: number;
+} {
+  const match = /^rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)$/.exec(value);
+
+  expect(match).not.toBeNull();
+
+  return {
+    red: Number(match?.[1] ?? 0),
+    green: Number(match?.[2] ?? 0),
+    blue: Number(match?.[3] ?? 0),
+    alpha: match?.[4] === undefined ? 1 : Number(match[4]),
+  };
+}
+
+function expectRgbChannelsBetween(
+  value: string,
+  minimum: number,
+  maximum: number,
+): void {
+  for (const channel of parseRgbChannels(value)) {
+    expect(channel).toBeGreaterThanOrEqual(minimum);
+    expect(channel).toBeLessThanOrEqual(maximum);
+  }
+}
+
+function expectNeutralRgbChannelsBetween(
+  value: string,
+  minimum: number,
+  maximum: number,
+): void {
+  const channels = parseRgbChannels(value);
+
+  for (const channel of channels) {
+    expect(channel).toBeGreaterThanOrEqual(minimum);
+    expect(channel).toBeLessThanOrEqual(maximum);
+  }
+
+  expect(Math.max(...channels) - Math.min(...channels)).toBeLessThanOrEqual(8);
+}
+
+function expectRgbaAlphaBetween(
+  value: string,
+  minimum: number,
+  maximum: number,
+): void {
+  const color = parseRgbColor(value);
+
+  expect(color.alpha).toBeGreaterThanOrEqual(minimum);
+  expect(color.alpha).toBeLessThanOrEqual(maximum);
+}
+
+async function getComputedThemeStyle(locator: Locator): Promise<{
+  backgroundColor: string;
+  borderColor: string;
+  color: string;
+  fontSize: string;
+  fontWeight: number;
+  lineHeight: string;
+}> {
+  await expect(locator).toBeVisible();
+
+  return await locator.evaluate((node) => {
+    const style = getComputedStyle(node as HTMLElement);
+
+    return {
+      backgroundColor: style.backgroundColor,
+      borderColor: style.borderTopColor,
+      color: style.color,
+      fontSize: style.fontSize,
+      fontWeight: Number(style.fontWeight),
+      lineHeight: style.lineHeight,
+    };
+  });
+}
+
 function getPromptListButtons(page: Page): Locator {
   return getPromptList(page).locator('[data-testid="prompt-card"]');
 }
@@ -315,6 +434,7 @@ async function expectPromptMetaValuesToUseTwoLineLayout(
 }
 
 async function getTypographyStyle(locator: Locator): Promise<{
+  fontSize: string;
   fontWeight: number;
   letterSpacing: number;
   textTransform: string;
@@ -323,6 +443,7 @@ async function getTypographyStyle(locator: Locator): Promise<{
     const style = getComputedStyle(node as HTMLElement);
 
     return {
+      fontSize: style.fontSize,
       fontWeight: Number(style.fontWeight),
       letterSpacing: Number.parseFloat(style.letterSpacing),
       textTransform: style.textTransform,
@@ -344,10 +465,15 @@ async function expectPromptListMicrocopyTypography(
     promptCard.getByTestId('prompt-char-count'),
     page.getByTestId('prompt-delete-button').first(),
   ];
+  const compactLabelStyles = await Promise.all(
+    compactLabelLocators.map((labelLocator) => getTypographyStyle(labelLocator)),
+  );
+  const baseCompactLabelStyle = compactLabelStyles[0];
 
-  for (const labelLocator of compactLabelLocators) {
-    const style = await getTypographyStyle(labelLocator);
-
+  for (const style of compactLabelStyles) {
+    expect(style.fontSize).toBe(baseCompactLabelStyle.fontSize);
+    expect(style.fontWeight).toBe(baseCompactLabelStyle.fontWeight);
+    expect(style.letterSpacing).toBe(baseCompactLabelStyle.letterSpacing);
     expect(style.textTransform).toBe('uppercase');
     expect(style.letterSpacing).toBeGreaterThan(1);
 
@@ -628,6 +754,252 @@ test('falls back to Korean for unsupported browser UI language in browser defaul
   } finally {
     await extension.close();
   }
+});
+
+test('theme selector defaults to system and persists dark preference', async ({
+  extension,
+}) => {
+  const themePrompt = createPromptRecord({
+    id: 'theme-dark-palette-contract',
+    title: '다크 팔레트 검증',
+    content: '선택 행과 편집 버튼의 다크 팔레트를 검증한다.',
+  });
+
+  await extension.clearThemePreference();
+  await extension.setPromptRecords([themePrompt]);
+
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.emulateMedia({ colorScheme: 'light' });
+  });
+
+  const themeSelector = page.getByRole('group', { name: '테마 선택' });
+  const systemButton = themeSelector.getByRole('button', { name: '시스템' });
+  const darkButton = themeSelector.getByRole('button', { name: '다크' });
+
+  await expect(systemButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(await getOptionsThemeSnapshot(page)).toMatchObject({
+    colorScheme: 'light',
+    mainBackgroundColor: 'rgb(245, 245, 244)',
+    rootTheme: 'light',
+  });
+
+  const promptCard = getPromptCard(page, themePrompt.title);
+  await promptCard.click();
+  await expect(
+    page.getByRole('heading', { name: '프롬프트 수정' }),
+  ).toBeVisible();
+  await expect(getContentInput(page)).toHaveValue(themePrompt.content);
+
+  const createButtonStyle = await getComputedThemeStyle(
+    getPromptListCreateButton(page),
+  );
+  const cancelEditButtonStyle = await getComputedThemeStyle(
+    getPromptEditor(page).getByRole('button', {
+      name: '편집 취소',
+      exact: true,
+    }),
+  );
+  expect(cancelEditButtonStyle.fontSize).toBe(createButtonStyle.fontSize);
+  expect(cancelEditButtonStyle.fontWeight).toBe(createButtonStyle.fontWeight);
+  expect(cancelEditButtonStyle.lineHeight).toBe(createButtonStyle.lineHeight);
+
+  const lightPromptListSurfaceStyle = await getComputedThemeStyle(
+    getPromptList(page),
+  );
+  const lightPromptEditorIdleSurfaceStyle = await getComputedThemeStyle(
+    getPromptEditor(page),
+  );
+  expect(lightPromptEditorIdleSurfaceStyle.backgroundColor).toBe(
+    lightPromptListSurfaceStyle.backgroundColor,
+  );
+  expect(lightPromptEditorIdleSurfaceStyle.backgroundColor).toBe(
+    'rgb(255, 255, 255)',
+  );
+
+  await getTitleInput(page).focus();
+
+  const lightPromptEditorActiveSurfaceStyle = await getComputedThemeStyle(
+    getPromptEditor(page),
+  );
+  expect(lightPromptEditorActiveSurfaceStyle.backgroundColor).toBe(
+    'rgb(246, 248, 245)',
+  );
+
+  await darkButton.click();
+  await expect.poll(async () => await extension.getThemePreference()).toBe('dark');
+  await expect(darkButton).toHaveAttribute('aria-pressed', 'true');
+
+  const darkSnapshot = await getOptionsThemeSnapshot(page);
+  expect(darkSnapshot.rootTheme).toBe('dark');
+  expect(darkSnapshot.colorScheme).toBe('dark');
+  expectRgbChannelsBetween(darkSnapshot.mainBackgroundColor, 19, 21);
+  expectRgbChannelsBetween(darkSnapshot.heroBorderColor, 45, 70);
+  expectRgbChannelsBetween(darkSnapshot.textColor, 238, 242);
+
+  const promptListSurfaceStyle = await getComputedThemeStyle(getPromptList(page));
+  const promptEditorIdleSurfaceStyle = await getComputedThemeStyle(
+    getPromptEditor(page),
+  );
+  expect(promptEditorIdleSurfaceStyle.backgroundColor).toBe(
+    promptListSurfaceStyle.backgroundColor,
+  );
+  expect(promptEditorIdleSurfaceStyle.backgroundColor).toBe('rgb(34, 34, 34)');
+
+  await getTitleInput(page).focus();
+
+  const promptEditorActiveSurfaceStyle = await getComputedThemeStyle(
+    getPromptEditor(page),
+  );
+  const promptEditorSurface = parseRgbColor(
+    promptEditorActiveSurfaceStyle.backgroundColor,
+  );
+  const promptEditorSurfaceChannels = [
+    promptEditorSurface.red,
+    promptEditorSurface.green,
+    promptEditorSurface.blue,
+  ];
+  const darkMainSurface = parseRgbColor(darkSnapshot.mainBackgroundColor);
+
+  expect(Math.min(...promptEditorSurfaceChannels)).toBeGreaterThanOrEqual(34);
+  expect(Math.max(...promptEditorSurfaceChannels)).toBeLessThanOrEqual(46);
+  expect(
+    Math.max(...promptEditorSurfaceChannels) -
+      Math.min(...promptEditorSurfaceChannels),
+  ).toBeLessThanOrEqual(5);
+  expect(promptEditorSurface.green - promptEditorSurface.red).toBeGreaterThanOrEqual(
+    2,
+  );
+  expect(promptEditorSurface.green - promptEditorSurface.blue).toBeGreaterThanOrEqual(
+    2,
+  );
+  expect(promptEditorSurface.green - promptEditorSurface.red).toBeLessThanOrEqual(
+    4,
+  );
+  expect(promptEditorSurface.green - promptEditorSurface.blue).toBeLessThanOrEqual(
+    4,
+  );
+  expect(
+    Math.max(
+      Math.abs(promptEditorSurface.red - darkMainSurface.red),
+      Math.abs(promptEditorSurface.green - darkMainSurface.green),
+      Math.abs(promptEditorSurface.blue - darkMainSurface.blue),
+    ),
+  ).toBeLessThanOrEqual(28);
+
+  const selectedPromptSurface = promptCard.locator('xpath=../..');
+
+  await expect
+    .poll(async () => (await getComputedThemeStyle(selectedPromptSurface)).backgroundColor)
+    .toBe('rgb(62, 62, 62)');
+
+  const selectedPromptSurfaceStyle = await getComputedThemeStyle(
+    selectedPromptSurface,
+  );
+  expectNeutralRgbChannelsBetween(
+    selectedPromptSurfaceStyle.backgroundColor,
+    58,
+    66,
+  );
+  expectNeutralRgbChannelsBetween(selectedPromptSurfaceStyle.borderColor, 96, 112);
+
+  const selectedPromptBadgeStyle = await getComputedThemeStyle(
+    promptCard.getByTestId('prompt-group-label'),
+  );
+  expectRgbaAlphaBetween(selectedPromptBadgeStyle.backgroundColor, 0.08, 0.13);
+
+  const primaryButtonStyle = await getComputedThemeStyle(
+    getPromptSubmitButton(page, '프롬프트 수정'),
+  );
+  expectNeutralRgbChannelsBetween(primaryButtonStyle.backgroundColor, 48, 82);
+
+  const destructiveButtonStyle = await getComputedThemeStyle(
+    getPromptEditor(page).getByRole('button', {
+      name: '프롬프트 삭제',
+      exact: true,
+    }),
+  );
+  expect(destructiveButtonStyle.fontSize).toBe(primaryButtonStyle.fontSize);
+  expect(destructiveButtonStyle.fontWeight).toBe(primaryButtonStyle.fontWeight);
+  expect(destructiveButtonStyle.lineHeight).toBe(primaryButtonStyle.lineHeight);
+
+  const destructiveSurface = parseRgbColor(destructiveButtonStyle.backgroundColor);
+  const destructiveBorder = parseRgbColor(destructiveButtonStyle.borderColor);
+  const destructiveText = parseRgbColor(destructiveButtonStyle.color);
+
+  expect(destructiveSurface.red).toBeGreaterThan(destructiveSurface.green);
+  expect(destructiveSurface.red).toBeGreaterThan(destructiveSurface.blue);
+  expect(destructiveSurface.red).toBeLessThanOrEqual(140);
+  expect(destructiveSurface.alpha).toBeGreaterThanOrEqual(0.2);
+  expect(destructiveSurface.alpha).toBeLessThanOrEqual(0.45);
+  expect(destructiveBorder.red).toBeGreaterThan(destructiveBorder.green);
+  expect(destructiveBorder.red).toBeGreaterThan(destructiveBorder.blue);
+  expect(destructiveBorder.alpha).toBeGreaterThanOrEqual(0.3);
+  expect(destructiveBorder.alpha).toBeLessThanOrEqual(0.6);
+  expect(destructiveText.red).toBeGreaterThan(destructiveText.green);
+  expect(destructiveText.red).toBeGreaterThan(destructiveText.blue);
+  expect(destructiveText.red).toBeLessThanOrEqual(245);
+  expect(destructiveText.green).toBeGreaterThanOrEqual(120);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('group', { name: '테마 선택' }).getByRole('button', { name: '다크' }))
+    .toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await getOptionsThemeSnapshot(page)).rootTheme)
+    .toBe('dark');
+});
+
+test('theme selector follows dark system media and light overrides it', async ({
+  extension,
+}) => {
+  await extension.clearThemePreference();
+
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.emulateMedia({ colorScheme: 'dark' });
+  });
+
+  const themeSelector = page.getByRole('group', { name: '테마 선택' });
+  const systemButton = themeSelector.getByRole('button', { name: '시스템' });
+  const lightButton = themeSelector.getByRole('button', { name: '라이트' });
+
+  await expect(systemButton).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await getOptionsThemeSnapshot(page)).rootTheme)
+    .toBe('dark');
+  await expect(await getOptionsThemeSnapshot(page)).toMatchObject({
+    colorScheme: 'dark',
+    rootTheme: 'dark',
+  });
+
+  await lightButton.click();
+
+  await expect.poll(async () => await extension.getThemePreference()).toBe('light');
+  await expect(lightButton).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await getOptionsThemeSnapshot(page)).rootTheme)
+    .toBe('light');
+  await expect(await getOptionsThemeSnapshot(page)).toMatchObject({
+    colorScheme: 'light',
+    mainBackgroundColor: 'rgb(245, 245, 244)',
+    rootTheme: 'light',
+  });
+});
+
+test('theme selector reacts to storage changes from another extension page', async ({
+  extension,
+}) => {
+  await extension.setThemePreference('dark');
+
+  const page = await openOptionsPage(extension);
+  await expect.poll(async () => (await getOptionsThemeSnapshot(page)).rootTheme)
+    .toBe('dark');
+
+  await extension.setThemePreference('light');
+
+  await expect(page.getByRole('group', { name: '테마 선택' }).getByRole('button', { name: '라이트' }))
+    .toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await getOptionsThemeSnapshot(page)).rootTheme)
+    .toBe('light');
+  await expect(await getOptionsThemeSnapshot(page)).toMatchObject({
+    colorScheme: 'light',
+    mainBackgroundColor: 'rgb(245, 245, 244)',
+  });
 });
 
 test('uses heavier Korean prompt list microcopy to match English visual density', async ({

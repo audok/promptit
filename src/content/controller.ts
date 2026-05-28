@@ -30,6 +30,15 @@ import {
   type RuntimeMessageDescriptor,
 } from '../shared/i18n';
 import {
+  getSystemTheme,
+  readThemePreference,
+  resolveThemePreference,
+  subscribeToSystemTheme,
+  subscribeToThemePreference,
+  type ResolvedTheme,
+  type ThemePreference,
+} from '../shared/theme';
+import {
   buildLauncherItems,
   isPromptLauncherItem,
   type LauncherItem,
@@ -55,7 +64,7 @@ import {
   type CloseReason,
   type PopupSessionState,
 } from './session';
-import { showToast } from './toast';
+import { setToastTheme, showToast } from './toast';
 import {
   markTestReady,
   prepareOpenOptionsFailureForTest,
@@ -77,6 +86,9 @@ const IME_PROCESS_KEY = 'Process';
 
 let currentLocale: Locale = FALLBACK_LOCALE;
 let contentUiLanguage: string | undefined;
+let currentThemePreference: ThemePreference = 'system';
+let currentTheme: ResolvedTheme = 'light';
+let contentSystemTheme: ResolvedTheme = 'light';
 
 type ClosePopupOptions = {
   reopenOnCleanupFailure?: boolean;
@@ -99,6 +111,7 @@ export function bootstrapContentScript(): void {
 
   window.__promptitContentInitialized__ = true;
   initializeContentLanguageState();
+  initializeContentThemeState();
 
   const session = createSessionState();
   const popup = new PromptPopup({
@@ -135,11 +148,36 @@ export function bootstrapContentScript(): void {
   subscribeToLanguagePreference((preference) => {
     applyContentLanguagePreference(preference, session, popup, adapter);
   });
+  void readThemePreference()
+    .then((preference) => {
+      applyContentThemePreference(preference, session, popup, adapter);
+    })
+    .catch((error) => {
+      console.error('[promptit] Failed to read theme preference.', error);
+    });
+  subscribeToThemePreference((preference) => {
+    applyContentThemePreference(preference, session, popup, adapter);
+  });
+  subscribeToSystemTheme((theme) => {
+    contentSystemTheme = theme;
+    if (currentThemePreference === 'system') {
+      applyContentThemePreference('system', session, popup, adapter);
+    }
+  });
 
   registerDocumentListeners(session, popup, adapter);
   registerWindowListeners(session, popup, adapter);
   registerTestListeners(requestOpenOptionsPage);
   markTestReady();
+}
+
+function initializeContentThemeState(): void {
+  contentSystemTheme = getSystemTheme();
+  currentTheme = resolveThemePreference({
+    preference: 'system',
+    systemTheme: contentSystemTheme,
+  });
+  setToastTheme(currentTheme);
 }
 
 function initializeContentLanguageState(): void {
@@ -194,6 +232,48 @@ function refreshOpenPopupLocalization(
     activeCell,
     adapter.getPopupAnchorRect(session.activeInput),
     currentLocale,
+    currentTheme,
+  );
+}
+
+function applyContentThemePreference(
+  preference: ThemePreference,
+  session: PopupSessionState,
+  popup: PromptPopup,
+  adapter: BaseAdapter,
+): void {
+  currentThemePreference = preference;
+  const nextTheme = resolveThemePreference({
+    preference,
+    systemTheme: contentSystemTheme,
+  });
+
+  if (nextTheme === currentTheme) {
+    return;
+  }
+
+  currentTheme = nextTheme;
+  setToastTheme(currentTheme);
+  refreshOpenPopupTheme(session, popup, adapter);
+}
+
+function refreshOpenPopupTheme(
+  session: PopupSessionState,
+  popup: PromptPopup,
+  adapter: BaseAdapter,
+): void {
+  if (session.status !== 'open' || !session.activeInput?.isConnected) {
+    popup.setTheme(currentTheme);
+    return;
+  }
+
+  popup.setTheme(currentTheme);
+  popup.update(
+    session.items,
+    session.activeCell,
+    adapter.getPopupAnchorRect(session.activeInput),
+    currentLocale,
+    currentTheme,
   );
 }
 
@@ -411,6 +491,7 @@ function registerWindowListeners(
         session.activeCell,
         adapter.getPopupAnchorRect(session.activeInput),
         currentLocale,
+        currentTheme,
       );
     },
     true,
@@ -520,6 +601,7 @@ async function resolveTriggerCheck(
     session.activeCell,
     adapter.getPopupAnchorRect(input),
     currentLocale,
+    currentTheme,
   );
 
   const observer = new MutationObserver(() => {
@@ -1065,6 +1147,7 @@ function applyPromptMetaUpdatesToPopup(
     activeCell,
     adapter.getPopupAnchorRect(session.activeInput),
     currentLocale,
+    currentTheme,
   );
 }
 
@@ -1093,6 +1176,7 @@ function handlePromptStorageChange(
     activeCell,
     adapter.getPopupAnchorRect(session.activeInput),
     currentLocale,
+    currentTheme,
   );
 }
 

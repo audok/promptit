@@ -91,15 +91,15 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
 
   return (
     <article
-      className="rounded-[28px] border border-stone-200 bg-[#F6F8F5] p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
+      className="rounded-[28px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-editor-surface-idle)] p-6 shadow-[var(--promptit-options-shadow-panel)] focus-within:bg-[var(--promptit-options-editor-surface-active)]"
       aria-busy={props.isEditorLoading || props.isSaving}
     >
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-xs font-medium leading-[17px] text-stone-600">
+          <p className="text-xs font-medium leading-[17px] text-[var(--promptit-options-text-muted)]">
             {t('options.editor.eyebrow')}
           </p>
-          <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-stone-950">
+          <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-[var(--promptit-options-text-primary)]">
             {props.isEditing
               ? t('options.editor.heading.edit')
               : t('options.editor.heading.add')}
@@ -108,7 +108,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         {props.isEditing ? (
           <button
             type="button"
-            className={`rounded-full border border-stone-300 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:border-stone-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+            className={`inline-flex h-[38px] shrink-0 items-center justify-center rounded-full border border-[var(--promptit-options-border-strong)] bg-[var(--promptit-options-surface-70)] px-[19px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-body)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
             onClick={props.onCancelEdit}
             disabled={props.isSaving}
           >
@@ -141,7 +141,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
 
       {props.conflictState.status === 'stale' ? (
         <div
-          className="mt-5 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900"
+          className="mt-5 rounded-[20px] border border-[var(--promptit-options-warning-border)] bg-[var(--promptit-options-warning-surface)] px-4 py-4 text-sm text-[var(--promptit-options-warning-text)]"
           role="status"
           aria-live="polite"
           id={conflictHintId}
@@ -150,7 +150,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
           <p className="mt-2 leading-6">
             {formatMessage(props.conflictState.message)}
           </p>
-          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-amber-700">
+          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[var(--promptit-options-warning-muted)]">
             {t('options.editor.latestSaved', {
               timestamp: formatTimestamp(
                 props.conflictState.currentPrompt.updatedAt,
@@ -163,7 +163,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
 
       {props.bodyLoadState.status === 'loading' ? (
         <div
-          className="mt-5 rounded-[20px] border border-stone-200 bg-white/70 px-4 py-4 text-sm text-stone-600"
+          className="mt-5 rounded-[20px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface-70)] px-4 py-4 text-sm text-[var(--promptit-options-text-muted)]"
           role="status"
           aria-live="polite"
         >
@@ -173,7 +173,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
 
       {props.bodyLoadState.status === 'error' ? (
         <div
-          className="mt-5 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900"
+          className="mt-5 rounded-[20px] border border-[var(--promptit-options-danger-border)] bg-[var(--promptit-options-danger-surface)] px-4 py-4 text-sm text-[var(--promptit-options-danger-strong)]"
           role="status"
           aria-live="polite"
         >
@@ -202,7 +202,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
             onChange={(event) => {
               props.updateField('title', event.target.value);
             }}
-            className="w-full rounded-[18px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+            className="w-full rounded-[18px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-4 py-3 text-sm text-[var(--promptit-options-text-body)] shadow-[var(--promptit-options-shadow-input)] outline-none transition focus:border-[var(--promptit-options-border-hover)] focus:ring-2 focus:ring-[var(--promptit-options-border)]"
             placeholder={t('options.editor.titlePlaceholder')}
             maxLength={40}
             disabled={props.editorDisabled}
@@ -232,7 +232,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
             onChange={(event) => {
               props.updateField('content', event.target.value);
             }}
-            className="min-h-[220px] w-full rounded-[22px] border border-stone-200 bg-white px-4 py-4 text-sm leading-6 text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+            className="min-h-[220px] w-full rounded-[22px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-4 py-4 text-sm leading-6 text-[var(--promptit-options-text-body)] shadow-[var(--promptit-options-shadow-input)] outline-none transition focus:border-[var(--promptit-options-border-hover)] focus:ring-2 focus:ring-[var(--promptit-options-border)]"
             placeholder={
               props.isEditorLoading
                 ? t('options.editor.contentLoadingPlaceholder')
@@ -251,7 +251,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            className={`inline-flex h-10 min-w-32 items-center justify-center rounded-[20px] bg-[#161616] px-5 text-[14px] font-bold leading-none text-stone-50 shadow-[0_12px_24px_rgba(22,22,22,0.16)] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:bg-stone-500 ${BUTTON_FOCUS_CLASS}`}
+            className={`inline-flex h-10 min-w-32 items-center justify-center rounded-[20px] bg-[var(--promptit-options-primary-button)] px-5 text-[14px] font-bold leading-none text-[var(--promptit-options-text-inverse)] shadow-[var(--promptit-options-shadow-button)] transition hover:bg-[var(--promptit-options-primary-button-hover)] disabled:cursor-not-allowed disabled:bg-[var(--promptit-options-primary-button-disabled)] ${BUTTON_FOCUS_CLASS}`}
             disabled={props.editorDisabled || props.loadStateStatus === 'error'}
           >
             {props.isSaving
@@ -266,7 +266,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
           {props.isEditing ? (
             <button
               type="button"
-              className={`rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+              className={`inline-flex h-10 items-center justify-center rounded-[20px] border border-[var(--promptit-options-danger-border)] bg-[var(--promptit-options-danger-surface)] px-5 text-[14px] font-bold leading-none text-[var(--promptit-options-danger-text)] transition hover:border-[var(--promptit-options-danger-border-hover)] hover:bg-[var(--promptit-options-danger-surface-hover)] hover:text-[var(--promptit-options-danger-text-hover)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
               onClick={() => {
                 if (props.activePromptMeta) {
                   void props.onDeletePrompt(props.activePromptMeta);
