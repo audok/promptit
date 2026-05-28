@@ -760,6 +760,16 @@ async function getPopupThemeSnapshot(
   });
 }
 
+async function waitForPopupThemeSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+  theme: 'light' | 'dark',
+): Promise<Awaited<ReturnType<typeof getPopupThemeSnapshot>>> {
+  await expect.poll(async () => (await getPopupThemeSnapshot(page)).rootTheme)
+    .toBe(theme);
+
+  return await getPopupThemeSnapshot(page);
+}
+
 async function getToastVisualSnapshot(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<{
@@ -1234,12 +1244,12 @@ test('theme dark preference applies to the slash popup and updates while open', 
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
   await openPromptPopup(page);
 
-  await expect(await getPopupThemeSnapshot(page)).toMatchObject({
+  const darkSnapshot = await waitForPopupThemeSnapshot(page, 'dark');
+  await expect(darkSnapshot).toMatchObject({
     rootColorScheme: 'dark',
     rootTheme: 'dark',
   });
 
-  const darkSnapshot = await getPopupThemeSnapshot(page);
   expectRgbChannelsBetween(darkSnapshot.cardBackgroundColor, 14, 16);
   expect(parseRgbColor(darkSnapshot.cardBackgroundColor).alpha).toBeGreaterThanOrEqual(0.96);
   expect(parseRgbColor(darkSnapshot.cardBackgroundColor).alpha).toBeLessThanOrEqual(0.99);
@@ -1287,9 +1297,7 @@ test('theme dark preference applies to the slash popup and updates while open', 
   await extension.setThemePreference('light');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
-  await expect.poll(async () => (await getPopupThemeSnapshot(page)).rootTheme)
-    .toBe('light');
-  await expect(await getPopupThemeSnapshot(page)).toMatchObject({
+  await expect(await waitForPopupThemeSnapshot(page, 'light')).toMatchObject({
     rootColorScheme: 'light',
   });
 });
@@ -1304,8 +1312,7 @@ test('theme dark preference keeps the empty popup description readable on the ac
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
   await openPromptPopup(page);
 
-  const snapshot = await getPopupThemeSnapshot(page);
-  expect(snapshot.rootTheme).toBe('dark');
+  const snapshot = await waitForPopupThemeSnapshot(page, 'dark');
   expect(snapshot.activeCellLabel).toBe(
     'No saved prompts. Add your first prompt in settings.',
   );
