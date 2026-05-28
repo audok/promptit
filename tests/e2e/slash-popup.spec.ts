@@ -700,6 +700,66 @@ async function getToastAccessibilitySnapshot(
   });
 }
 
+async function getPopupThemeSnapshot(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<{
+  activeCellBackgroundColor: string | null;
+  activeCellLabel: string | null;
+  activeIconBadgeBackgroundColor: string | null;
+  activeIconBadgeColor: string | null;
+  cardBackgroundColor: string;
+  cardBorderColor: string;
+  descriptionColor: string | null;
+  rootColorScheme: string;
+  rootTheme: string | null;
+  rowActiveBackgroundColor: string;
+  rowActiveIndicatorColor: string;
+}> {
+  return await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const root = host?.shadowRoot?.querySelector('.promptit-root');
+    const card = host?.shadowRoot?.querySelector('[data-testid="promptit-popup"]');
+    const activeRow = host?.shadowRoot?.querySelector('[data-role="prompt-row"].is-active-row');
+    const activeCell = host?.shadowRoot?.querySelector('[data-role="prompt-cell"].is-active-cell');
+
+    if (
+      !(host instanceof HTMLElement) ||
+      !(root instanceof HTMLElement) ||
+      !(card instanceof HTMLElement) ||
+      !(activeRow instanceof HTMLElement) ||
+      !(activeCell instanceof HTMLElement)
+    ) {
+      throw new Error('Popup theme snapshot could not find the popup.');
+    }
+
+    const rootStyle = getComputedStyle(root);
+    const cardStyle = getComputedStyle(card);
+    const activeRowStyle = getComputedStyle(activeRow);
+    const activeRowIndicatorStyle = getComputedStyle(activeRow, '::before');
+    const activeCellStyle = getComputedStyle(activeCell);
+    const description = activeRow.querySelector('[class~="promptit-row-description"]');
+    const descriptionStyle =
+      description instanceof HTMLElement ? getComputedStyle(description) : null;
+    const activeIconBadge = activeCell.querySelector('[class~="promptit-row-action-badge"]');
+    const activeIconBadgeStyle =
+      activeIconBadge instanceof HTMLElement ? getComputedStyle(activeIconBadge) : null;
+
+    return {
+      activeCellBackgroundColor: activeCellStyle.backgroundColor,
+      activeCellLabel: activeCell.getAttribute('aria-label'),
+      activeIconBadgeBackgroundColor: activeIconBadgeStyle?.backgroundColor ?? null,
+      activeIconBadgeColor: activeIconBadgeStyle?.color ?? null,
+      cardBackgroundColor: cardStyle.backgroundColor,
+      cardBorderColor: cardStyle.borderTopColor,
+      descriptionColor: descriptionStyle?.color ?? null,
+      rootColorScheme: rootStyle.colorScheme,
+      rootTheme: root.dataset.promptitTheme ?? null,
+      rowActiveBackgroundColor: activeRowStyle.backgroundColor,
+      rowActiveIndicatorColor: activeRowIndicatorStyle.backgroundColor,
+    };
+  });
+}
+
 async function getToastVisualSnapshot(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<{
@@ -719,6 +779,7 @@ async function getToastVisualSnapshot(
   text: string | null;
   textOverflow: string;
   whiteSpace: string;
+  theme: string | null;
 }> {
   return await page.evaluate(() => {
     const host = document.querySelector('[data-promptit-toast-host]');
@@ -746,9 +807,69 @@ async function getToastVisualSnapshot(
       paddingTop: style.paddingTop,
       text: content.textContent,
       textOverflow: style.textOverflow,
+      theme: content.dataset.promptitTheme ?? null,
       whiteSpace: style.whiteSpace,
     };
   });
+}
+
+function parseRgbColor(value: string): {
+  alpha: number;
+  channels: number[];
+} {
+  const match = /^rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)$/.exec(value);
+
+  expect(match).not.toBeNull();
+
+  return {
+    alpha: match?.[4] === undefined ? 1 : Number(match[4]),
+    channels: match?.slice(1, 4).map(Number) ?? [],
+  };
+}
+
+function expectRgbChannelsAtLeast(value: string, minimum: number): void {
+  const { channels } = parseRgbColor(value);
+
+  for (const channel of channels) {
+    expect(channel).toBeGreaterThanOrEqual(minimum);
+  }
+}
+
+function expectRgbChannelsBetween(
+  value: string,
+  minimum: number,
+  maximum: number,
+): void {
+  const { channels } = parseRgbColor(value);
+
+  for (const channel of channels) {
+    expect(channel).toBeGreaterThanOrEqual(minimum);
+    expect(channel).toBeLessThanOrEqual(maximum);
+  }
+}
+
+function getRelativeLuminance(value: string): number {
+  const { alpha, channels } = parseRgbColor(value);
+  expect(alpha).toBe(1);
+
+  const [red, green, blue] = channels.map((channel) => {
+    const normalizedChannel = channel / 255;
+
+    return normalizedChannel <= 0.03928
+      ? normalizedChannel / 12.92
+      : ((normalizedChannel + 0.055) / 1.055) ** 2.4;
+  });
+
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function getContrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = getRelativeLuminance(foreground);
+  const backgroundLuminance = getRelativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
 async function getActiveElementSnapshot(
@@ -1101,6 +1222,103 @@ test('opens the slash popup from the contenteditable fixture', async ({
   await expect(page.locator('[data-testid="promptit-popup-host"]')).toBeVisible();
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect(await getPopupTitles(page)).toEqual(['번역', '회의록']);
+});
+
+test('theme dark preference applies to the slash popup and updates while open', async ({
+  extension,
+}) => {
+  await extension.setThemePreference('dark');
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  await expect(await getPopupThemeSnapshot(page)).toMatchObject({
+    rootColorScheme: 'dark',
+    rootTheme: 'dark',
+  });
+
+  const darkSnapshot = await getPopupThemeSnapshot(page);
+  expectRgbChannelsBetween(darkSnapshot.cardBackgroundColor, 30, 32);
+  expect(parseRgbColor(darkSnapshot.cardBackgroundColor).alpha).toBeGreaterThanOrEqual(0.96);
+  expect(parseRgbColor(darkSnapshot.cardBackgroundColor).alpha).toBeLessThanOrEqual(0.98);
+  expect(parseRgbColor(darkSnapshot.cardBorderColor).alpha).toBeGreaterThanOrEqual(0.08);
+  expect(parseRgbColor(darkSnapshot.cardBorderColor).alpha).toBeLessThanOrEqual(0.12);
+  expectRgbChannelsBetween(darkSnapshot.rowActiveBackgroundColor, 54, 58);
+  expect(parseRgbColor(darkSnapshot.rowActiveIndicatorColor).alpha).toBe(0);
+  expect(darkSnapshot.activeCellLabel).toBe('Insert prompt: 번역');
+  expect(parseRgbColor(darkSnapshot.activeCellBackgroundColor ?? '').alpha).toBe(0);
+
+  await page.keyboard.press('ArrowRight');
+
+  await expect
+    .poll(async () => {
+      const snapshot = await getPopupThemeSnapshot(page);
+
+      return {
+        activeCellBackgroundAlpha: parseRgbColor(
+          snapshot.activeCellBackgroundColor ?? '',
+        ).alpha,
+        activeCellLabel: snapshot.activeCellLabel,
+        activeIconBadgeBackgroundColor:
+          snapshot.activeIconBadgeBackgroundColor,
+        activeIconBadgeColor: snapshot.activeIconBadgeColor,
+      };
+    })
+    .toMatchObject({
+      activeCellBackgroundAlpha: 0,
+      activeCellLabel: 'Copy prompt: 번역',
+      activeIconBadgeBackgroundColor: 'rgb(92, 92, 92)',
+      activeIconBadgeColor: 'rgb(255, 255, 255)',
+    });
+
+  const darkIconSnapshot = await getPopupThemeSnapshot(page);
+  expect(darkIconSnapshot.activeCellLabel).toBe('Copy prompt: 번역');
+  expectRgbChannelsBetween(darkIconSnapshot.rowActiveBackgroundColor, 54, 58);
+  expect(parseRgbColor(darkIconSnapshot.activeCellBackgroundColor ?? '').alpha).toBe(0);
+  expectRgbChannelsBetween(
+    darkIconSnapshot.activeIconBadgeBackgroundColor ?? '',
+    90,
+    94,
+  );
+  expectRgbChannelsBetween(darkIconSnapshot.activeIconBadgeColor ?? '', 252, 255);
+
+  await extension.setThemePreference('light');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect.poll(async () => (await getPopupThemeSnapshot(page)).rootTheme)
+    .toBe('light');
+  await expect(await getPopupThemeSnapshot(page)).toMatchObject({
+    rootColorScheme: 'light',
+  });
+});
+
+test('theme dark preference keeps the empty popup description readable on the active row', async ({
+  extension,
+}) => {
+  await extension.setThemePreference('dark');
+  await extension.setPromptRecords([]);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  const snapshot = await getPopupThemeSnapshot(page);
+  expect(snapshot.rootTheme).toBe('dark');
+  expect(snapshot.activeCellLabel).toBe(
+    'No saved prompts. Add your first prompt in settings.',
+  );
+  if (!snapshot.descriptionColor) {
+    throw new Error('Dark empty-state description color was not found.');
+  }
+
+  const descriptionContrastRatio = getContrastRatio(
+    snapshot.descriptionColor,
+    snapshot.rowActiveBackgroundColor,
+  );
+
+  expect(descriptionContrastRatio).toBeGreaterThanOrEqual(4.5);
 });
 
 test('localizes the Korean popup saved count with count first', async ({
@@ -1613,6 +1831,35 @@ test('copy success toast uses a compact text-only glass chip', async ({
       whiteSpace: 'nowrap',
     });
   expect((await getToastVisualSnapshot(page)).fontFamily).toContain('Pretendard');
+});
+
+test('theme dark preference applies inverted colors to copy success toast', async ({
+  extension,
+}) => {
+  await extension.setThemePreference('dark');
+  await extension.setPromptRecords(basePrompts);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe('Copy prompt: 번역');
+
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect
+    .poll(async () => await getToastVisualSnapshot(page))
+    .toMatchObject({
+      text: 'Prompt copied.',
+      theme: 'dark',
+    });
+
+  const snapshot = await getToastVisualSnapshot(page);
+  expectRgbChannelsBetween(snapshot.backgroundColor, 205, 225);
+  expectRgbChannelsBetween(snapshot.color, 15, 30);
 });
 
 test('fetches the latest prompt body when copying from an already-open popup', async ({

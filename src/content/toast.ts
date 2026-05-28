@@ -1,7 +1,10 @@
 import { getPromptitFontStyles } from './fonts';
+import { type ResolvedTheme } from '../shared/theme';
+import themeStyles from '../shared/theme.css?inline';
 
 let host: HTMLDivElement | null = null;
 let hideTimer: number | null = null;
+let currentTheme: ResolvedTheme = 'light';
 
 function ensureToastHost(): {
   content: HTMLDivElement;
@@ -10,6 +13,7 @@ function ensureToastHost(): {
     const content = host.shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
 
     if (content) {
+      applyToastTheme(content);
       return { content };
     }
   }
@@ -31,6 +35,7 @@ function ensureToastHost(): {
         all: initial;
       }
 
+      ${themeStyles}
       ${getPromptitFontStyles()}
 
       .promptit-toast {
@@ -41,11 +46,11 @@ function ensureToastHost(): {
         max-width: min(340px, calc(100vw - 32px));
         min-height: 34px;
         padding: 6px 16px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--promptit-toast-success-border);
         border-radius: 999px;
-        background: #2f2f2f;
-        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.14);
-        color: #fafaf9;
+        background: var(--promptit-toast-success-background);
+        box-shadow: var(--promptit-toast-shadow);
+        color: var(--promptit-toast-success-text);
         font-family: var(--promptit-font-family);
         font-size: 14px;
         font-weight: 700;
@@ -66,9 +71,9 @@ function ensureToastHost(): {
       }
 
       .promptit-toast[data-variant="error"] {
-        border-color: rgba(127, 29, 29, 0.16);
-        background: rgba(255, 255, 255, 0.96);
-        color: rgba(127, 29, 29, 0.92);
+        border-color: var(--promptit-toast-error-border);
+        background: var(--promptit-toast-error-background);
+        color: var(--promptit-toast-error-text);
       }
 
       .promptit-toast.is-visible {
@@ -102,7 +107,13 @@ function ensureToastHost(): {
     throw new Error('Promptit toast content element could not be created.');
   }
 
+  applyToastTheme(content);
   return { content };
+}
+
+function applyToastTheme(content: HTMLDivElement): void {
+  content.dataset.promptitTheme = currentTheme;
+  content.style.colorScheme = currentTheme;
 }
 
 function applyToastAccessibility(
@@ -126,6 +137,7 @@ export function showToast(
   variant: 'success' | 'error' = 'success',
 ): void {
   const { content } = ensureToastHost();
+  applyToastTheme(content);
   applyToastAccessibility(content, variant);
   content.dataset.variant = variant;
   content.textContent = message;
@@ -146,4 +158,18 @@ export function showToast(
 
 export function showCopyToast(message: string, variant: 'success' | 'error' = 'success'): void {
   showToast(message, variant);
+}
+
+export function setToastTheme(theme: ResolvedTheme): void {
+  currentTheme = theme;
+
+  if (!host?.isConnected || !host.shadowRoot) {
+    return;
+  }
+
+  const content = host.shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
+
+  if (content) {
+    applyToastTheme(content);
+  }
 }

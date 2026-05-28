@@ -63,8 +63,11 @@ const koMessages = {
   'options.language.menuButtonAria':
     '언어 메뉴 열기: {preference}, 현재 {locale}',
   'options.language.menuLabel': '언어 선택',
-  'options.theme.switchToMoon': '테마 아이콘을 달로 전환',
-  'options.theme.switchToSun': '테마 아이콘을 해로 전환',
+  'options.theme.selectorLabel': '테마 선택',
+  'options.theme.option.system': '시스템',
+  'options.theme.option.light': '라이트',
+  'options.theme.option.dark': '다크',
+  'options.theme.saveFailed': '테마 설정을 저장하지 못했습니다.',
   'options.hero.title': '프롬프트를 저장하고 붙여 넣으세요.',
   'options.hero.copyBeforeShortcut':
     '이 페이지에서 프롬프트를 저장하고 수정하세요. {chatgpt}, {gemini} 사이트에서',
@@ -227,8 +230,11 @@ const enMessages: Record<I18nKey, string> = {
   'options.language.menuButtonAria':
     'Open language menu: {preference}, current {locale}',
   'options.language.menuLabel': 'Language selection',
-  'options.theme.switchToMoon': 'Switch theme icon to moon',
-  'options.theme.switchToSun': 'Switch theme icon to sun',
+  'options.theme.selectorLabel': 'Theme selection',
+  'options.theme.option.system': 'System',
+  'options.theme.option.light': 'Light',
+  'options.theme.option.dark': 'Dark',
+  'options.theme.saveFailed': 'Could not save the theme setting.',
   'options.hero.title': 'Save and paste prompts.',
   'options.hero.copyBeforeShortcut':
     'Save and edit prompts here. On {chatgpt} and {gemini}, type',

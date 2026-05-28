@@ -21,8 +21,8 @@ export function OptionsToast(props: OptionsToastProps) {
       : { role: 'status' as const, 'aria-live': 'polite' as const };
   const toneClass =
     props.toast.tone === 'error'
-      ? 'border-rose-200/45 text-[#fafaf9]'
-      : 'border-white/15 text-[#fafaf9]';
+      ? 'border-[var(--promptit-options-toast-error-border)] bg-[var(--promptit-options-toast-error-background)] text-[var(--promptit-options-toast-error-text)]'
+      : 'border-[var(--promptit-options-toast-success-border)] bg-[var(--promptit-options-toast-success-background)] text-[var(--promptit-options-toast-success-text)]';
 
   return (
     <div
@@ -31,7 +31,7 @@ export function OptionsToast(props: OptionsToastProps) {
     >
       <div
         key={props.toast.id}
-        className={`max-w-[min(34rem,100%)] rounded-full border bg-[#2f2f2f] px-4 py-3 text-center text-sm font-medium leading-5 shadow-[0_18px_42px_rgba(0,0,0,0.24)] ${toneClass}`}
+        className={`max-w-[min(34rem,100%)] rounded-full border px-4 py-3 text-center text-sm font-medium leading-5 shadow-[var(--promptit-options-toast-shadow)] ${toneClass}`}
         aria-atomic="true"
         {...liveRegionProps}
       >

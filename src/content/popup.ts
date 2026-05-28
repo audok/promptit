@@ -10,6 +10,7 @@ import {
   translate,
   type Locale,
 } from '../shared/i18n';
+import { type ResolvedTheme } from '../shared/theme';
 import {
   isSameActiveCell,
   type ActiveCellColumn,
@@ -17,6 +18,7 @@ import {
 } from './session';
 import { getPromptitFontStyles } from './fonts';
 import popupStyles from './popup.css?inline';
+import themeStyles from '../shared/theme.css?inline';
 
 type PopupOptions = {
   onSelect: (item: LauncherItem) => void;
@@ -32,6 +34,7 @@ type RenderState = {
   activeCell: PopupActiveCell | null;
   isBusy: boolean;
   locale: Locale;
+  theme: ResolvedTheme;
 };
 
 const VIEWPORT_MARGIN_PX = 12;
@@ -117,6 +120,7 @@ export class PromptPopup {
     activeCell: null,
     isBusy: false,
     locale: FALLBACK_LOCALE,
+    theme: 'light',
   };
 
   constructor(private readonly options: PopupOptions) {}
@@ -126,12 +130,14 @@ export class PromptPopup {
     activeCell: PopupActiveCell | null,
     anchorRect: DOMRect,
     locale: Locale,
+    theme: ResolvedTheme,
   ): void {
     this.state = {
       items,
       activeCell: cloneActiveCell(activeCell),
       isBusy: false,
       locale,
+      theme,
     };
     this.activeCellAnnouncement = '';
 
@@ -148,9 +154,10 @@ export class PromptPopup {
     activeCell: PopupActiveCell | null,
     anchorRect: DOMRect,
     locale: Locale,
+    theme: ResolvedTheme,
   ): void {
     if (!this.host) {
-      this.show(items, activeCell, anchorRect, locale);
+      this.show(items, activeCell, anchorRect, locale, theme);
       return;
     }
 
@@ -159,6 +166,7 @@ export class PromptPopup {
       activeCell: cloneActiveCell(activeCell),
       isBusy: this.state.isBusy,
       locale,
+      theme,
     };
 
     this.render();
@@ -175,7 +183,17 @@ export class PromptPopup {
       activeCell: null,
       isBusy: false,
       locale: FALLBACK_LOCALE,
+      theme: 'light',
     };
+  }
+
+  setTheme(theme: ResolvedTheme): void {
+    this.state.theme = theme;
+    const root = this.shadowRoot?.querySelector<HTMLElement>('.promptit-root');
+    root?.setAttribute('data-promptit-theme', theme);
+    if (root) {
+      root.style.colorScheme = theme;
+    }
   }
 
   setActiveCell(activeCell: PopupActiveCell | null): void {
@@ -302,8 +320,8 @@ export class PromptPopup {
     });
 
     this.shadowRoot.innerHTML = `
-      <style>${popupStyles}${getPromptitFontStyles()}</style>
-      <div class="promptit-root">
+      <style>${themeStyles}${popupStyles}${getPromptitFontStyles()}</style>
+      <div class="promptit-root" data-promptit-theme="${this.state.theme}" style="color-scheme: ${this.state.theme}">
         <section
           class="promptit-card${this.state.isBusy ? ' is-busy' : ''}"
           role="region"

@@ -1,0 +1,249 @@
+:root,
+[data-promptit-theme="light"] {
+  color-scheme: light;
+  --promptit-options-body-background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.72), transparent 34%),
+    linear-gradient(180deg, #f5efeb 0%, #efe6e0 100%);
+  --promptit-options-app-background: #f5f5f4;
+  --promptit-options-text-primary: #0c0a09;
+  --promptit-options-text-body: #1c1917;
+  --promptit-options-text-muted: #57534e;
+  --promptit-options-text-subtle: #78716c;
+  --promptit-options-text-faint: #d6d3d1;
+  --promptit-options-text-inverse: #fafaf9;
+  --promptit-options-surface: #ffffff;
+  --promptit-options-surface-90: rgba(255, 255, 255, 0.9);
+  --promptit-options-surface-70: rgba(255, 255, 255, 0.7);
+  --promptit-options-surface-muted: #fafaf9;
+  --promptit-options-editor-surface: #f6f8f5;
+  --promptit-options-border: #e7e5e4;
+  --promptit-options-border-80: rgba(231, 229, 228, 0.8);
+  --promptit-options-border-strong: #d6d3d1;
+  --promptit-options-border-hover: #d6d3d1;
+  --promptit-options-border-active: #2f2f2f;
+  --promptit-options-shadow-hero: 0 28px 70px rgba(66, 53, 49, 0.08);
+  --promptit-options-shadow-panel: 0 18px 42px rgba(66, 53, 49, 0.06);
+  --promptit-options-shadow-card: 0 18px 38px rgba(28, 25, 23, 0.04);
+  --promptit-options-shadow-control: 0 10px 22px rgba(28, 25, 23, 0.05);
+  --promptit-options-shadow-menu: 0 18px 40px rgba(28, 25, 23, 0.12);
+  --promptit-options-shadow-active: 0 18px 34px rgba(47, 47, 47, 0.14);
+  --promptit-options-shadow-button: 0 12px 24px rgba(22, 22, 22, 0.16);
+  --promptit-options-shadow-small: 0 8px 18px rgba(68, 58, 48, 0.05);
+  --promptit-options-shadow-input: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --promptit-options-kbd-shadow: inset 0 -1px 0 rgba(68, 64, 59, 0.14);
+  --promptit-options-control-hover: #fafaf9;
+  --promptit-options-menu-hover: #f5f5f4;
+  --promptit-options-dismiss-hover: rgba(0, 0, 0, 0.05);
+  --promptit-options-active-surface: #2f2f2f;
+  --promptit-options-active-hover: #292524;
+  --promptit-options-active-text: #fafaf9;
+  --promptit-options-active-muted: #d6d3d1;
+  --promptit-options-active-subtle: #e7e5e4;
+  --promptit-options-active-faint: #78716c;
+  --promptit-options-active-inner-border-strong: rgba(255, 255, 255, 0.2);
+  --promptit-options-active-inner-border: rgba(255, 255, 255, 0.15);
+  --promptit-options-active-inner-bg-strong: rgba(255, 255, 255, 0.15);
+  --promptit-options-active-inner-bg: rgba(255, 255, 255, 0.1);
+  --promptit-options-active-inner-bg-hover: rgba(255, 255, 255, 0.2);
+  --promptit-options-active-danger-border: rgba(254, 205, 211, 0.2);
+  --promptit-options-active-danger-bg: rgba(244, 63, 94, 0.15);
+  --promptit-options-active-danger-bg-hover: rgba(244, 63, 94, 0.25);
+  --promptit-options-active-danger-text: #ffe4e6;
+  --promptit-options-label-pinned-background: #1c1917;
+  --promptit-options-label-pinned-text: #fafaf9;
+  --promptit-options-primary-button: #161616;
+  --promptit-options-primary-button-hover: #2a2a2a;
+  --promptit-options-primary-button-disabled: #78716c;
+  --promptit-options-focus-ring: #d6d3d1;
+  --promptit-options-focus-offset: #ffffff;
+  --promptit-options-danger-surface: #fff1f2;
+  --promptit-options-danger-surface-hover: #ffe4e6;
+  --promptit-options-danger-border: #fecdd3;
+  --promptit-options-danger-border-hover: #fda4af;
+  --promptit-options-danger-text: #be123c;
+  --promptit-options-danger-text-hover: #9f1239;
+  --promptit-options-danger-strong: #881337;
+  --promptit-options-success-surface: #ecfdf5;
+  --promptit-options-success-text: #047857;
+  --promptit-options-warning-surface: #fffbeb;
+  --promptit-options-warning-border: #fde68a;
+  --promptit-options-warning-text: #78350f;
+  --promptit-options-warning-muted: #b45309;
+  --promptit-options-toast-success-background: #2f2f2f;
+  --promptit-options-toast-success-border: rgba(255, 255, 255, 0.15);
+  --promptit-options-toast-success-text: #fafaf9;
+  --promptit-options-toast-error-background: #2f2f2f;
+  --promptit-options-toast-error-border: rgba(254, 205, 211, 0.45);
+  --promptit-options-toast-error-text: #fafaf9;
+  --promptit-options-toast-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+
+  --promptit-popup-text: #1b1b1b;
+  --promptit-popup-card-border: rgba(0, 0, 0, 0.06);
+  --promptit-popup-card-background: rgba(255, 255, 255, 0.94);
+  --promptit-popup-card-shadow: 0 32px 64px rgba(0, 0, 0, 0.15);
+  --promptit-popup-card-overlay:
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.55), transparent 30%),
+    radial-gradient(circle at 85% 82%, rgba(0, 0, 0, 0.035), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
+  --promptit-popup-chrome-background: rgba(0, 0, 0, 0.04);
+  --promptit-popup-footer-background: rgba(0, 0, 0, 0.05);
+  --promptit-popup-chrome-border: rgba(0, 0, 0, 0.05);
+  --promptit-popup-black: #000000;
+  --promptit-popup-muted-action: rgba(0, 0, 0, 0.5);
+  --promptit-popup-footer-text: rgba(0, 0, 0, 0.3);
+  --promptit-popup-scrollbar: rgba(0, 0, 0, 0.08);
+  --promptit-popup-scrollbar-hover: rgba(0, 0, 0, 0.15);
+  --promptit-popup-row-background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04)),
+    rgba(0, 0, 0, 0.012);
+  --promptit-popup-row-hover-background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)),
+    rgba(0, 0, 0, 0.022);
+  --promptit-popup-row-active-background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12)),
+    rgba(0, 0, 0, 0.034);
+  --promptit-popup-row-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px rgba(0, 0, 0, 0.04);
+  --promptit-popup-row-active-indicator: rgba(0, 0, 0, 0.4);
+  --promptit-popup-leading-badge: rgba(0, 0, 0, 0.2);
+  --promptit-popup-leading-badge-active: rgba(0, 0, 0, 0.42);
+  --promptit-popup-leading-badge-empty: rgba(0, 0, 0, 0.34);
+  --promptit-popup-title: rgba(0, 0, 0, 0.6);
+  --promptit-popup-description: rgba(0, 0, 0, 0.48);
+  --promptit-popup-cell-active-background: rgba(255, 255, 255, 0.1);
+  --promptit-popup-icon-active-background: rgba(255, 255, 255, 0.08);
+  --promptit-popup-icon-hover-background: rgba(0, 0, 0, 0.03);
+  --promptit-popup-icon-selected-background: rgba(0, 0, 0, 0.06);
+  --promptit-popup-icon-selected-color: #000000;
+  --promptit-popup-icon-disabled: rgba(0, 0, 0, 0.2);
+
+  --promptit-toast-success-background: #2f2f2f;
+  --promptit-toast-success-border: rgba(255, 255, 255, 0.08);
+  --promptit-toast-success-text: #fafaf9;
+  --promptit-toast-error-background: rgba(255, 255, 255, 0.96);
+  --promptit-toast-error-border: rgba(127, 29, 29, 0.16);
+  --promptit-toast-error-text: rgba(127, 29, 29, 0.92);
+  --promptit-toast-shadow: 0 16px 38px rgba(0, 0, 0, 0.14);
+}
+
+/* Final neutral graphite dark palette. Keep light tokens unchanged. */
+[data-promptit-theme="dark"] {
+  color-scheme: dark;
+  --promptit-options-body-background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.035), transparent 36%),
+    linear-gradient(180deg, #151515 0%, #131313 100%);
+  --promptit-options-app-background: #141414;
+  --promptit-options-text-primary: #f1f1f1;
+  --promptit-options-text-body: #eeeeee;
+  --promptit-options-text-muted: #b8b8b8;
+  --promptit-options-text-subtle: #8d8d8d;
+  --promptit-options-text-faint: #626262;
+  --promptit-options-text-inverse: #f1f1f1;
+  --promptit-options-surface: #222222;
+  --promptit-options-surface-90: rgba(34, 34, 34, 0.9);
+  --promptit-options-surface-70: rgba(34, 34, 34, 0.72);
+  --promptit-options-surface-muted: #242424;
+  --promptit-options-editor-surface: #262926;
+  --promptit-options-border: #343434;
+  --promptit-options-border-80: rgba(52, 52, 52, 0.8);
+  --promptit-options-border-strong: #424242;
+  --promptit-options-border-hover: #4a4a4a;
+  --promptit-options-border-active: #686868;
+  --promptit-options-shadow-hero: 0 24px 54px rgba(0, 0, 0, 0.22);
+  --promptit-options-shadow-panel: 0 14px 32px rgba(0, 0, 0, 0.18);
+  --promptit-options-shadow-card: 0 12px 26px rgba(0, 0, 0, 0.14);
+  --promptit-options-shadow-control: 0 8px 16px rgba(0, 0, 0, 0.14);
+  --promptit-options-shadow-menu: 0 14px 32px rgba(0, 0, 0, 0.26);
+  --promptit-options-shadow-active: 0 12px 24px rgba(0, 0, 0, 0.18);
+  --promptit-options-shadow-button: 0 10px 20px rgba(0, 0, 0, 0.22);
+  --promptit-options-shadow-small: 0 8px 18px rgba(0, 0, 0, 0.12);
+  --promptit-options-shadow-input: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --promptit-options-kbd-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+  --promptit-options-control-hover: #2a2a2a;
+  --promptit-options-menu-hover: #282828;
+  --promptit-options-dismiss-hover: rgba(255, 255, 255, 0.07);
+  --promptit-options-active-surface: #3e3e3e;
+  --promptit-options-active-hover: #464646;
+  --promptit-options-active-text: #f1f1f1;
+  --promptit-options-active-muted: #b8b8b8;
+  --promptit-options-active-subtle: #d8d8d8;
+  --promptit-options-active-faint: #8d8d8d;
+  --promptit-options-active-inner-border-strong: rgba(255, 255, 255, 0.18);
+  --promptit-options-active-inner-border: rgba(255, 255, 255, 0.13);
+  --promptit-options-active-inner-bg-strong: rgba(255, 255, 255, 0.12);
+  --promptit-options-active-inner-bg: rgba(255, 255, 255, 0.09);
+  --promptit-options-active-inner-bg-hover: rgba(255, 255, 255, 0.16);
+  --promptit-options-active-danger-border: rgba(190, 100, 100, 0.28);
+  --promptit-options-active-danger-bg: rgba(126, 42, 42, 0.18);
+  --promptit-options-active-danger-bg-hover: rgba(126, 42, 42, 0.25);
+  --promptit-options-active-danger-text: #e5a3a3;
+  --promptit-options-label-pinned-background: #3a3a3a;
+  --promptit-options-label-pinned-text: #f1f1f1;
+  --promptit-options-primary-button: #3f3f3f;
+  --promptit-options-primary-button-hover: #484848;
+  --promptit-options-primary-button-disabled: #555555;
+  --promptit-options-focus-ring: #666666;
+  --promptit-options-focus-offset: #141414;
+  --promptit-options-danger-surface: rgba(95, 42, 42, 0.3);
+  --promptit-options-danger-surface-hover: rgba(116, 48, 48, 0.36);
+  --promptit-options-danger-border: rgba(184, 92, 92, 0.42);
+  --promptit-options-danger-border-hover: rgba(202, 110, 110, 0.55);
+  --promptit-options-danger-text: #e1a2a2;
+  --promptit-options-danger-text-hover: #edb5b5;
+  --promptit-options-danger-strong: #f0b8b8;
+  --promptit-options-success-surface: rgba(40, 112, 82, 0.26);
+  --promptit-options-success-text: #9fd8bd;
+  --promptit-options-warning-surface: rgba(126, 94, 42, 0.24);
+  --promptit-options-warning-border: rgba(182, 148, 75, 0.36);
+  --promptit-options-warning-text: #e0c184;
+  --promptit-options-warning-muted: #c9a767;
+  --promptit-options-toast-success-background: #d7d7d7;
+  --promptit-options-toast-success-border: rgba(255, 255, 255, 0.16);
+  --promptit-options-toast-success-text: #191919;
+  --promptit-options-toast-error-background: #d7d7d7;
+  --promptit-options-toast-error-border: rgba(143, 53, 53, 0.35);
+  --promptit-options-toast-error-text: #7f2525;
+  --promptit-options-toast-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+
+  --promptit-popup-text: #eeeeee;
+  --promptit-popup-card-border: rgba(255, 255, 255, 0.1);
+  --promptit-popup-card-background: rgba(31, 31, 31, 0.97);
+  --promptit-popup-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  --promptit-popup-card-overlay:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+  --promptit-popup-chrome-background: rgba(255, 255, 255, 0.045);
+  --promptit-popup-footer-background: rgba(255, 255, 255, 0.055);
+  --promptit-popup-chrome-border: rgba(255, 255, 255, 0.07);
+  --promptit-popup-black: #f1f1f1;
+  --promptit-popup-muted-action: rgba(238, 238, 238, 0.62);
+  --promptit-popup-footer-text: rgba(238, 238, 238, 0.42);
+  --promptit-popup-scrollbar: rgba(255, 255, 255, 0.14);
+  --promptit-popup-scrollbar-hover: rgba(255, 255, 255, 0.24);
+  --promptit-popup-row-background: rgba(255, 255, 255, 0.025);
+  --promptit-popup-row-hover-background: rgba(255, 255, 255, 0.055);
+  --promptit-popup-row-active-background: #383838;
+  --promptit-popup-row-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 -1px rgba(0, 0, 0, 0.16);
+  --promptit-popup-row-active-indicator: transparent;
+  --promptit-popup-leading-badge: #8d8d8d;
+  --promptit-popup-leading-badge-active: #b8b8b8;
+  --promptit-popup-leading-badge-empty: #aaaaaa;
+  --promptit-popup-title: #b8b8b8;
+  --promptit-popup-description: #a1a1a1;
+  --promptit-popup-cell-active-background: transparent;
+  --promptit-popup-icon-active-background: transparent;
+  --promptit-popup-icon-hover-background: #333333;
+  --promptit-popup-icon-selected-background: #5c5c5c;
+  --promptit-popup-icon-selected-color: #ffffff;
+  --promptit-popup-icon-disabled: rgba(238, 238, 238, 0.28);
+
+  --promptit-toast-success-background: #d6d6d6;
+  --promptit-toast-success-border: rgba(255, 255, 255, 0.18);
+  --promptit-toast-success-text: #171717;
+  --promptit-toast-error-background: #d6d6d6;
+  --promptit-toast-error-border: rgba(134, 48, 48, 0.35);
+  --promptit-toast-error-text: #7f2626;
+  --promptit-toast-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+}

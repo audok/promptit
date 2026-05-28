@@ -339,21 +339,21 @@ export function PromptList(props: PromptListProps) {
 
   return (
     <article
-      className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-[0_18px_42px_rgba(66,53,49,0.06)]"
+      className="rounded-[28px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] p-6 shadow-[var(--promptit-options-shadow-panel)]"
       aria-busy={props.loadStateStatus === 'loading' || props.isSaving}
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-medium leading-[17px] text-stone-600">
+          <p className="text-xs font-medium leading-[17px] text-[var(--promptit-options-text-muted)]">
             {t('options.list.eyebrow')}
           </p>
-          <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-stone-950">
+          <h2 className="mt-1.5 text-[22px] font-extrabold leading-tight text-[var(--promptit-options-text-primary)]">
             {t('options.list.heading')}
           </h2>
         </div>
         <button
           type="button"
-          className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 self-center rounded-full border border-stone-200 bg-white px-[19px] text-[14px] font-bold leading-none text-stone-950 shadow-[0_8px_18px_rgba(68,58,48,0.05)] transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+          className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 self-center rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-[19px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-small)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
           onClick={props.onCreatePrompt}
           disabled={props.isSaving}
         >
@@ -413,8 +413,8 @@ export function PromptList(props: PromptListProps) {
                   <div
                     className={`rounded-[24px] border px-4 py-4 transition ${
                       isActive
-                        ? 'border-[#2f2f2f] bg-[#2f2f2f] text-stone-50 shadow-[0_18px_34px_rgba(47,47,47,0.14)]'
-                        : 'border-stone-200 bg-stone-50 text-stone-900 hover:border-stone-300 hover:bg-stone-100'
+                        ? 'border-[var(--promptit-options-border-active)] bg-[var(--promptit-options-active-surface)] text-[var(--promptit-options-active-text)] shadow-[var(--promptit-options-shadow-active)]'
+                        : 'border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface-muted)] text-[var(--promptit-options-text-body)] hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-menu-hover)]'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -424,11 +424,11 @@ export function PromptList(props: PromptListProps) {
                           className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
                             isActive
                               ? prompt.pinned
-                                ? 'border-white/20 bg-white/15 text-white hover:bg-white/20'
-                                : 'border-white/15 bg-white/10 text-stone-300 hover:bg-white/15'
+                                ? 'border-[var(--promptit-options-active-inner-border-strong)] bg-[var(--promptit-options-active-inner-bg-strong)] text-[var(--promptit-options-active-text)] hover:bg-[var(--promptit-options-active-inner-bg-hover)]'
+                                : 'border-[var(--promptit-options-active-inner-border)] bg-[var(--promptit-options-active-inner-bg)] text-[var(--promptit-options-active-muted)] hover:bg-[var(--promptit-options-active-inner-bg-strong)]'
                               : prompt.pinned
-                                ? 'border-stone-900 bg-stone-900 text-white hover:bg-stone-800'
-                                : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100 hover:text-stone-800'
+                                ? 'border-[var(--promptit-options-label-pinned-background)] bg-[var(--promptit-options-label-pinned-background)] text-[var(--promptit-options-label-pinned-text)] hover:bg-[var(--promptit-options-active-hover)]'
+                                : 'border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] text-[var(--promptit-options-text-subtle)] hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-menu-hover)] hover:text-[var(--promptit-options-text-body)]'
                           } disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
                           onClick={() => {
                             void handleTogglePinned(prompt);
@@ -458,8 +458,8 @@ export function PromptList(props: PromptListProps) {
                           type="button"
                           className={`flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border transition active:cursor-grabbing ${
                             isActive
-                              ? 'border-white/15 bg-white/10 text-stone-200 hover:bg-white/15'
-                              : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-100'
+                              ? 'border-[var(--promptit-options-active-inner-border)] bg-[var(--promptit-options-active-inner-bg)] text-[var(--promptit-options-active-subtle)] hover:bg-[var(--promptit-options-active-inner-bg-strong)]'
+                              : 'border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] text-[var(--promptit-options-text-subtle)] hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-menu-hover)]'
                           } disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
                           draggable={!props.reorderDisabled}
                           onDragStart={(event) => {
@@ -510,10 +510,10 @@ export function PromptList(props: PromptListProps) {
                           <span
                             className={`rounded-full px-2 py-1 ${compactLabelClassName} ${
                               isActive
-                                ? 'bg-white/10 text-stone-200'
+                                ? 'bg-[var(--promptit-options-active-inner-bg)] text-[var(--promptit-options-active-subtle)]'
                                 : prompt.pinned
-                                  ? 'bg-stone-900 text-stone-50'
-                                  : 'bg-white text-stone-500'
+                                  ? 'bg-[var(--promptit-options-label-pinned-background)] text-[var(--promptit-options-label-pinned-text)]'
+                                  : 'bg-[var(--promptit-options-surface)] text-[var(--promptit-options-text-subtle)]'
                             }`}
                             data-testid="prompt-group-label"
                           >
@@ -521,14 +521,14 @@ export function PromptList(props: PromptListProps) {
                           </span>
                           <span
                             className={
-                              isActive ? 'text-stone-500' : 'text-stone-300'
+                              isActive ? 'text-[var(--promptit-options-active-faint)]' : 'text-[var(--promptit-options-text-faint)]'
                             }
                           >
                             •
                           </span>
                           <span
                             className={`${compactLabelClassName} ${
-                              isActive ? 'text-stone-300' : 'text-stone-500'
+                              isActive ? 'text-[var(--promptit-options-active-muted)]' : 'text-[var(--promptit-options-text-subtle)]'
                             }`}
                             data-testid="prompt-char-count"
                           >
@@ -544,7 +544,7 @@ export function PromptList(props: PromptListProps) {
                         </span>
                         <span
                           className={`mt-3 grid gap-2 text-xs leading-5 sm:grid-cols-2 ${
-                            isActive ? 'text-stone-300' : 'text-stone-600'
+                            isActive ? 'text-[var(--promptit-options-active-muted)]' : 'text-[var(--promptit-options-text-muted)]'
                           }`}
                         >
                           <MetaLine
@@ -570,8 +570,8 @@ export function PromptList(props: PromptListProps) {
                         type="button"
                         className={`rounded-full border px-3 py-2 text-[11px] transition ${compactLabelClassName} ${
                           isActive
-                            ? 'border-rose-200/20 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25'
-                            : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                            ? 'border-[var(--promptit-options-active-danger-border)] bg-[var(--promptit-options-active-danger-bg)] text-[var(--promptit-options-active-danger-text)] hover:bg-[var(--promptit-options-active-danger-bg-hover)]'
+                            : 'border-[var(--promptit-options-danger-border)] bg-[var(--promptit-options-danger-surface)] text-[var(--promptit-options-danger-text)] hover:border-[var(--promptit-options-danger-border-hover)] hover:bg-[var(--promptit-options-danger-surface-hover)] hover:text-[var(--promptit-options-danger-text-hover)]'
                         } disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
                         onClick={() => {
                           void props.onDeletePrompt(prompt);

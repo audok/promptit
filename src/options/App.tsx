@@ -22,17 +22,25 @@ import {
   type LanguagePreference,
   type LocalizedMessageDescriptor,
 } from '../shared/i18n';
+import { type ThemePreference } from '../shared/theme';
 import { BUTTON_FOCUS_CLASS, MetricCard } from './components';
 import { OptionsToast, type OptionsToastMessage, type OptionsToastTone } from './OptionsToast';
 import { PromptEditorPanel } from './PromptEditorPanel';
 import { PromptList } from './PromptList';
 import { useLanguagePreference } from './useLanguagePreference';
 import { usePromptEditor } from './usePromptEditor';
+import { useThemePreference } from './useThemePreference';
 
 const LANGUAGE_OPTIONS: readonly LanguagePreference[] = [
   'system',
   'ko',
   'en',
+];
+
+const THEME_OPTIONS: readonly ThemePreference[] = [
+  'system',
+  'light',
+  'dark',
 ];
 
 const TOAST_NOTICE_KEYS = new Set<I18nKey>([
@@ -58,8 +66,6 @@ const ERROR_TOAST_ALERT_KEYS = new Set<I18nKey>([
   'runtime.prompt.deleteFailed',
   'runtime.prompt.pinFailed',
 ]);
-
-type ThemeIcon = 'moon' | 'sun';
 
 function isToastNotice(message: LocalizedMessageDescriptor): boolean {
   return TOAST_NOTICE_KEYS.has(message.key);
@@ -201,6 +207,10 @@ export default function App() {
     preference: languagePreference,
     setPreference: setLanguagePreference,
   } = useLanguagePreference();
+  const {
+    preference: themePreference,
+    setPreference: setThemePreference,
+  } = useThemePreference();
 
   const statusRegionId = useId();
   const alertRegionId = useId();
@@ -211,7 +221,6 @@ export default function App() {
     null,
   );
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
-  const [themeIcon, setThemeIcon] = useState<ThemeIcon>('sun');
   const t = useCallback(
     (key: I18nKey, values?: Record<string, string | number>): string =>
       translate(locale, key, values),
@@ -328,12 +337,12 @@ export default function App() {
       : 'options.language.localeName.en',
   );
   const heroSectionClassName =
-    'rounded-[32px] border border-stone-200/80 bg-white/90 px-7 py-7 text-stone-950 shadow-[0_28px_70px_rgba(66,53,49,0.08)] backdrop-blur sm:px-8 lg:px-10 lg:py-8';
-  const heroCopyClassName = 'max-w-3xl text-base leading-6 text-stone-600';
+    'rounded-[32px] border border-[var(--promptit-options-border-80)] bg-[var(--promptit-options-surface-90)] px-7 py-7 text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-hero)] backdrop-blur sm:px-8 lg:px-10 lg:py-8';
+  const heroCopyClassName = 'max-w-3xl text-base leading-6 text-[var(--promptit-options-text-muted)]';
   const keyboardTokenClassName =
-    'inline-flex min-w-7 items-center justify-center rounded-md border border-stone-300 bg-stone-50 px-2 py-1 font-mono text-[0.82em] font-semibold leading-none text-stone-900 shadow-[inset_0_-1px_0_rgba(68,64,59,0.14)]';
-  const controlButtonClassName = `inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 text-[13px] font-semibold text-stone-950 shadow-[0_10px_22px_rgba(28,25,23,0.05)] transition hover:bg-stone-50 ${BUTTON_FOCUS_CLASS}`;
-  const themeButtonClassName = `inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-950 shadow-[0_10px_22px_rgba(28,25,23,0.05)] transition hover:bg-stone-50 ${BUTTON_FOCUS_CLASS}`;
+    'inline-flex min-w-7 items-center justify-center rounded-md border border-[var(--promptit-options-border-strong)] bg-[var(--promptit-options-surface-muted)] px-2 py-1 font-mono text-[0.82em] font-semibold leading-none text-[var(--promptit-options-text-body)] shadow-[var(--promptit-options-kbd-shadow)]';
+  const controlButtonClassName = `inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-4 text-[13px] font-semibold text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-control)] transition hover:bg-[var(--promptit-options-control-hover)] ${BUTTON_FOCUS_CLASS}`;
+  const themeOptionBaseClassName = `inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-semibold transition ${BUTTON_FOCUS_CLASS}`;
 
   function confirmDiscardDirtyForm(): boolean {
     return (
@@ -405,8 +414,25 @@ export default function App() {
 
   function getLanguageOptionClassName(option: LanguagePreference): string {
     return languagePreference === option
-      ? `flex w-full items-center justify-between rounded-full bg-stone-950 px-4 py-2.5 text-left text-sm font-semibold text-white ${BUTTON_FOCUS_CLASS}`
-      : `flex w-full items-center justify-between rounded-full px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition hover:bg-stone-100 ${BUTTON_FOCUS_CLASS}`;
+      ? `flex w-full items-center justify-between rounded-full bg-[var(--promptit-options-text-primary)] px-4 py-2.5 text-left text-sm font-semibold text-[var(--promptit-options-surface)] ${BUTTON_FOCUS_CLASS}`
+      : `flex w-full items-center justify-between rounded-full px-4 py-2.5 text-left text-sm font-semibold text-[var(--promptit-options-text-body)] transition hover:bg-[var(--promptit-options-menu-hover)] ${BUTTON_FOCUS_CLASS}`;
+  }
+
+  function getThemePreferenceLabel(preference: ThemePreference): string {
+    switch (preference) {
+      case 'system':
+        return t('options.theme.option.system');
+      case 'light':
+        return t('options.theme.option.light');
+      case 'dark':
+        return t('options.theme.option.dark');
+    }
+  }
+
+  function getThemeOptionClassName(option: ThemePreference): string {
+    return themePreference === option
+      ? `${themeOptionBaseClassName} bg-[var(--promptit-options-text-primary)] text-[var(--promptit-options-surface)]`
+      : `${themeOptionBaseClassName} text-[var(--promptit-options-text-muted)] hover:bg-[var(--promptit-options-control-hover)] hover:text-[var(--promptit-options-text-primary)]`;
   }
 
   function handleToggleLanguageMenu(): void {
@@ -429,12 +455,15 @@ export default function App() {
     }
   }
 
-  function handleToggleTheme(): void {
-    setThemeIcon((currentIcon) => (currentIcon === 'sun' ? 'moon' : 'sun'));
+  function handleSelectTheme(nextTheme: ThemePreference): void {
+    void setThemePreference(nextTheme).catch((error) => {
+      console.error('[promptit] Failed to save theme preference.', error);
+      showOptionsToast(t('options.theme.saveFailed'), 'error');
+    });
   }
 
   return (
-    <main className="min-h-screen bg-stone-100 text-stone-900">
+    <main className="min-h-screen bg-[var(--promptit-options-app-background)] text-[var(--promptit-options-text-body)]">
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12">
         <section className={heroSectionClassName}>
           <div className="flex flex-col gap-[27px]">
@@ -455,7 +484,7 @@ export default function App() {
                     aria-controls={languageMenuId}
                     aria-expanded={isLanguageMenuOpen}
                     aria-haspopup="menu"
-                    aria-label={t('options.language.menuButtonAria', {
+                      aria-label={t('options.language.menuButtonAria', {
                       preference: selectedLanguageLabel,
                       locale: resolvedLocaleLabel,
                     })}
@@ -469,7 +498,7 @@ export default function App() {
                       id={languageMenuId}
                       role="menu"
                       aria-label={t('options.language.menuLabel')}
-                      className="absolute right-0 top-[calc(100%+8px)] z-20 w-36 rounded-[20px] border border-stone-200 bg-white p-1.5 shadow-[0_18px_40px_rgba(28,25,23,0.12)]"
+                      className="absolute right-0 top-[calc(100%+8px)] z-20 w-36 rounded-[20px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] p-1.5 shadow-[var(--promptit-options-shadow-menu)]"
                     >
                       {LANGUAGE_OPTIONS.map((option) => (
                         <button
@@ -491,22 +520,32 @@ export default function App() {
                     </div>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  className={themeButtonClassName}
-                  onClick={handleToggleTheme}
-                  aria-label={
-                    themeIcon === 'sun'
-                      ? t('options.theme.switchToMoon')
-                      : t('options.theme.switchToSun')
-                  }
+                <div
+                  className="inline-flex h-10 items-center gap-1 rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] p-1 shadow-[var(--promptit-options-shadow-control)]"
+                  role="group"
+                  aria-label={t('options.theme.selectorLabel')}
                 >
-                  {themeIcon === 'moon' ? (
-                    <MoonIcon className="h-5 w-5" />
-                  ) : (
-                    <SunIcon className="h-5 w-5" />
-                  )}
-                </button>
+                  {THEME_OPTIONS.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={getThemeOptionClassName(option)}
+                      onClick={() => {
+                        handleSelectTheme(option);
+                      }}
+                      aria-pressed={themePreference === option}
+                    >
+                      {option === 'system' ? (
+                        <GlobeIcon className="h-[15px] w-[15px]" />
+                      ) : option === 'light' ? (
+                        <SunIcon className="h-[15px] w-[15px]" />
+                      ) : (
+                        <MoonIcon className="h-[15px] w-[15px]" />
+                      )}
+                      <span className="ml-1.5">{getThemePreferenceLabel(option)}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

@@ -3,7 +3,7 @@ import { type ReactNode } from 'react';
 import { getIntlLocale, type Locale } from '../shared/i18n';
 
 export const BUTTON_FOCUS_CLASS =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--promptit-options-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--promptit-options-focus-offset)]';
 
 export function formatTimestamp(value: string, locale: Locale): string {
   return new Date(value).toLocaleString(getIntlLocale(locale), {
@@ -36,14 +36,14 @@ export function getDescribedBy(
 export function InsertionIndicator(props: { label: string }) {
   return (
     <div
-      className="my-2 flex items-center gap-3 text-xs font-semibold text-stone-700"
+      className="my-2 flex items-center gap-3 text-xs font-semibold text-[var(--promptit-options-text-body)]"
       aria-hidden="true"
     >
-      <span className="h-0.5 flex-1 rounded-full bg-stone-900" />
-      <span className="rounded-full border border-stone-300 bg-white px-2 py-1">
+      <span className="h-0.5 flex-1 rounded-full bg-[var(--promptit-options-text-body)]" />
+      <span className="rounded-full border border-[var(--promptit-options-border-strong)] bg-[var(--promptit-options-surface)] px-2 py-1">
         {props.label}
       </span>
-      <span className="h-0.5 flex-1 rounded-full bg-stone-900" />
+      <span className="h-0.5 flex-1 rounded-full bg-[var(--promptit-options-text-body)]" />
     </div>
   );
 }
@@ -88,9 +88,9 @@ export function MetricCard(props: {
   value: string;
 }) {
   return (
-    <div className="rounded-[24px] border border-stone-200/80 bg-white/70 px-6 py-6 shadow-[0_18px_38px_rgba(28,25,23,0.04)]">
-      <p className="text-sm font-medium text-stone-600">{props.label}</p>
-      <p className="mt-3 text-2xl font-extrabold leading-none text-stone-950">
+    <div className="rounded-[24px] border border-[var(--promptit-options-border-80)] bg-[var(--promptit-options-surface-70)] px-6 py-6 shadow-[var(--promptit-options-shadow-card)]">
+      <p className="text-sm font-medium text-[var(--promptit-options-text-muted)]">{props.label}</p>
+      <p className="mt-3 text-2xl font-extrabold leading-none text-[var(--promptit-options-text-primary)]">
         {props.value}
       </p>
     </div>
@@ -99,7 +99,7 @@ export function MetricCard(props: {
 
 export function EmptyPanel(props: { message: string }) {
   return (
-    <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-sm leading-6 text-stone-600">
+    <div className="rounded-[24px] border border-dashed border-[var(--promptit-options-border-strong)] bg-[var(--promptit-options-surface-muted)] px-4 py-6 text-sm leading-6 text-[var(--promptit-options-text-muted)]">
       {props.message}
     </div>
   );
@@ -142,15 +142,15 @@ export function Banner(props: {
 }) {
   const palette =
     props.tone === 'danger'
-      ? 'mt-5 rounded-[18px] bg-rose-50 px-4 py-3 text-sm text-rose-700'
-      : 'mt-5 rounded-[18px] bg-emerald-50 px-4 py-3 text-sm text-emerald-700';
+      ? 'mt-5 rounded-[18px] bg-[var(--promptit-options-danger-surface)] px-4 py-3 text-sm text-[var(--promptit-options-danger-text)]'
+      : 'mt-5 rounded-[18px] bg-[var(--promptit-options-success-surface)] px-4 py-3 text-sm text-[var(--promptit-options-success-text)]';
 
   return (
     <div className={`${palette} flex items-start justify-between gap-3`} role={props.role}>
       <p className="leading-6">{props.message}</p>
       <button
         type="button"
-        className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] hover:bg-black/5 ${BUTTON_FOCUS_CLASS}`}
+        className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] hover:bg-[var(--promptit-options-dismiss-hover)] ${BUTTON_FOCUS_CLASS}`}
         onClick={props.onDismiss}
         aria-label={props.dismissLabel}
       >
@@ -170,16 +170,16 @@ export function Field(props: {
   return (
     <div>
       <label htmlFor={props.inputId} className="flex items-center justify-between gap-3">
-        <span className="text-sm font-bold leading-5 text-stone-950">
+        <span className="text-sm font-bold leading-5 text-[var(--promptit-options-text-primary)]">
           {props.label}
         </span>
-        <span id={`${props.inputId}-hint`} className="text-[11px] text-stone-500">
+        <span id={`${props.inputId}-hint`} className="text-[11px] text-[var(--promptit-options-text-subtle)]">
           {props.hint}
         </span>
       </label>
       <div className="mt-3">{props.children}</div>
       {props.error ? (
-        <p id={`${props.inputId}-error`} className="mt-2 text-sm text-rose-600">
+        <p id={`${props.inputId}-error`} className="mt-2 text-sm text-[var(--promptit-options-danger-text)]">
           {props.error}
         </p>
       ) : null}
