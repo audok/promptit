@@ -108,7 +108,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         {props.isEditing ? (
           <button
             type="button"
-            className={`rounded-full border border-[var(--promptit-options-border-strong)] bg-[var(--promptit-options-surface-70)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--promptit-options-text-body)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+            className={`inline-flex h-[38px] shrink-0 items-center justify-center rounded-full border border-[var(--promptit-options-border-strong)] bg-[var(--promptit-options-surface-70)] px-[19px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-body)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
             onClick={props.onCancelEdit}
             disabled={props.isSaving}
           >
@@ -266,7 +266,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
           {props.isEditing ? (
             <button
               type="button"
-              className={`rounded-full border border-[var(--promptit-options-danger-border)] bg-[var(--promptit-options-danger-surface)] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--promptit-options-danger-text)] transition hover:border-[var(--promptit-options-danger-border-hover)] hover:bg-[var(--promptit-options-danger-surface-hover)] hover:text-[var(--promptit-options-danger-text-hover)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+              className={`inline-flex h-10 items-center justify-center rounded-[20px] border border-[var(--promptit-options-danger-border)] bg-[var(--promptit-options-danger-surface)] px-5 text-[14px] font-bold leading-none text-[var(--promptit-options-danger-text)] transition hover:border-[var(--promptit-options-danger-border-hover)] hover:bg-[var(--promptit-options-danger-surface-hover)] hover:text-[var(--promptit-options-danger-text-hover)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
               onClick={() => {
                 if (props.activePromptMeta) {
                   void props.onDeletePrompt(props.activePromptMeta);

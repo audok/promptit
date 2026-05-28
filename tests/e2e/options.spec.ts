@@ -336,6 +336,9 @@ async function getComputedThemeStyle(locator: Locator): Promise<{
   backgroundColor: string;
   borderColor: string;
   color: string;
+  fontSize: string;
+  fontWeight: number;
+  lineHeight: string;
 }> {
   await expect(locator).toBeVisible();
 
@@ -346,6 +349,9 @@ async function getComputedThemeStyle(locator: Locator): Promise<{
       backgroundColor: style.backgroundColor,
       borderColor: style.borderTopColor,
       color: style.color,
+      fontSize: style.fontSize,
+      fontWeight: Number(style.fontWeight),
+      lineHeight: style.lineHeight,
     };
   });
 }
@@ -428,6 +434,7 @@ async function expectPromptMetaValuesToUseTwoLineLayout(
 }
 
 async function getTypographyStyle(locator: Locator): Promise<{
+  fontSize: string;
   fontWeight: number;
   letterSpacing: number;
   textTransform: string;
@@ -436,6 +443,7 @@ async function getTypographyStyle(locator: Locator): Promise<{
     const style = getComputedStyle(node as HTMLElement);
 
     return {
+      fontSize: style.fontSize,
       fontWeight: Number(style.fontWeight),
       letterSpacing: Number.parseFloat(style.letterSpacing),
       textTransform: style.textTransform,
@@ -457,10 +465,15 @@ async function expectPromptListMicrocopyTypography(
     promptCard.getByTestId('prompt-char-count'),
     page.getByTestId('prompt-delete-button').first(),
   ];
+  const compactLabelStyles = await Promise.all(
+    compactLabelLocators.map((labelLocator) => getTypographyStyle(labelLocator)),
+  );
+  const baseCompactLabelStyle = compactLabelStyles[0];
 
-  for (const labelLocator of compactLabelLocators) {
-    const style = await getTypographyStyle(labelLocator);
-
+  for (const style of compactLabelStyles) {
+    expect(style.fontSize).toBe(baseCompactLabelStyle.fontSize);
+    expect(style.fontWeight).toBe(baseCompactLabelStyle.fontWeight);
+    expect(style.letterSpacing).toBe(baseCompactLabelStyle.letterSpacing);
     expect(style.textTransform).toBe('uppercase');
     expect(style.letterSpacing).toBeGreaterThan(1);
 
@@ -777,6 +790,19 @@ test('theme selector defaults to system and persists dark preference', async ({
   ).toBeVisible();
   await expect(getContentInput(page)).toHaveValue(themePrompt.content);
 
+  const createButtonStyle = await getComputedThemeStyle(
+    getPromptListCreateButton(page),
+  );
+  const cancelEditButtonStyle = await getComputedThemeStyle(
+    getPromptEditor(page).getByRole('button', {
+      name: '편집 취소',
+      exact: true,
+    }),
+  );
+  expect(cancelEditButtonStyle.fontSize).toBe(createButtonStyle.fontSize);
+  expect(cancelEditButtonStyle.fontWeight).toBe(createButtonStyle.fontWeight);
+  expect(cancelEditButtonStyle.lineHeight).toBe(createButtonStyle.lineHeight);
+
   const lightPromptListSurfaceStyle = await getComputedThemeStyle(
     getPromptList(page),
   );
@@ -892,6 +918,10 @@ test('theme selector defaults to system and persists dark preference', async ({
       exact: true,
     }),
   );
+  expect(destructiveButtonStyle.fontSize).toBe(primaryButtonStyle.fontSize);
+  expect(destructiveButtonStyle.fontWeight).toBe(primaryButtonStyle.fontWeight);
+  expect(destructiveButtonStyle.lineHeight).toBe(primaryButtonStyle.lineHeight);
+
   const destructiveSurface = parseRgbColor(destructiveButtonStyle.backgroundColor);
   const destructiveBorder = parseRgbColor(destructiveButtonStyle.borderColor);
   const destructiveText = parseRgbColor(destructiveButtonStyle.color);

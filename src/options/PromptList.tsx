@@ -568,7 +568,7 @@ export function PromptList(props: PromptListProps) {
 
                       <button
                         type="button"
-                        className={`rounded-full border px-3 py-2 text-[11px] transition ${compactLabelClassName} ${
+                        className={`rounded-full border px-3 py-2 text-xs transition ${compactLabelClassName} ${
                           isActive
                             ? 'border-[var(--promptit-options-active-danger-border)] bg-[var(--promptit-options-active-danger-bg)] text-[var(--promptit-options-active-danger-text)] hover:bg-[var(--promptit-options-active-danger-bg-hover)]'
                             : 'border-[var(--promptit-options-danger-border)] bg-[var(--promptit-options-danger-surface)] text-[var(--promptit-options-danger-text)] hover:border-[var(--promptit-options-danger-border-hover)] hover:bg-[var(--promptit-options-danger-surface-hover)] hover:text-[var(--promptit-options-danger-text-hover)]'
