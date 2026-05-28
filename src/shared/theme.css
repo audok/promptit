@@ -211,22 +211,22 @@
   --promptit-options-toast-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
 
   --promptit-popup-text: #eeeeee;
-  --promptit-popup-card-border: rgba(255, 255, 255, 0.1);
-  --promptit-popup-card-background: rgba(31, 31, 31, 0.97);
-  --promptit-popup-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  --promptit-popup-card-border: rgba(255, 255, 255, 0.09);
+  --promptit-popup-card-background: rgba(15, 15, 15, 0.98);
+  --promptit-popup-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
   --promptit-popup-card-overlay:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
-  --promptit-popup-chrome-background: rgba(255, 255, 255, 0.045);
-  --promptit-popup-footer-background: rgba(255, 255, 255, 0.055);
-  --promptit-popup-chrome-border: rgba(255, 255, 255, 0.07);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.006));
+  --promptit-popup-chrome-background: rgba(255, 255, 255, 0.03);
+  --promptit-popup-footer-background: rgba(255, 255, 255, 0.035);
+  --promptit-popup-chrome-border: rgba(255, 255, 255, 0.055);
   --promptit-popup-black: #f1f1f1;
   --promptit-popup-muted-action: rgba(238, 238, 238, 0.62);
   --promptit-popup-footer-text: rgba(238, 238, 238, 0.42);
   --promptit-popup-scrollbar: rgba(255, 255, 255, 0.14);
   --promptit-popup-scrollbar-hover: rgba(255, 255, 255, 0.24);
-  --promptit-popup-row-background: rgba(255, 255, 255, 0.025);
-  --promptit-popup-row-hover-background: rgba(255, 255, 255, 0.055);
-  --promptit-popup-row-active-background: #383838;
+  --promptit-popup-row-background: rgba(255, 255, 255, 0.012);
+  --promptit-popup-row-hover-background: rgba(255, 255, 255, 0.035);
+  --promptit-popup-row-active-background: #242424;
   --promptit-popup-row-shadow:
     inset 0 1px rgba(255, 255, 255, 0.04),
     inset 0 -1px rgba(0, 0, 0, 0.16);
@@ -238,8 +238,8 @@
   --promptit-popup-description: #a1a1a1;
   --promptit-popup-cell-active-background: transparent;
   --promptit-popup-icon-active-background: transparent;
-  --promptit-popup-icon-hover-background: #333333;
-  --promptit-popup-icon-selected-background: #5c5c5c;
+  --promptit-popup-icon-hover-background: #242424;
+  --promptit-popup-icon-selected-background: #3a3a3a;
   --promptit-popup-icon-selected-color: #ffffff;
   --promptit-popup-icon-disabled: rgba(238, 238, 238, 0.28);
 

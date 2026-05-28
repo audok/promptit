@@ -1240,12 +1240,12 @@ test('theme dark preference applies to the slash popup and updates while open', 
   });
 
   const darkSnapshot = await getPopupThemeSnapshot(page);
-  expectRgbChannelsBetween(darkSnapshot.cardBackgroundColor, 30, 32);
+  expectRgbChannelsBetween(darkSnapshot.cardBackgroundColor, 14, 16);
   expect(parseRgbColor(darkSnapshot.cardBackgroundColor).alpha).toBeGreaterThanOrEqual(0.96);
-  expect(parseRgbColor(darkSnapshot.cardBackgroundColor).alpha).toBeLessThanOrEqual(0.98);
+  expect(parseRgbColor(darkSnapshot.cardBackgroundColor).alpha).toBeLessThanOrEqual(0.99);
   expect(parseRgbColor(darkSnapshot.cardBorderColor).alpha).toBeGreaterThanOrEqual(0.08);
   expect(parseRgbColor(darkSnapshot.cardBorderColor).alpha).toBeLessThanOrEqual(0.12);
-  expectRgbChannelsBetween(darkSnapshot.rowActiveBackgroundColor, 54, 58);
+  expectRgbChannelsBetween(darkSnapshot.rowActiveBackgroundColor, 34, 38);
   expect(parseRgbColor(darkSnapshot.rowActiveIndicatorColor).alpha).toBe(0);
   expect(darkSnapshot.activeCellLabel).toBe('Insert prompt: 번역');
   expect(parseRgbColor(darkSnapshot.activeCellBackgroundColor ?? '').alpha).toBe(0);
@@ -1269,18 +1269,18 @@ test('theme dark preference applies to the slash popup and updates while open', 
     .toMatchObject({
       activeCellBackgroundAlpha: 0,
       activeCellLabel: 'Copy prompt: 번역',
-      activeIconBadgeBackgroundColor: 'rgb(92, 92, 92)',
+      activeIconBadgeBackgroundColor: 'rgb(58, 58, 58)',
       activeIconBadgeColor: 'rgb(255, 255, 255)',
     });
 
   const darkIconSnapshot = await getPopupThemeSnapshot(page);
   expect(darkIconSnapshot.activeCellLabel).toBe('Copy prompt: 번역');
-  expectRgbChannelsBetween(darkIconSnapshot.rowActiveBackgroundColor, 54, 58);
+  expectRgbChannelsBetween(darkIconSnapshot.rowActiveBackgroundColor, 34, 38);
   expect(parseRgbColor(darkIconSnapshot.activeCellBackgroundColor ?? '').alpha).toBe(0);
   expectRgbChannelsBetween(
     darkIconSnapshot.activeIconBadgeBackgroundColor ?? '',
-    90,
-    94,
+    56,
+    60,
   );
   expectRgbChannelsBetween(darkIconSnapshot.activeIconBadgeColor ?? '', 252, 255);
 
