@@ -15,7 +15,9 @@
   --promptit-options-surface-90: rgba(255, 255, 255, 0.9);
   --promptit-options-surface-70: rgba(255, 255, 255, 0.7);
   --promptit-options-surface-muted: #fafaf9;
-  --promptit-options-editor-surface: #f6f8f5;
+  --promptit-options-editor-surface-idle: var(--promptit-options-surface);
+  --promptit-options-editor-surface-active: #f6f8f5;
+  --promptit-options-editor-surface: var(--promptit-options-editor-surface-active);
   --promptit-options-border: #e7e5e4;
   --promptit-options-border-80: rgba(231, 229, 228, 0.8);
   --promptit-options-border-strong: #d6d3d1;
@@ -144,7 +146,9 @@
   --promptit-options-surface-90: rgba(34, 34, 34, 0.9);
   --promptit-options-surface-70: rgba(34, 34, 34, 0.72);
   --promptit-options-surface-muted: #242424;
-  --promptit-options-editor-surface: #262926;
+  --promptit-options-editor-surface-idle: var(--promptit-options-surface);
+  --promptit-options-editor-surface-active: #262926;
+  --promptit-options-editor-surface: var(--promptit-options-editor-surface-active);
   --promptit-options-border: #343434;
   --promptit-options-border-80: rgba(52, 52, 52, 0.8);
   --promptit-options-border-strong: #424242;

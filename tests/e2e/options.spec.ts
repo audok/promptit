@@ -770,6 +770,35 @@ test('theme selector defaults to system and persists dark preference', async ({
     rootTheme: 'light',
   });
 
+  const promptCard = getPromptCard(page, themePrompt.title);
+  await promptCard.click();
+  await expect(
+    page.getByRole('heading', { name: '프롬프트 수정' }),
+  ).toBeVisible();
+  await expect(getContentInput(page)).toHaveValue(themePrompt.content);
+
+  const lightPromptListSurfaceStyle = await getComputedThemeStyle(
+    getPromptList(page),
+  );
+  const lightPromptEditorIdleSurfaceStyle = await getComputedThemeStyle(
+    getPromptEditor(page),
+  );
+  expect(lightPromptEditorIdleSurfaceStyle.backgroundColor).toBe(
+    lightPromptListSurfaceStyle.backgroundColor,
+  );
+  expect(lightPromptEditorIdleSurfaceStyle.backgroundColor).toBe(
+    'rgb(255, 255, 255)',
+  );
+
+  await getTitleInput(page).focus();
+
+  const lightPromptEditorActiveSurfaceStyle = await getComputedThemeStyle(
+    getPromptEditor(page),
+  );
+  expect(lightPromptEditorActiveSurfaceStyle.backgroundColor).toBe(
+    'rgb(246, 248, 245)',
+  );
+
   await darkButton.click();
   await expect.poll(async () => await extension.getThemePreference()).toBe('dark');
   await expect(darkButton).toHaveAttribute('aria-pressed', 'true');
@@ -781,18 +810,22 @@ test('theme selector defaults to system and persists dark preference', async ({
   expectRgbChannelsBetween(darkSnapshot.heroBorderColor, 45, 70);
   expectRgbChannelsBetween(darkSnapshot.textColor, 238, 242);
 
-  const promptCard = getPromptCard(page, themePrompt.title);
-  await promptCard.click();
-  await expect(
-    page.getByRole('heading', { name: '프롬프트 수정' }),
-  ).toBeVisible();
-  await expect(getContentInput(page)).toHaveValue(themePrompt.content);
+  const promptListSurfaceStyle = await getComputedThemeStyle(getPromptList(page));
+  const promptEditorIdleSurfaceStyle = await getComputedThemeStyle(
+    getPromptEditor(page),
+  );
+  expect(promptEditorIdleSurfaceStyle.backgroundColor).toBe(
+    promptListSurfaceStyle.backgroundColor,
+  );
+  expect(promptEditorIdleSurfaceStyle.backgroundColor).toBe('rgb(34, 34, 34)');
 
-  const promptEditorSurfaceStyle = await getComputedThemeStyle(
+  await getTitleInput(page).focus();
+
+  const promptEditorActiveSurfaceStyle = await getComputedThemeStyle(
     getPromptEditor(page),
   );
   const promptEditorSurface = parseRgbColor(
-    promptEditorSurfaceStyle.backgroundColor,
+    promptEditorActiveSurfaceStyle.backgroundColor,
   );
   const promptEditorSurfaceChannels = [
     promptEditorSurface.red,

@@ -91,7 +91,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
 
   return (
     <article
-      className="rounded-[28px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-editor-surface)] p-6 shadow-[var(--promptit-options-shadow-panel)]"
+      className="rounded-[28px] border border-[var(--promptit-options-border)] bg-[var(--promptit-options-editor-surface-idle)] p-6 shadow-[var(--promptit-options-shadow-panel)] focus-within:bg-[var(--promptit-options-editor-surface-active)]"
       aria-busy={props.isEditorLoading || props.isSaving}
     >
       <div className="flex items-center justify-between gap-4">
