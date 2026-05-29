@@ -69,6 +69,7 @@ export type LoadedExtension = {
   getPromptStorageRevision: () => Promise<unknown>;
   getChromeStorageLocalSnapshot: () => Promise<Record<string, unknown>>;
   failLanguagePreferenceWrites: (message?: string) => Promise<void>;
+  failThemePreferenceWrites: (message?: string) => Promise<void>;
   failPromptStorageRevisionWrites: (message?: string) => Promise<void>;
   sendRuntimeMessage: (
     message: PromptitRuntimeRequest,
@@ -708,6 +709,33 @@ export async function launchExtension(
       }, {
         failureMessage: message,
         storageKey: LANGUAGE_PREFERENCE_STORAGE_KEY,
+      });
+    },
+    async failThemePreferenceWrites(
+      message = 'mock theme preference write failure',
+    ) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(({ failureMessage, storageKey }) => {
+        const storage = chrome.storage.local;
+        const originalSet = storage.set.bind(storage);
+
+        storage.set = (async (...args: unknown[]) => {
+          const [items] = args;
+
+          if (
+            typeof items === 'object' &&
+            items !== null &&
+            storageKey in (items as Record<string, unknown>)
+          ) {
+            throw new Error(failureMessage);
+          }
+
+          await (originalSet as (...nextArgs: unknown[]) => Promise<void>)(...args);
+        }) as typeof chrome.storage.local.set;
+      }, {
+        failureMessage: message,
+        storageKey: THEME_PREFERENCE_STORAGE_KEY,
       });
     },
     async failPromptStorageRevisionWrites(

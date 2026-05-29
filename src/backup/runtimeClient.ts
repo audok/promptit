@@ -11,6 +11,7 @@ import type {
   LanguagePreference,
   RuntimeMessageDescriptor,
 } from '../shared/i18n';
+import type { ThemePreference } from '../shared/theme';
 import type {
   PromptitBackupFile,
   PromptitSharedPromptsFile,
@@ -54,6 +55,7 @@ export async function restoreBackup(
 ): Promise<{
   restoredPromptCount: number;
   languagePreference: LanguagePreference;
+  themePreference: ThemePreference;
 }> {
   const response = await sendRuntimeRequest(buildRestoreBackupRequest(backup));
 
@@ -68,6 +70,7 @@ export async function restoreBackup(
   return {
     restoredPromptCount: response.restoredPromptCount,
     languagePreference: response.languagePreference,
+    themePreference: response.themePreference,
   };
 }
 

@@ -112,13 +112,14 @@ Popup storage 테스트는 다음 경계를 우선 검증한다.
 - pin/unpin은 metadata mutation만 수행하고 persisted pinned state와 popup ordering을 갱신한다.
 - body read failure는 popup이 복구 가능한 상태로 남는다.
 
-Data portability 테스트는 옵션 페이지 UI를 통해 검증한다. 백업/공유/복원/가져오기 자동 테스트는 `tests/e2e/options.spec.ts`에 있으며, 2026-05-29 최종 검증에서 focused options E2E 61개와 full `pnpm test` 143개가 통과했다. 자동화는 다음 경계를 반복 가능하게 확인한다.
+Data portability 테스트는 옵션 페이지 UI를 통해 검증한다. 백업/공유/복원/가져오기 자동 테스트는 `tests/e2e/options.spec.ts`에 있다. 2026-05-29 요구사항 변경으로 `promptit.backup`은 saved prompts, language setting, theme setting을 모두 포함한다. `themePreference`가 없는 old backup file compatibility는 요구하지 않는다. Supervisor validation에서 `pnpm typecheck`, `git diff --check`, `pnpm build:test`, focused options E2E 14개, full `pnpm test`가 통과했고 full E2E는 152개가 통과했다. 자동화는 다음 경계를 반복 가능하게 확인한다.
 
-- backup download JSON은 `type: "promptit.backup"`, `appVersion`, `exportedAt`, `data.prompts`, `data.settings.languagePreference`를 포함한다.
+- backup download JSON은 `type: "promptit.backup"`, `appVersion`, `exportedAt`, `data.prompts`, `data.settings.languagePreference`, `data.settings.themePreference`를 포함한다.
 - prompt share download JSON은 `type: "promptit.prompts"`, `appVersion`, `exportedAt`, `data.prompts`를 포함하며 공유 prompt object는 `title`과 `content`만 포함한다.
 - 저장된 프롬프트가 없을 때 `프롬프트 전체 공유`는 disabled이고 `저장된 프롬프트가 없습니다.` 안내가 표시되거나 연결된다.
 - restore는 파일 선택 후 preview를 먼저 보여주고, confirm 전에는 current prompts/settings를 바꾸지 않는다.
-- restore confirm은 current prompts와 language setting을 backup 내용으로 교체하며, validation 또는 persistence 실패 시 이전 prompts와 language setting을 보존한다.
+- restore confirm은 current prompts, language setting, theme setting을 backup 내용으로 교체하며, validation, language write failure, theme write failure 같은 persistence 실패 시 이전 prompts, language setting, theme setting을 보존한다.
+- `data.settings.themePreference`가 없는 old backup file은 invalid restore로 취급하고 current prompts/settings를 보존한다.
 - restore가 같은 prompt id/timestamps를 가진 backup으로 교체해도 열린 editor body가 stale 상태로 남지 않는다.
 - import는 shared prompt file의 prompts를 새 record로 append하고 existing prompts를 overwrite하거나 remove하지 않는다.
 

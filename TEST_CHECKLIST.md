@@ -123,14 +123,15 @@
 - [x] 삭제 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] `normalOrder`가 같은 경우 `createdAt`, `id` tie-break 정렬이 명시적으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] body stale save conflict가 `expectedBodyUpdatedAt` 기준으로 검증된다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] 백업 다운로드는 `promptit.backup` JSON shape를 검증한다: top-level `type`, `appVersion`, `exportedAt`, `data`; `data.prompts`는 full prompt record fields를 포함하고 `data.settings.languagePreference`를 포함한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] 백업 다운로드는 backup 대상이 아닌 revision key, migration/test keys, theme state를 포함하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] 백업 다운로드는 `promptit.backup` JSON shape를 검증한다: top-level `type`, `appVersion`, `exportedAt`, `data`; `data.prompts`는 full prompt record fields를 포함하고 `data.settings.languagePreference`, `data.settings.themePreference`를 포함한다. `Automated` via `tests/e2e/options.spec.ts`; supervisor focused run passed 14 data portability tests.
+- [x] 백업 다운로드는 backup 대상이 아닌 revision key, migration/test keys, internal cache/test state를 포함하지 않고, theme preference는 backup 대상 settings로 포함한다. `Automated` via `tests/e2e/options.spec.ts`; supervisor focused run passed 14 data portability tests.
 - [x] 저장된 프롬프트가 없을 때 `프롬프트 전체 공유`는 disabled이고 `저장된 프롬프트가 없습니다.` 안내가 표시되거나 disabled button에 연결된다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] 프롬프트 공유 다운로드는 `promptit.prompts` JSON shape를 검증한다: top-level `type`, `appVersion`, `exportedAt`, `data.prompts`; 각 prompt는 `title`과 `content`만 포함한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] restore file 선택은 preview를 먼저 표시하고 confirm 전에는 current prompt records와 language preference를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] restore preview는 file name, backup creation date, prompt count, included setting `언어 설정`, app version, replacement warning copy를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] restore confirm은 current prompts와 language preference를 backup 내용으로 교체하고 backup에 없는 기존 prompt를 제거한다. `Automated` via `tests/e2e/options.spec.ts`
-- [x] restore validation failure 또는 forced persistence failure는 기존 prompt records와 language preference를 보존하고 `복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.` toast를 표시한다. `Automated` via `tests/e2e/options.spec.ts`
+- [x] restore file 선택은 preview를 먼저 표시하고 confirm 전에는 current prompt records, language preference, theme preference를 변경하지 않는다. `Automated` via `tests/e2e/options.spec.ts`; supervisor focused run passed 14 data portability tests.
+- [x] restore preview는 file name, backup creation date, prompt count, included settings `언어 설정` and theme setting, app version, replacement warning copy를 표시한다. `Automated` via `tests/e2e/options.spec.ts`; supervisor focused run passed 14 data portability tests.
+- [x] restore confirm은 current prompts, language preference, theme preference를 backup 내용으로 교체하고 backup에 없는 기존 prompt를 제거한다. `Automated` via `tests/e2e/options.spec.ts`; supervisor focused run passed 14 data portability tests.
+- [x] restore validation failure, language write failure, forced theme write failure 같은 persistence failure는 기존 prompt records, language preference, theme preference를 보존하고 `복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.` toast를 표시한다. `Automated` via `tests/e2e/options.spec.ts`; supervisor focused run passed 14 data portability tests.
+- [x] `data.settings.themePreference`가 없는 old `promptit.backup` file은 invalid restore로 거부하고 기존 prompt records, language preference, theme preference를 보존한다. `Automated` via `tests/e2e/options.spec.ts`; old backup compatibility is intentionally not required.
 - [x] restore가 같은 prompt id/timestamps를 가진 backup으로 교체해도 열린 editor body가 stale 상태로 남지 않는다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] shared prompt import는 existing prompts를 유지하고 shared file prompts를 새 ids/fresh timestamps로 normal list 끝에 append한다. `Automated` via `tests/e2e/options.spec.ts`
 - [x] shared prompt import는 existing prompt ids/title/content를 overwrite하거나 remove하지 않는다. `Automated` via `tests/e2e/options.spec.ts`
@@ -148,14 +149,14 @@
 ## 7. 릴리스 체크용 빠른 체크리스트
 
 - [x] `pnpm test` passed: `pnpm typecheck`, production build/manifest check, fixture-based `pnpm test:e2e`, and final production build/manifest check
-- [x] fixture-based Playwright E2E passed as part of full `pnpm test` with `143 passed`
+- [x] fixture-based Playwright E2E passed as part of full `pnpm test` with `152 passed`
 - [x] options coverage includes prompt record storage, body size, failure, conflict, reorder, and hidden internal order field checks
 - [x] slash popup and Gemini fixture coverage includes popup storage, pin, insert/copy, and host adapter flows
 - [x] production manifest policy check rejects `host_permissions` and test-only localhost matches in `dist/manifest.json`
 - [x] production/test manifest locale invariants are checked: `default_locale`, raw `__MSG_*__` placeholders, matching `_locales/ko` and `_locales/en` keys, and fixed `promptit` app name. `Automated` via `scripts/check-production-manifest.mjs` and `tests/e2e/platform.spec.ts`
 - [x] 옵션 페이지 English override keeps fixed literals and Korean prompt data untranslated while localizing hero/list/editor/validation/save toast/confirm dialogs. `Automated` via `tests/e2e/options.spec.ts`
 - [x] popup/content English override localizes popup chrome, aria labels, empty state, success/failure toasts, and preserves prompt insert/copy data unchanged. `Automated` via `tests/e2e/slash-popup.spec.ts`
-- [x] options backup/share/restore/import deterministic E2E added and passing, including exact file shapes, disabled share state, restore preview/replacement/failure preservation, restore-editor stale body regression, and import append/no-overwrite. `Automated` via `tests/e2e/options.spec.ts`; focused run passed 61 options tests
+- [x] options backup/share/restore/import deterministic E2E added and passing, including exact file shapes with language and theme backup settings, disabled share state, restore preview/replacement/failure preservation including theme-write failure rollback, malformed restore rejection, restore-editor stale body regression, and import append/no-overwrite. `Automated` via `tests/e2e/options.spec.ts`; supervisor focused data portability run passed 14 tests and full `pnpm test` passed with full E2E 152 passed
 - [ ] 실사이트 smoke 실행
 - [ ] 브라우저 툴바 promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `promptit Settings`인지 확인

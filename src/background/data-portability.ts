@@ -40,6 +40,10 @@ import {
   writeLanguagePreference,
 } from '../shared/i18n';
 import type { RuntimeMessageDescriptor } from '../shared/i18n';
+import {
+  readThemePreference,
+  writeThemePreference,
+} from '../shared/theme';
 import { enqueueStorageRequest } from './storage-queue';
 
 const DATA_PORTABILITY_FAILED_MESSAGE =
@@ -92,6 +96,7 @@ async function handleExportBackupRequest(
       prompts: await listPromptRecords(),
       settings: {
         languagePreference: await readLanguagePreference(),
+        themePreference: await readThemePreference(),
       },
     },
   };
@@ -105,21 +110,20 @@ async function handleRestoreBackupRequest(
   const backup = parsePromptitBackupFileOrThrow(request.backup);
   const previousPrompts = await listPromptRecords();
   const previousLanguagePreference = await readLanguagePreference();
-  let promptsWereReplaced = false;
+  const previousThemePreference = await readThemePreference();
 
   try {
     await replacePromptRecords(backup.data.prompts);
-    promptsWereReplaced = true;
     await writeLanguagePreference(backup.data.settings.languagePreference);
+    await writeThemePreference(backup.data.settings.themePreference);
     await publishPromptRevision({ reason: 'records-replaced' });
   } catch (error) {
-    if (promptsWereReplaced) {
-      await rollbackRestoreSnapshot(
-        previousPrompts,
-        previousLanguagePreference,
-        error,
-      );
-    }
+    await rollbackRestoreSnapshot(
+      previousPrompts,
+      previousLanguagePreference,
+      previousThemePreference,
+      error,
+    );
 
     throw error;
   }
@@ -127,6 +131,7 @@ async function handleRestoreBackupRequest(
   return buildRestoreBackupSuccessResponse(
     backup.data.prompts.length,
     backup.data.settings.languagePreference,
+    backup.data.settings.themePreference,
   );
 }
 
@@ -176,11 +181,13 @@ async function handleImportPromptsRequest(
 async function rollbackRestoreSnapshot(
   prompts: Awaited<ReturnType<typeof listPromptRecords>>,
   languagePreference: Awaited<ReturnType<typeof readLanguagePreference>>,
+  themePreference: Awaited<ReturnType<typeof readThemePreference>>,
   originalError: unknown,
 ): Promise<void> {
   try {
     await replacePromptRecords(prompts);
     await writeLanguagePreference(languagePreference);
+    await writeThemePreference(themePreference);
     await publishPromptRevision({ reason: 'records-replaced' });
   } catch (rollbackError) {
     console.error(

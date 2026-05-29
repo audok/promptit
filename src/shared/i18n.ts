@@ -156,9 +156,10 @@ const koMessages = {
   'options.backupShare.restoreFileName': '파일',
   'options.backupShare.restoreCreatedAt': '백업 생성일',
   'options.backupShare.restorePromptCount': '프롬프트 수',
-  'options.backupShare.restoreIncludedSetting': '포함된 설정',
+  'options.backupShare.restoreIncludedSettings': '포함된 설정',
   'options.backupShare.restoreAppVersion': '앱 버전',
-  'options.backupShare.languageSetting': '언어 설정',
+  'options.backupShare.includedSettingsValue':
+    '언어: {language}, 테마: {theme}',
   'options.backupShare.restoreWarning':
     '현재 저장된 프롬프트와 설정을 모두 지우고 백업 파일의 내용으로 되돌립니다.',
   'options.backupShare.cancelRestore': '취소',
@@ -358,9 +359,10 @@ const enMessages: Record<I18nKey, string> = {
   'options.backupShare.restoreFileName': 'File',
   'options.backupShare.restoreCreatedAt': 'Backup created',
   'options.backupShare.restorePromptCount': 'Prompt count',
-  'options.backupShare.restoreIncludedSetting': 'Included setting',
+  'options.backupShare.restoreIncludedSettings': 'Included settings',
   'options.backupShare.restoreAppVersion': 'App version',
-  'options.backupShare.languageSetting': 'Language setting',
+  'options.backupShare.includedSettingsValue':
+    'Language: {language}, theme: {theme}',
   'options.backupShare.restoreWarning':
     'This will delete all current saved prompts and settings, then restore the backup file contents.',
   'options.backupShare.cancelRestore': 'Cancel',

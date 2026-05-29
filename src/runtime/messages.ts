@@ -24,6 +24,10 @@ import {
   type LanguagePreference,
   type RuntimeMessageDescriptor,
 } from '../shared/i18n';
+import {
+  isThemePreference,
+  type ThemePreference,
+} from '../shared/theme';
 
 export type { RuntimeMessageDescriptor } from '../shared/i18n';
 
@@ -377,6 +381,7 @@ export type RestoreBackupSuccessResponse = {
   status: 'success';
   restoredPromptCount: number;
   languagePreference: LanguagePreference;
+  themePreference: ThemePreference;
 };
 
 export type ExportPromptsSuccessResponse = {
@@ -775,6 +780,7 @@ export function buildExportBackupSuccessResponse(
 export function buildRestoreBackupSuccessResponse(
   restoredPromptCount: number,
   languagePreference: LanguagePreference,
+  themePreference: ThemePreference,
 ): RestoreBackupSuccessResponse {
   return {
     type: RESTORE_BACKUP_MESSAGE,
@@ -782,6 +788,7 @@ export function buildRestoreBackupSuccessResponse(
     status: 'success',
     restoredPromptCount,
     languagePreference,
+    themePreference,
   };
 }
 
@@ -1250,11 +1257,13 @@ function parseRestoreBackupResponse(
     typeof value.restoredPromptCount === 'number' &&
     Number.isInteger(value.restoredPromptCount) &&
     value.restoredPromptCount >= 0 &&
-    isLanguagePreference(value.languagePreference)
+    isLanguagePreference(value.languagePreference) &&
+    isThemePreference(value.themePreference)
   ) {
     return buildRestoreBackupSuccessResponse(
       value.restoredPromptCount,
       value.languagePreference,
+      value.themePreference,
     );
   }
 

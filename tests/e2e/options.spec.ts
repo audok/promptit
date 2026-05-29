@@ -792,7 +792,7 @@ function expectNoInternalBackupKeys(rawJson: string): void {
   expect(rawJson).not.toContain('promptit:migration');
   expect(rawJson).not.toContain('promptit:test');
   expect(rawJson).not.toContain('promptit:internal');
-  expect(rawJson).not.toContain('theme');
+  expect(rawJson).not.toContain(THEME_PREFERENCE_STORAGE_KEY);
   expect(rawJson).not.toContain('revision');
 }
 
@@ -867,7 +867,7 @@ test('opens backup/share modal from the prompt header and disables empty sharing
   await expect(modal.getByTestId('prompts-import-file-button')).toBeEnabled();
 });
 
-test('downloads backup JSON with prompt records and language only', async ({
+test('downloads backup JSON with prompt records and language and theme settings', async ({
   extension,
 }) => {
   const normalPrompt = createPromptRecord({
@@ -932,7 +932,10 @@ test('downloads backup JSON with prompt records and language only', async ({
 
   const data = download.value.data;
   expectExactKeys(data, ['prompts', 'settings']);
-  expect(data.settings).toEqual({ languagePreference: 'ko' });
+  expect(data.settings).toEqual({
+    languagePreference: 'ko',
+    themePreference: 'dark',
+  });
   expect(data.prompts).toEqual([pinnedPrompt, normalPrompt]);
 
   for (const prompt of data.prompts as unknown[]) {
@@ -997,9 +1000,11 @@ test('downloads shared prompts JSON with title and content only', async ({
   for (const prompt of data.prompts as unknown[]) {
     expectExactKeys(prompt, ['title', 'content']);
   }
+  expect(download.raw).not.toContain('languagePreference');
+  expect(download.raw).not.toContain('themePreference');
 });
 
-test('restore file selection previews without writing, then confirmation replaces prompts and language', async ({
+test('restore file selection previews without writing, then confirmation replaces prompts and settings', async ({
   extension,
 }, testInfo) => {
   const currentPrompt = createPromptRecord({
@@ -1030,12 +1035,14 @@ test('restore file selection previews without writing, then confirmation replace
       prompts: [restoredPrompt],
       settings: {
         languagePreference: 'en',
+        themePreference: 'dark',
       },
     },
   };
 
   await extension.setPromptRecords([currentPrompt]);
   await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
   const beforeRevision = await extension.getPromptStorageRevision();
   const filePath = await writeJsonFixture(
     testInfo,
@@ -1052,11 +1059,12 @@ test('restore file selection previews without writing, then confirmation replace
   await expect(modal.getByText('restore-backup.json')).toBeVisible();
   await expect(modal.getByText('백업 생성일')).toBeVisible();
   await expect(modal.getByText('프롬프트 수')).toBeVisible();
-  await expect(modal.getByText('언어 설정')).toBeVisible();
+  await expect(modal.getByText('언어: English, 테마: 다크')).toBeVisible();
   await expect(modal.getByText('0.9.0')).toBeVisible();
   await expect(modal.getByText('현재 저장된 프롬프트와 설정을 모두 지우고 백업 파일의 내용으로 되돌립니다.')).toBeVisible();
   expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
   expect(await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
 
   await modal.getByTestId('backup-restore-confirm-button').click();
 
@@ -1067,6 +1075,7 @@ test('restore file selection previews without writing, then confirmation replace
     restoredPrompt,
   ]);
   await expect.poll(async () => await extension.getLanguagePreference()).toBe('en');
+  await expect.poll(async () => await extension.getThemePreference()).toBe('dark');
   expect(await extension.getPromptStorageRevision()).not.toEqual(beforeRevision);
 });
 
@@ -1100,6 +1109,7 @@ test('refreshes an open editor when restore replaces the same prompt id and time
       prompts: [restoredPrompt],
       settings: {
         languagePreference: 'ko',
+        themePreference: 'system',
       },
     },
   });
@@ -1153,6 +1163,7 @@ test('invalid restore files preserve current data', async ({
       prompts: [],
       settings: {
         languagePreference: 'en',
+        themePreference: 'dark',
       },
     },
   });
@@ -1170,7 +1181,76 @@ test('invalid restore files preserve current data', async ({
   expect(await extension.getLanguagePreference()).toBe('ko');
 });
 
-test('restore persistence failure rolls back prompt replacement and preserves language', async ({
+test('restore files missing or carrying invalid theme settings preserve current data', async ({
+  extension,
+}, testInfo) => {
+  const currentPrompt = createPromptRecord({
+    id: 'invalid-restore-theme-current',
+    title: '테마 검증 유지 프롬프트',
+    content: '잘못된 테마 설정 복원 후에도 유지되어야 한다.',
+    normalOrder: 1,
+  });
+  const backupBase = {
+    type: 'promptit.backup',
+    appVersion: '0.9.0',
+    exportedAt: '2026-05-05T03:04:05.000Z',
+    data: {
+      prompts: [],
+      settings: {
+        languagePreference: 'en',
+        themePreference: 'dark',
+      },
+    },
+  };
+  const missingThemeFilePath = await writeJsonFixture(
+    testInfo,
+    'invalid-restore-missing-theme.json',
+    {
+      ...backupBase,
+      data: {
+        ...backupBase.data,
+        settings: {
+          languagePreference: 'en',
+        },
+      },
+    },
+  );
+  const invalidThemeFilePath = await writeJsonFixture(
+    testInfo,
+    'invalid-restore-theme-value.json',
+    {
+      ...backupBase,
+      data: {
+        ...backupBase.data,
+        settings: {
+          languagePreference: 'en',
+          themePreference: 'sepia',
+        },
+      },
+    },
+  );
+
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
+
+  const page = await openOptionsPage(extension);
+  const modal = await openBackupShareModal(page);
+
+  for (const filePath of [missingThemeFilePath, invalidThemeFilePath]) {
+    await modal.getByTestId('backup-restore-file-input').setInputFiles(filePath);
+
+    await expect(getOptionsToast(page)).toContainText(
+      '복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.',
+    );
+    await expect(modal.getByRole('heading', { name: '복원할 백업 확인' })).toHaveCount(0);
+    expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
+    expect(await extension.getLanguagePreference()).toBe('ko');
+    expect(await extension.getThemePreference()).toBe('light');
+  }
+});
+
+test('restore persistence failure rolls back prompt replacement and preserves settings', async ({
   extension,
 }, testInfo) => {
   const currentPrompt = createPromptRecord({
@@ -1193,12 +1273,14 @@ test('restore persistence failure rolls back prompt replacement and preserves la
       prompts: [restoredPrompt],
       settings: {
         languagePreference: 'en',
+        themePreference: 'dark',
       },
     },
   });
 
   await extension.setPromptRecords([currentPrompt]);
   await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
 
   const page = await openOptionsPage(extension);
   const modal = await openBackupShareModal(page);
@@ -1216,6 +1298,62 @@ test('restore persistence failure rolls back prompt replacement and preserves la
     currentPrompt,
   ]);
   expect(await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
+});
+
+test('restore theme persistence failure rolls back prompts and language and preserves theme', async ({
+  extension,
+}, testInfo) => {
+  const currentPrompt = createPromptRecord({
+    id: 'restore-theme-failure-current',
+    title: '테마 실패 시 유지할 현재 프롬프트',
+    content: '테마 저장 실패 뒤에도 남아야 한다.',
+    normalOrder: 1,
+  });
+  const restoredPrompt = createPromptRecord({
+    id: 'restore-theme-failure-backup',
+    title: '테마 실패 시 반영되면 안 되는 백업 프롬프트',
+    content: '테마 저장 실패 때문에 최종 저장되면 안 된다.',
+    normalOrder: 2,
+  });
+  const filePath = await writeJsonFixture(
+    testInfo,
+    'restore-theme-write-fails.json',
+    {
+      type: 'promptit.backup',
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-05T03:04:05.000Z',
+      data: {
+        prompts: [restoredPrompt],
+        settings: {
+          languagePreference: 'en',
+          themePreference: 'dark',
+        },
+      },
+    },
+  );
+
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
+
+  const page = await openOptionsPage(extension);
+  const modal = await openBackupShareModal(page);
+
+  await modal.getByTestId('backup-restore-file-input').setInputFiles(filePath);
+  await expect(modal.getByRole('heading', { name: '복원할 백업 확인' })).toBeVisible();
+
+  await extension.failThemePreferenceWrites();
+  await modal.getByTestId('backup-restore-confirm-button').click();
+
+  await expect(getOptionsToast(page)).toContainText(
+    '복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.',
+  );
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
+    currentPrompt,
+  ]);
+  await expect.poll(async () => await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
 });
 
 test('prompt import appends new prompt records without overwriting existing prompts', async ({
@@ -1364,6 +1502,36 @@ test('malformed restore and import runtime messages are not accepted', async ({
         prompts: [],
         settings: {
           languagePreference: 'fr',
+          themePreference: 'dark',
+        },
+      },
+    },
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: RESTORE_BACKUP_MESSAGE,
+    backup: {
+      type: 'promptit.backup',
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-08T00:00:00.000Z',
+      data: {
+        prompts: [],
+        settings: {
+          languagePreference: 'en',
+        },
+      },
+    },
+  });
+  await expectRawRuntimeMessageNotAccepted(extension, {
+    type: RESTORE_BACKUP_MESSAGE,
+    backup: {
+      type: 'promptit.backup',
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-08T00:00:00.000Z',
+      data: {
+        prompts: [],
+        settings: {
+          languagePreference: 'en',
+          themePreference: 'sepia',
         },
       },
     },

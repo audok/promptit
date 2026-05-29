@@ -189,6 +189,49 @@ export function BackupShareModal(props: BackupShareModalProps) {
     });
   }
 
+  function formatLanguagePreference(
+    preference: PromptitBackupFile['data']['settings']['languagePreference'],
+  ): string {
+    switch (preference) {
+      case 'system':
+        return t('options.language.option.system');
+      case 'ko':
+        return t('options.language.option.ko');
+      case 'en':
+        return t('options.language.option.en');
+      default: {
+        const _exhaustive: never = preference;
+        return _exhaustive;
+      }
+    }
+  }
+
+  function formatThemePreference(
+    preference: PromptitBackupFile['data']['settings']['themePreference'],
+  ): string {
+    switch (preference) {
+      case 'system':
+        return t('options.theme.option.system');
+      case 'light':
+        return t('options.theme.option.light');
+      case 'dark':
+        return t('options.theme.option.dark');
+      default: {
+        const _exhaustive: never = preference;
+        return _exhaustive;
+      }
+    }
+  }
+
+  function formatIncludedSettings(
+    settings: PromptitBackupFile['data']['settings'],
+  ): string {
+    return t('options.backupShare.includedSettingsValue', {
+      language: formatLanguagePreference(settings.languagePreference),
+      theme: formatThemePreference(settings.themePreference),
+    });
+  }
+
   const secondaryButtonClassName = `inline-flex min-h-10 items-center justify-center rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-4 py-2 text-sm font-bold text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-small)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50 ${SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS} ${BUTTON_FOCUS_CLASS}`;
   const primaryButtonClassName = `inline-flex min-h-10 items-center justify-center rounded-full border border-[var(--promptit-options-primary-button)] bg-[var(--promptit-options-primary-button)] px-4 py-2 text-sm font-bold text-[var(--promptit-options-text-inverse)] shadow-[var(--promptit-options-shadow-button)] transition hover:bg-[var(--promptit-options-primary-button-hover)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`;
   const groupClassName =
@@ -269,8 +312,10 @@ export function BackupShareModal(props: BackupShareModalProps) {
                   )}
                 />
                 <PreviewItem
-                  label={t('options.backupShare.restoreIncludedSetting')}
-                  value={t('options.backupShare.languageSetting')}
+                  label={t('options.backupShare.restoreIncludedSettings')}
+                  value={formatIncludedSettings(
+                    restorePreview.file.data.settings,
+                  )}
                 />
                 <PreviewItem
                   label={t('options.backupShare.restoreAppVersion')}

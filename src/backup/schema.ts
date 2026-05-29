@@ -9,12 +9,17 @@ import {
   isLanguagePreference,
   type LanguagePreference,
 } from '../shared/i18n';
+import {
+  isThemePreference,
+  type ThemePreference,
+} from '../shared/theme';
 
 export const PROMPTIT_BACKUP_FILE_TYPE = 'promptit.backup';
 export const PROMPTIT_SHARED_PROMPTS_FILE_TYPE = 'promptit.prompts';
 
 export type PromptitBackupSettings = {
   languagePreference: LanguagePreference;
+  themePreference: ThemePreference;
 };
 
 export type PromptitBackupFile = {
@@ -179,14 +184,16 @@ export function sharedPromptsToDrafts(
 function parseBackupSettings(value: unknown): PromptitBackupSettings | null {
   if (
     !isObjectRecord(value) ||
-    !hasExactKeys(value, ['languagePreference']) ||
-    !isLanguagePreference(value.languagePreference)
+    !hasExactKeys(value, ['languagePreference', 'themePreference']) ||
+    !isLanguagePreference(value.languagePreference) ||
+    !isThemePreference(value.themePreference)
   ) {
     return null;
   }
 
   return {
     languagePreference: value.languagePreference,
+    themePreference: value.themePreference,
   };
 }
 
