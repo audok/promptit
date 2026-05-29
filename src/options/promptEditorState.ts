@@ -4,7 +4,6 @@ import {
   validatePromptDraftMessages,
   type PromptDraft,
   type PromptMeta,
-  type PromptMetaDraft,
   type PromptOrderGroup,
   type PromptRecord,
 } from '../prompt/schema';
@@ -268,28 +267,6 @@ export function buildCreateDraft(
     content: form.content,
     pinned: form.pinned,
   };
-}
-
-export function buildMetaDraft(
-  form: NormalizedPromptForm,
-): PromptMetaDraft {
-  return {
-    title: form.title,
-  };
-}
-
-export function didMetaDraftChange(
-  form: NormalizedPromptForm,
-  activePrompt: PromptRecord,
-): boolean {
-  return form.title !== activePrompt.title;
-}
-
-export function didPinnedChange(
-  form: NormalizedPromptForm,
-  activePrompt: PromptRecord,
-): boolean {
-  return form.pinned !== activePrompt.pinned;
 }
 
 export function mergeMetaIntoRecord(
