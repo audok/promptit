@@ -32,6 +32,7 @@ import {
   type UpdatePromptRecordResponse,
 } from '../runtime/messages';
 import type { RuntimeMessageDescriptor } from '../shared/i18n';
+import type { PromptRevisionReason } from './revision';
 
 export type UpdatePromptOptions = {
   expectedUpdatedAt: string;
@@ -68,6 +69,10 @@ export type DeletePromptResponse = RuntimeDeletePromptResponse;
 type RuntimeFailureResponse = {
   message: string;
   messageDescriptor?: RuntimeMessageDescriptor;
+};
+
+export type PromptMetasSubscriptionEvent = {
+  reason?: PromptRevisionReason;
 };
 
 export class PromptitRuntimeError extends Error {
@@ -277,7 +282,10 @@ export async function setPromptPinned(
 }
 
 export function subscribeToPromptMetas(
-  listener: (metas: PromptMeta[]) => void,
+  listener: (
+    metas: PromptMeta[],
+    event: PromptMetasSubscriptionEvent,
+  ) => void,
 ): () => void {
   if (!hasStorageApi()) {
     return () => {};
@@ -291,8 +299,12 @@ export function subscribeToPromptMetas(
       return;
     }
 
+    const event = getPromptMetasSubscriptionEvent(
+      changes[PROMPT_REVISION_STORAGE_KEY]?.newValue,
+    );
+
     void getPromptMetas()
-      .then(listener)
+      .then((metas) => listener(metas, event))
       .catch((error) => {
         console.error('[promptit] Failed to refresh prompt metadata.', error);
       });
@@ -303,6 +315,26 @@ export function subscribeToPromptMetas(
   return () => {
     chrome.storage.onChanged.removeListener(handleChange);
   };
+}
+
+function getPromptMetasSubscriptionEvent(
+  revision: unknown,
+): PromptMetasSubscriptionEvent {
+  if (
+    typeof revision !== 'object' ||
+    revision === null ||
+    !('reason' in revision)
+  ) {
+    return {};
+  }
+
+  const reason = (revision as { reason?: unknown }).reason;
+
+  if (reason === 'records-replaced') {
+    return { reason };
+  }
+
+  return {};
 }
 
 function getValidatedDraft(draft: PromptDraft): PromptDraft {

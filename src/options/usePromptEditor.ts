@@ -16,6 +16,7 @@ import {
   subscribeToPromptMetas,
   updatePromptRecord,
 } from '../prompt/storage';
+import type { PromptMetasSubscriptionEvent } from '../prompt/runtimeStorageClient';
 import { type LocalizedMessageDescriptor } from '../shared/i18n';
 import {
   BODY_LOAD_ERROR_MESSAGE,
@@ -278,7 +279,10 @@ export function usePromptEditor(): UsePromptEditorResult {
     }
   }
 
-  function applyIncomingPrompts(nextPrompts: PromptMeta[]): void {
+  function applyIncomingPrompts(
+    nextPrompts: PromptMeta[],
+    event: PromptMetasSubscriptionEvent = {},
+  ): void {
     const currentMode = modeRef.current;
     const draftIsDirty = isDirtyRef.current;
     const sortedPrompts = sortPromptMetas(nextPrompts);
@@ -302,6 +306,11 @@ export function usePromptEditor(): UsePromptEditorResult {
         moveToCreateMode();
         setNotice(DELETE_RECOVERY_MESSAGE);
         setAlertMessage(null);
+        return;
+      }
+
+      if (event.reason === 'records-replaced') {
+        void loadPromptRecord(currentPrompt);
         return;
       }
 
@@ -349,12 +358,15 @@ export function usePromptEditor(): UsePromptEditorResult {
   useEffect(() => {
     let cancelled = false;
 
-    const syncPrompts = (nextPrompts: PromptMeta[]) => {
+    const syncPrompts = (
+      nextPrompts: PromptMeta[],
+      event: PromptMetasSubscriptionEvent,
+    ) => {
       if (cancelled) {
         return;
       }
 
-      applyIncomingPrompts(nextPrompts);
+      applyIncomingPrompts(nextPrompts, event);
     };
 
     void getPromptMetas()

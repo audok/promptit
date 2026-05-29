@@ -166,3 +166,11 @@ export function deleteRecordFromTransaction<TName extends PromptStoreName>(
   const store = transaction.objectStore(storeName);
   return requestToPromise(store.delete(id));
 }
+
+export function clearStoreInTransaction<TName extends PromptStoreName>(
+  transaction: IDBTransaction,
+  storeName: TName,
+): Promise<undefined> {
+  const store = transaction.objectStore(storeName);
+  return requestToPromise(store.clear());
+}

@@ -1,4 +1,5 @@
 import {
+  clearStoreInTransaction,
   deleteRecordFromTransaction,
   getAllRecordsFromTransaction,
   getAllStoreRecords,
@@ -11,6 +12,7 @@ import {
 } from './indexed-db';
 import {
   PROMPT_BODY_MAX_BYTES,
+  PROMPT_ORDER_GAP,
   getPromptCharCount,
   getUtf8ByteLength,
   hasPromptDraftErrors,
@@ -18,6 +20,7 @@ import {
   normalizePromptDraft,
   parsePromptBody,
   parsePromptMeta,
+  parsePromptRecord,
   sortPromptMetas,
   toPromptRecord,
   validatePromptDraft,
@@ -123,6 +126,140 @@ export async function getPromptRecord(id: string): Promise<PromptRecord | null> 
       }
 
       return toPromptRecord(assertPromptMeta(meta), assertPromptBody(body));
+    },
+  );
+}
+
+export async function listPromptRecords(): Promise<PromptRecord[]> {
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readonly',
+    async (transaction) => {
+      const metas = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_METAS_STORE)
+      ).map(assertPromptMeta);
+      const bodies = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_BODIES_STORE)
+      ).map(assertPromptBody);
+      const bodiesById = new Map(bodies.map((body) => [body.id, body]));
+      const metaIds = new Set(metas.map((meta) => meta.id));
+      const records = metas.map((meta) => {
+        const body = bodiesById.get(meta.id);
+
+        if (!body) {
+          throw new Error('Stored prompt record is missing a body.');
+        }
+
+        return toPromptRecord(meta, body);
+      });
+
+      if (bodies.some((body) => !metaIds.has(body.id))) {
+        throw new Error('Stored prompt body is missing metadata.');
+      }
+
+      return sortPromptRecords(records);
+    },
+  );
+}
+
+export async function replacePromptRecords(
+  records: PromptRecord[],
+): Promise<PromptRecord[]> {
+  const validatedRecords = records.map(getValidatedPromptRecord);
+  const ids = new Set<string>();
+
+  for (const record of validatedRecords) {
+    if (ids.has(record.id)) {
+      throw new Error('Backup contains duplicate prompt ids.');
+    }
+
+    ids.add(record.id);
+  }
+
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readwrite',
+    async (transaction) => {
+      await clearStoreInTransaction(transaction, PROMPT_BODIES_STORE);
+      await clearStoreInTransaction(transaction, PROMPT_METAS_STORE);
+
+      for (const record of validatedRecords) {
+        const { content, ...meta } = record;
+        const body: PromptBody = {
+          id: record.id,
+          content,
+          updatedAt: record.bodyUpdatedAt,
+        };
+
+        await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
+        await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
+      }
+
+      return sortPromptRecords(validatedRecords);
+    },
+  );
+}
+
+export async function appendPromptDrafts(
+  drafts: PromptDraft[],
+): Promise<PromptRecord[]> {
+  const validatedDrafts = drafts.map(getValidatedPromptDraft);
+
+  if (validatedDrafts.length === 0) {
+    return [];
+  }
+
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readwrite',
+    async (transaction) => {
+      const metas = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_METAS_STORE)
+      ).map(assertPromptMeta);
+      const existingIds = new Set(metas.map((meta) => meta.id));
+      const normalOrders = metas
+        .filter((meta) => !meta.pinned)
+        .map((meta) => meta.normalOrder);
+      const firstOrder =
+        normalOrders.length === 0
+          ? PROMPT_ORDER_GAP
+          : Math.max(...normalOrders) + PROMPT_ORDER_GAP;
+      const timestamp = new Date().toISOString();
+      const createdRecords = validatedDrafts.map((draft, index) => {
+        const id = createUniquePromptId(existingIds);
+        const meta: PromptMeta = {
+          id,
+          title: draft.title,
+          pinned: false,
+          normalOrder: firstOrder + index * PROMPT_ORDER_GAP,
+          pinnedOrder: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          bodyUpdatedAt: timestamp,
+          charCount: getPromptCharCount(draft.content),
+        };
+        const body: PromptBody = {
+          id,
+          content: draft.content,
+          updatedAt: timestamp,
+        };
+
+        return toPromptRecord(meta, body);
+      });
+
+      for (const record of createdRecords) {
+        const { content, ...meta } = record;
+        const body: PromptBody = {
+          id: record.id,
+          content,
+          updatedAt: record.bodyUpdatedAt,
+        };
+
+        await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
+        await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
+      }
+
+      return createdRecords;
     },
   );
 }
@@ -586,6 +723,33 @@ function getValidatedPromptDraft(draft: PromptDraft): PromptDraft {
   return normalizedDraft;
 }
 
+function getValidatedPromptRecord(record: PromptRecord): PromptRecord {
+  const parsed = parsePromptRecord({
+    ...record,
+    charCount: getPromptCharCount(record.content),
+  });
+
+  if (!parsed) {
+    throw new Error('Prompt record is malformed.');
+  }
+
+  return parsed;
+}
+
+function sortPromptRecords(records: PromptRecord[]): PromptRecord[] {
+  const recordsById = new Map(records.map((record) => [record.id, record]));
+
+  return sortPromptMetas(records).map((meta) => {
+    const record = recordsById.get(meta.id);
+
+    if (!record) {
+      throw new Error('Prompt record was not found after sorting.');
+    }
+
+    return record;
+  });
+}
+
 function validatePromptTitle(title: string): string {
   const trimmedTitle = title.trim();
 
@@ -649,4 +813,15 @@ function createPromptId(): string {
   return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
+}
+
+function createUniquePromptId(existingIds: Set<string>): string {
+  let id = createPromptId();
+
+  while (existingIds.has(id)) {
+    id = createPromptId();
+  }
+
+  existingIds.add(id);
+  return id;
 }

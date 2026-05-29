@@ -64,9 +64,11 @@ export type LoadedExtension = {
   getThemePreference: () => Promise<unknown>;
   setThemePreference: (preference: ThemePreference) => Promise<void>;
   clearThemePreference: () => Promise<void>;
+  setChromeStorageLocalValue: (key: string, value: unknown) => Promise<void>;
   getBrowserUiLanguage: () => Promise<string>;
   getPromptStorageRevision: () => Promise<unknown>;
   getChromeStorageLocalSnapshot: () => Promise<Record<string, unknown>>;
+  failLanguagePreferenceWrites: (message?: string) => Promise<void>;
   failPromptStorageRevisionWrites: (message?: string) => Promise<void>;
   sendRuntimeMessage: (
     message: PromptitRuntimeRequest,
@@ -576,6 +578,18 @@ export async function launchExtension(
         await chrome.storage.local.remove(storageKey);
       }, THEME_PREFERENCE_STORAGE_KEY);
     },
+    async setChromeStorageLocalValue(key, value) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(async ({ storageKey, storageValue }) => {
+        await chrome.storage.local.set({
+          [storageKey]: storageValue,
+        });
+      }, {
+        storageKey: key,
+        storageValue: value,
+      });
+    },
     async getBrowserUiLanguage() {
       const serviceWorker = await getServiceWorker();
 
@@ -594,6 +608,33 @@ export async function launchExtension(
 
       return await serviceWorker.evaluate(async () => {
         return await chrome.storage.local.get(null) as Record<string, unknown>;
+      });
+    },
+    async failLanguagePreferenceWrites(
+      message = 'mock language preference write failure',
+    ) {
+      const serviceWorker = await getServiceWorker();
+
+      await serviceWorker.evaluate(({ failureMessage, storageKey }) => {
+        const storage = chrome.storage.local;
+        const originalSet = storage.set.bind(storage);
+
+        storage.set = (async (...args: unknown[]) => {
+          const [items] = args;
+
+          if (
+            typeof items === 'object' &&
+            items !== null &&
+            storageKey in (items as Record<string, unknown>)
+          ) {
+            throw new Error(failureMessage);
+          }
+
+          await (originalSet as (...nextArgs: unknown[]) => Promise<void>)(...args);
+        }) as typeof chrome.storage.local.set;
+      }, {
+        failureMessage: message,
+        storageKey: LANGUAGE_PREFERENCE_STORAGE_KEY,
       });
     },
     async failPromptStorageRevisionWrites(

@@ -1,4 +1,5 @@
 import {
+  type RefObject,
   useRef,
   useState,
   type DragEvent,
@@ -21,6 +22,7 @@ import {
   InsertionIndicator,
   MetaLine,
   PinIcon,
+  SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS,
   formatTimestamp,
 } from './components';
 import { type OptionsToastTone } from './OptionsToast';
@@ -35,6 +37,7 @@ type DropIndicatorState = {
 
 type PromptListProps = {
   activePromptId: string | null;
+  backupShareButtonRef: RefObject<HTMLButtonElement | null>;
   isSaving: boolean;
   listActionDisabled: boolean;
   listMessage: string | null;
@@ -47,6 +50,7 @@ type PromptListProps = {
   locale: Locale;
   onCreatePrompt: () => void;
   onDeletePrompt: (prompt: PromptMeta) => Promise<void>;
+  onOpenBackupShare: () => void;
   onReorderFeedback: (
     message: LocalizedMessageDescriptor,
     tone: OptionsToastTone,
@@ -351,32 +355,45 @@ export function PromptList(props: PromptListProps) {
             {t('options.list.heading')}
           </h2>
         </div>
-        <button
-          type="button"
-          className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 self-center rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-[19px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-small)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
-          onClick={props.onCreatePrompt}
-          disabled={props.isSaving}
-        >
-          <span
-            aria-hidden="true"
-            className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
+        <div className="flex flex-wrap items-center justify-end gap-2 self-center">
+          <button
+            ref={props.backupShareButtonRef}
+            type="button"
+            className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-[17px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-small)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50 ${SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS} ${BUTTON_FOCUS_CLASS}`}
+            onClick={props.onOpenBackupShare}
+            disabled={props.listActionDisabled}
+            data-testid="backup-share-open-button"
           >
-            <svg
-              viewBox="0 0 16 16"
-              className="h-4 w-4"
-              focusable="false"
+            <BackupShareIcon />
+            <span>{t('options.list.backupShareButton')}</span>
+          </button>
+          <button
+            type="button"
+            className={`inline-flex h-[38px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-[19px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-small)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50 ${SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS} ${BUTTON_FOCUS_CLASS}`}
+            onClick={props.onCreatePrompt}
+            disabled={props.listActionDisabled}
+          >
+            <span
+              aria-hidden="true"
+              className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
             >
-              <path
-                d="M8 3v10M3 8h10"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeWidth="2.3"
-              />
-            </svg>
-          </span>
-          <span>{t('options.list.addButton')}</span>
-        </button>
+              <svg
+                viewBox="0 0 16 16"
+                className="h-4 w-4"
+                focusable="false"
+              >
+                <path
+                  d="M8 3v10M3 8h10"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeWidth="2.3"
+                />
+              </svg>
+            </span>
+            <span>{t('options.list.addButton')}</span>
+          </button>
+        </div>
       </div>
 
       <div className="mt-5 space-y-3">
@@ -414,7 +431,7 @@ export function PromptList(props: PromptListProps) {
                     className={`rounded-[24px] border px-4 py-4 transition ${
                       isActive
                         ? 'border-[var(--promptit-options-border-active)] bg-[var(--promptit-options-active-surface)] text-[var(--promptit-options-active-text)] shadow-[var(--promptit-options-shadow-active)]'
-                        : 'border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface-muted)] text-[var(--promptit-options-text-body)] hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-menu-hover)]'
+                        : 'border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface-muted)] text-[var(--promptit-options-text-body)] hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-menu-hover)] focus-within:border-[var(--promptit-options-border-hover)] focus-within:bg-[var(--promptit-options-menu-hover)]'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -596,5 +613,32 @@ export function PromptList(props: PromptListProps) {
         ) : null}
       </div>
     </article>
+  );
+}
+
+function BackupShareIcon() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
+    >
+      <svg viewBox="0 0 16 16" className="h-4 w-4" focusable="false">
+        <path
+          d="M4.25 6.75h7.5l1.25 2v3.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3.5l1.25-2Z"
+          fill="none"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M6 4.75 8 2.75l2 2M8 2.75v5.5M5.5 10.25h5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.5"
+        />
+      </svg>
+    </span>
   );
 }

@@ -10,6 +10,7 @@ import {
   Banner,
   BUTTON_FOCUS_CLASS,
   Field,
+  SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS,
   formatTimestamp,
   getDescribedBy,
 } from './components';
@@ -108,7 +109,7 @@ export function PromptEditorPanel(props: PromptEditorPanelProps) {
         {props.isEditing ? (
           <button
             type="button"
-            className={`inline-flex h-[38px] shrink-0 items-center justify-center rounded-full border border-[var(--promptit-options-border-strong)] bg-[var(--promptit-options-surface-70)] px-[19px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-body)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface)] disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS_CLASS}`}
+            className={`inline-flex h-[38px] shrink-0 items-center justify-center rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-[19px] text-[14px] font-bold leading-none text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-small)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50 ${SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS} ${BUTTON_FOCUS_CLASS}`}
             onClick={props.onCancelEdit}
             disabled={props.isSaving}
           >

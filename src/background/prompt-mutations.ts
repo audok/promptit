@@ -60,6 +60,7 @@ import {
   type UpdatePromptRecordResponse,
 } from '../runtime/messages';
 import type { RuntimeMessageDescriptor } from '../shared/i18n';
+import { enqueueStorageRequest } from './storage-queue';
 
 const UPDATE_PROMPT_CONFLICT_MESSAGE =
   '다른 창의 변경이 먼저 저장되었습니다. 최신 내용을 확인한 뒤 다시 시도해주세요.';
@@ -102,22 +103,10 @@ const PIN_PROMPT_ERROR_DESCRIPTOR = {
   key: 'runtime.prompt.pinFailed',
 } satisfies RuntimeMessageDescriptor;
 
-let promptRequestQueue: Promise<void> = Promise.resolve();
-
 export function handlePromptRequest(
   request: PromptRequest,
 ): Promise<PromptResponse> {
-  const nextRun = promptRequestQueue.then(
-    () => executePromptRequest(request),
-    () => executePromptRequest(request),
-  );
-
-  promptRequestQueue = nextRun.then(
-    () => undefined,
-    () => undefined,
-  );
-
-  return nextRun;
+  return enqueueStorageRequest(() => executePromptRequest(request));
 }
 
 export function handlePromptMutationRequest(

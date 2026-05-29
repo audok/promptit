@@ -5,6 +5,9 @@ import { getIntlLocale, type Locale } from '../shared/i18n';
 export const BUTTON_FOCUS_CLASS =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--promptit-options-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--promptit-options-focus-offset)]';
 
+export const SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS =
+  'focus-visible:border-[var(--promptit-options-text-primary)] focus-visible:bg-[var(--promptit-options-text-primary)] focus-visible:text-[var(--promptit-options-surface)]';
+
 export function formatTimestamp(value: string, locale: Locale): string {
   return new Date(value).toLocaleString(getIntlLocale(locale), {
     dateStyle: 'medium',
@@ -150,7 +153,7 @@ export function Banner(props: {
       <p className="leading-6">{props.message}</p>
       <button
         type="button"
-        className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] hover:bg-[var(--promptit-options-dismiss-hover)] ${BUTTON_FOCUS_CLASS}`}
+        className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-[var(--promptit-options-border)] bg-[var(--promptit-options-surface)] px-3 text-[12px] font-bold leading-none text-[var(--promptit-options-text-primary)] shadow-[var(--promptit-options-shadow-small)] transition hover:border-[var(--promptit-options-border-hover)] hover:bg-[var(--promptit-options-surface-muted)] ${SECONDARY_BUTTON_FOCUS_ACTIVE_CLASS} ${BUTTON_FOCUS_CLASS}`}
         onClick={props.onDismiss}
         aria-label={props.dismissLabel}
       >

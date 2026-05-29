@@ -7,6 +7,16 @@ import {
   useState,
 } from 'react';
 
+import {
+  exportBackup,
+  exportSharedPrompts,
+  importSharedPrompts,
+  restoreBackup,
+} from '../backup/runtimeClient';
+import {
+  type PromptitBackupFile,
+  type PromptitSharedPromptsFile,
+} from '../backup/schema';
 import { type PromptMeta } from '../prompt/schema';
 import {
   PRODUCT_NAME,
@@ -23,6 +33,7 @@ import {
   type LocalizedMessageDescriptor,
 } from '../shared/i18n';
 import { type ThemePreference } from '../shared/theme';
+import { BackupShareModal } from './BackupShareModal';
 import { BUTTON_FOCUS_CLASS, MetricCard } from './components';
 import { OptionsToast, type OptionsToastMessage, type OptionsToastTone } from './OptionsToast';
 import { PromptEditorPanel } from './PromptEditorPanel';
@@ -215,12 +226,15 @@ export default function App() {
   const statusRegionId = useId();
   const alertRegionId = useId();
   const languageMenuId = useId();
+  const backupShareButtonRef = useRef<HTMLButtonElement | null>(null);
   const toastIdRef = useRef(0);
   const toastHideTimerRef = useRef<number | null>(null);
   const [toastMessage, setToastMessage] = useState<OptionsToastMessage | null>(
     null,
   );
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
+  const [isBackupShareModalOpen, setIsBackupShareModalOpen] = useState(false);
+  const [isBackupShareBusy, setIsBackupShareBusy] = useState(false);
   const t = useCallback(
     (key: I18nKey, values?: Record<string, string | number>): string =>
       translate(locale, key, values),
@@ -462,6 +476,120 @@ export default function App() {
     });
   }
 
+  function handleOpenBackupShare(): void {
+    setIsBackupShareModalOpen(true);
+  }
+
+  function handleCloseBackupShare(): void {
+    if (!isBackupShareBusy) {
+      setIsBackupShareModalOpen(false);
+    }
+  }
+
+  function getJsonFilename(prefix: string): string {
+    return `${prefix}-${new Date().toISOString().slice(0, 10)}.json`;
+  }
+
+  function downloadJson(payload: unknown, filename: string): void {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+    }, 0);
+  }
+
+  async function handleExportBackup(): Promise<void> {
+    setIsBackupShareBusy(true);
+
+    try {
+      const backupFile = await exportBackup();
+      downloadJson(backupFile, getJsonFilename('promptit-backup'));
+      showOptionsToast(t('options.toast.backupExported'), 'success');
+    } catch (error) {
+      console.error('[promptit] Failed to export backup.', error);
+      showOptionsToast(t('options.toast.backupExportFailed'), 'error');
+    } finally {
+      setIsBackupShareBusy(false);
+    }
+  }
+
+  async function handleExportSharedPrompts(): Promise<void> {
+    setIsBackupShareBusy(true);
+
+    try {
+      const sharedPromptsFile = await exportSharedPrompts();
+      downloadJson(sharedPromptsFile, getJsonFilename('promptit-prompts'));
+      showOptionsToast(t('options.toast.promptsShared'), 'success');
+    } catch (error) {
+      console.error('[promptit] Failed to export shared prompts.', error);
+      showOptionsToast(t('options.toast.promptsShareFailed'), 'error');
+    } finally {
+      setIsBackupShareBusy(false);
+    }
+  }
+
+  async function handleRestoreBackup(
+    file: PromptitBackupFile,
+    fileName: string,
+  ): Promise<void> {
+    setIsBackupShareBusy(true);
+
+    try {
+      await restoreBackup(file);
+      showOptionsToast(
+        t('options.toast.backupRestored', { fileName }),
+        'success',
+      );
+      setIsBackupShareModalOpen(false);
+    } catch (error) {
+      console.error('[promptit] Failed to restore backup.', error);
+      showOptionsToast(t('options.toast.backupRestoreFailed'), 'error');
+    } finally {
+      setIsBackupShareBusy(false);
+    }
+  }
+
+  async function handleImportSharedPrompts(
+    file: PromptitSharedPromptsFile,
+  ): Promise<void> {
+    setIsBackupShareBusy(true);
+
+    try {
+      const response = await importSharedPrompts(file);
+      showOptionsToast(
+        t('options.toast.promptsImported', {
+          count: response.importedPromptCount,
+        }),
+        'success',
+      );
+      setIsBackupShareModalOpen(false);
+    } catch (error) {
+      console.error('[promptit] Failed to import shared prompts.', error);
+      showOptionsToast(t('options.toast.promptsImportFailed'), 'error');
+    } finally {
+      setIsBackupShareBusy(false);
+    }
+  }
+
+  function handleRestoreBackupFailure(): void {
+    showOptionsToast(t('options.toast.backupRestoreFailed'), 'error');
+  }
+
+  function handleImportSharedPromptsFailure(): void {
+    showOptionsToast(t('options.toast.promptsImportFailed'), 'error');
+  }
+
   return (
     <main className="min-h-screen bg-[var(--promptit-options-app-background)] text-[var(--promptit-options-text-body)]">
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12">
@@ -614,6 +742,7 @@ export default function App() {
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
           <PromptList
             activePromptId={activePromptId}
+            backupShareButtonRef={backupShareButtonRef}
             isSaving={isSaving}
             listActionDisabled={listActionDisabled}
             listMessage={listMessage}
@@ -622,6 +751,7 @@ export default function App() {
             movePromptWithinGroup={movePromptWithinGroup}
             onCreatePrompt={handleStartCreateMode}
             onDeletePrompt={handleDelete}
+            onOpenBackupShare={handleOpenBackupShare}
             onReorderFeedback={showLocalizedOptionsToast}
             onSelectPrompt={handleSelectPrompt}
             prompts={prompts}
@@ -653,6 +783,21 @@ export default function App() {
           />
         </section>
       </div>
+      {isBackupShareModalOpen ? (
+        <BackupShareModal
+          isBusy={isBackupShareBusy}
+          locale={locale}
+          onClose={handleCloseBackupShare}
+          onExportBackup={handleExportBackup}
+          onExportSharedPrompts={handleExportSharedPrompts}
+          onImportSharedPrompts={handleImportSharedPrompts}
+          onImportSharedPromptsFailure={handleImportSharedPromptsFailure}
+          onRestoreBackup={handleRestoreBackup}
+          onRestoreBackupFailure={handleRestoreBackupFailure}
+          openerRef={backupShareButtonRef}
+          promptCount={prompts.length}
+        />
+      ) : null}
       <OptionsToast toast={toastMessage} />
     </main>
   );

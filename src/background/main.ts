@@ -1,11 +1,15 @@
 import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
+  EXPORT_BACKUP_MESSAGE,
+  EXPORT_PROMPTS_MESSAGE,
   GET_PROMPT_BODY_MESSAGE,
   GET_PROMPT_RECORD_MESSAGE,
+  IMPORT_PROMPTS_MESSAGE,
   LIST_PROMPT_METAS_MESSAGE,
   MOVE_PROMPT_MESSAGE,
   OPEN_OPTIONS_PAGE_MESSAGE,
+  RESTORE_BACKUP_MESSAGE,
   SET_PROMPT_PINNED_MESSAGE,
   UPDATE_PROMPT_BODY_MESSAGE,
   UPDATE_PROMPT_META_MESSAGE,
@@ -13,6 +17,7 @@ import {
   assertNever,
   buildOpenOptionsPageErrorResponse,
   buildOpenOptionsPageSuccessResponse,
+  buildDataPortabilityErrorResponse,
   buildPromptErrorResponse,
   parsePromptitRuntimeRequest,
   type OpenOptionsPageResponse,
@@ -20,6 +25,7 @@ import {
   type PromptitRuntimeResponse,
 } from '../runtime/messages';
 import type { RuntimeMessageDescriptor } from '../shared/i18n';
+import { handleDataPortabilityRequest } from './data-portability';
 import { handlePromptRequest } from './prompt-mutations';
 
 let backgroundHandlersRegistered = false;
@@ -100,6 +106,11 @@ export function registerBackgroundHandlers(): void {
         case MOVE_PROMPT_MESSAGE:
         case SET_PROMPT_PINNED_MESSAGE:
           return handlePromptRequest(request);
+        case EXPORT_BACKUP_MESSAGE:
+        case RESTORE_BACKUP_MESSAGE:
+        case EXPORT_PROMPTS_MESSAGE:
+        case IMPORT_PROMPTS_MESSAGE:
+          return handleDataPortabilityRequest(request);
       }
 
       return assertNever(request);
@@ -142,6 +153,16 @@ function buildRuntimeRequestErrorResponse(
         request.type,
         message,
         'storage-failed',
+        RUNTIME_REQUEST_FAILED_DESCRIPTOR,
+      );
+    case EXPORT_BACKUP_MESSAGE:
+    case RESTORE_BACKUP_MESSAGE:
+    case EXPORT_PROMPTS_MESSAGE:
+    case IMPORT_PROMPTS_MESSAGE:
+      return buildDataPortabilityErrorResponse(
+        request.type,
+        message,
+        'data-portability-failed',
         RUNTIME_REQUEST_FAILED_DESCRIPTOR,
       );
   }
