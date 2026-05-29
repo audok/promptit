@@ -1,5 +1,5 @@
 import { chromium, type BrowserContext, type Page } from '@playwright/test';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -85,6 +85,25 @@ const PROMPT_DATABASE_NAME = 'promptit';
 const PROMPT_DATABASE_VERSION = 1;
 const PROMPT_META_STORE_NAME = 'promptMetas';
 const PROMPT_BODY_STORE_NAME = 'promptBodies';
+const PRODUCTION_MATCHES = [
+  'https://chatgpt.com/*',
+  'https://gemini.google.com/*',
+];
+const TEST_FIXTURE_MATCHES = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];
+const REQUIRED_TEST_MATCHES = [...PRODUCTION_MATCHES, ...TEST_FIXTURE_MATCHES];
+
+type ExtensionManifest = {
+  content_scripts?: Array<{
+    matches?: string[];
+    [key: string]: unknown;
+  }>;
+  web_accessible_resources?: Array<{
+    matches?: string[];
+    resources?: string[];
+    [key: string]: unknown;
+  } | string>;
+  [key: string]: unknown;
+};
 
 function assertBuiltExtension(): void {
   if (fs.existsSync(extensionManifestPath)) {
@@ -92,8 +111,50 @@ function assertBuiltExtension(): void {
   }
 
   throw new Error(
-    'Built extension not found. Run `pnpm build` before executing Playwright tests.',
+    'Built extension not found. Run `pnpm build:test` before executing Playwright tests.',
   );
+}
+
+async function prepareTestExtensionDirectory(): Promise<string> {
+  const testExtensionPath = await mkdtemp(
+    path.join(tempRootPath || os.tmpdir(), 'promptit-extension-'),
+  );
+
+  try {
+    await cp(extensionPath, testExtensionPath, {
+      recursive: true,
+    });
+
+    const manifestPath = path.join(testExtensionPath, 'manifest.json');
+    const manifest = JSON.parse(
+      await readFile(manifestPath, 'utf8'),
+    ) as ExtensionManifest;
+    const contentScriptMatches =
+      manifest.content_scripts?.flatMap((script) => script.matches ?? []) ?? [];
+    const webAccessibleMatches = (
+      manifest.web_accessible_resources ?? []
+    ).flatMap((entry) =>
+      typeof entry === 'string' ? [] : (entry.matches ?? []),
+    );
+
+    for (const match of REQUIRED_TEST_MATCHES) {
+      if (
+        !contentScriptMatches.includes(match) ||
+        !webAccessibleMatches.includes(match)
+      ) {
+        throw new Error(
+          `Test extension manifest is missing ${match}. Run \`pnpm build:test\` before executing Playwright tests.`,
+        );
+      }
+    }
+
+    return testExtensionPath;
+  } catch (error) {
+    await rm(testExtensionPath, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
+    throw error;
+  }
 }
 
 function captureBrowserEnvironment(): BrowserEnvironmentSnapshot {
@@ -144,8 +205,10 @@ export async function launchExtension(
   const restoreConfiguredEnvironment = await configureBrowserEnvironment();
   let context: BrowserContext | null = null;
   let userDataDir: string | null = null;
+  let testExtensionPath: string | null = null;
 
   try {
+    testExtensionPath = await prepareTestExtensionDirectory();
     userDataDir = await mkdtemp(
       path.join(tempRootPath || os.tmpdir(), 'promptit-playwright-'),
     );
@@ -153,8 +216,8 @@ export async function launchExtension(
       headless: !isHeaded,
       locale: options.browserLocale,
       args: [
-        `--disable-extensions-except=${extensionPath}`,
-        `--load-extension=${extensionPath}`,
+        `--disable-extensions-except=${testExtensionPath}`,
+        `--load-extension=${testExtensionPath}`,
         ...(options.browserLocale ? [`--lang=${options.browserLocale}`] : []),
       ],
     });
@@ -167,17 +230,24 @@ export async function launchExtension(
       await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined);
     }
 
+    if (testExtensionPath) {
+      await rm(testExtensionPath, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+    }
+
     restoreConfiguredEnvironment();
     throw error;
   }
 
-  if (!context || !userDataDir) {
+  if (!context || !userDataDir || !testExtensionPath) {
     restoreConfiguredEnvironment();
     throw new Error('Failed to initialize extension browser context.');
   }
 
   const launchedContext = context;
   const launchedUserDataDir = userDataDir;
+  const launchedExtensionPath = testExtensionPath;
 
   async function getServiceWorker() {
     let [serviceWorker] = launchedContext.serviceWorkers();
@@ -196,6 +266,9 @@ export async function launchExtension(
   } catch (error) {
     await launchedContext.close().catch(() => undefined);
     await rm(launchedUserDataDir, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
+    await rm(testExtensionPath, { recursive: true, force: true }).catch(
       () => undefined,
     );
     restoreConfiguredEnvironment();
@@ -700,6 +773,12 @@ export async function launchExtension(
         cleanupErrors.push(error);
       }
 
+      try {
+        await rm(launchedExtensionPath, { recursive: true, force: true });
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+
       restoreConfiguredEnvironment();
 
       if (cleanupErrors.length === 1) {
@@ -709,7 +788,7 @@ export async function launchExtension(
       if (cleanupErrors.length > 1) {
         throw new AggregateError(
           cleanupErrors,
-          'Failed to close extension context and remove user data directory.',
+          'Failed to close extension context and remove test directories.',
         );
       }
     },
