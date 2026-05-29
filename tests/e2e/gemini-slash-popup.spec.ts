@@ -76,7 +76,7 @@ async function dispatchNestedChildGeminiInput(
   }, GEMINI_COMPOSER_SELECTOR);
 }
 
-test('initializes Promptit on the Gemini fixture', async ({ extension }) => {
+test('initializes promptit on the Gemini fixture', async ({ extension }) => {
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
 

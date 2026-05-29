@@ -922,11 +922,11 @@ export async function sendPromptitRuntimeRequest(
     return parsedResponse;
   }
 
-  throw new Error('Received malformed Promptit runtime response.');
+  throw new Error('Received malformed promptit runtime response.');
 }
 
 export function assertNever(value: never): never {
-  throw new Error(`Unhandled Promptit runtime contract: ${String(value)}`);
+  throw new Error(`Unhandled promptit runtime contract: ${String(value)}`);
 }
 
 function parseGetPromptBodyRequest(

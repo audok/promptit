@@ -104,7 +104,7 @@ function ensureToastHost(): {
     shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
 
   if (!content) {
-    throw new Error('Promptit toast content element could not be created.');
+    throw new Error('promptit toast content element could not be created.');
   }
 
   applyToastTheme(content);

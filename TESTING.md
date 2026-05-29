@@ -1,6 +1,6 @@
-# Promptit Testing Guide
+# promptit Testing Guide
 
-이 문서는 Promptit의 자동 테스트와 수동 최종 확인 절차를 한 곳에 정리한 문서입니다.
+이 문서는 promptit의 자동 테스트와 수동 최종 확인 절차를 한 곳에 정리한 문서입니다.
 
 상세 커버리지 체크리스트와 현재 남은 갭은 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)에 정리합니다.
 
@@ -84,7 +84,7 @@ pnpm test:e2e:live
   - `chatgpt.com`에서 popup open + insert
   - `chatgpt.com`에서 copy
   - `chatgpt.com` empty state -> options
-  - Gemini public page는 Promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동해 no-submit smoke로 안전하지 않음
+  - Gemini public page는 promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동해 no-submit smoke로 안전하지 않음
 
 ## 테스트 파일과 체크리스트 매핑
 
@@ -97,9 +97,9 @@ pnpm test:e2e:live
 | `tests/live/live-chatgpt.spec.ts` | 실제 `chatgpt.com` smoke | `실사이트 smoke` |
 | `tests/live/live-gemini.spec.ts` | Gemini public-page smoke 후보. 현재 no-submit 조건을 만족하지 못해 skip | `실사이트 smoke` |
 
-## Promptit 테스트 헬퍼
+## promptit 테스트 헬퍼
 
-Promptit production prompt data는 IndexedDB에 저장되며 `promptMetas`와 `promptBodies`로 분리되어 있다.
+promptit production prompt data는 IndexedDB에 저장되며 `promptMetas`와 `promptBodies`로 분리되어 있다.
 
 일반 테스트 데이터는 `extension.setPromptRecords(records)`로 seed하고, 상태 확인은 `extension.getPromptMetas()`, `extension.getPromptBody(id)`, `extension.getPromptRecords()`를 사용한다.
 
@@ -141,10 +141,10 @@ pnpm test:e2e:live
 
 ### 브라우저 툴바 아이콘 클릭
 
-1. Promptit 확장을 로드한 브라우저를 연다.
-2. 브라우저 툴바에서 Promptit 확장 아이콘을 클릭한다.
+1. promptit 확장을 로드한 브라우저를 연다.
+2. 브라우저 툴바에서 promptit 확장 아이콘을 클릭한다.
 3. 옵션 페이지가 새 탭으로 열리거나, 이미 열린 옵션 탭으로 포커스되는지 확인한다.
-4. 옵션 페이지 제목이 `Promptit Settings`인지 확인한다.
+4. 옵션 페이지 제목이 `promptit Settings`인지 확인한다.
 
 이 항목을 수동으로 두는 이유:
 
@@ -153,21 +153,21 @@ pnpm test:e2e:live
 
 ### 로그인된 ChatGPT/Gemini 전체 흐름
 
-1. Promptit 확장을 로드한 브라우저에서 로그인된 ChatGPT와 Gemini 세션을 각각 연다.
+1. promptit 확장을 로드한 브라우저에서 로그인된 ChatGPT와 Gemini 세션을 각각 연다.
 2. 각 서비스의 composer에 포커스하고 `/ `를 입력한다.
-3. Promptit popup이 열리는지 확인한다.
+3. promptit popup이 열리는지 확인한다.
 4. Enter 또는 popup click으로 저장된 프롬프트 insert, copy, pin/unpin 흐름을 확인한다.
 5. `/ ` trigger cleanup이 정상 동작하고, 의도치 않게 prompt가 제출되지 않는지 확인한다.
 
 이 항목을 수동으로 두는 이유:
 
 - 로그인 세션은 계정 상태, 쿠키, 사이트 UI 변경, A/B 테스트의 영향을 받아 반복 가능한 회귀 테스트로 고정하기 어렵다.
-- 2026-05-07 자동 live smoke에서 public Gemini page는 Promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동했다. 이 상태에서는 composer readback으로 no-submit 조건을 안전하게 증명할 수 없다.
+- 2026-05-07 자동 live smoke에서 public Gemini page는 promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동했다. 이 상태에서는 composer readback으로 no-submit 조건을 안전하게 증명할 수 없다.
 - 로그인된 실제 ChatGPT/Gemini composer의 최종 전체 흐름은 사용자 세션에서 확인해야 한다.
 
 ### 백업/공유 실제 다운로드와 파일 선택
 
-1. Promptit 확장을 로드한 브라우저에서 옵션 페이지를 연다.
+1. promptit 확장을 로드한 브라우저에서 옵션 페이지를 연다.
 2. `백업/공유`를 열고 `백업`과 `프롬프트 전체 공유`가 실제 다운로드 폴더에 JSON 파일을 만드는지 확인한다.
 3. 백업 JSON을 `복원`에 다시 선택했을 때 preview가 먼저 표시되고, confirm 후 데이터가 교체되는지 확인한다.
 4. 공유 JSON을 `프롬프트 가져오기`에 선택했을 때 기존 프롬프트가 유지되고 새 프롬프트가 추가되는지 확인한다.
@@ -219,7 +219,7 @@ pkill -f 'chrome-devtools-mcp|puppeteer_dev_chrome_profile|promptit-playwright'
 ### 기본형
 
 ```text
-TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
+TESTING.md와 TEST_CHECKLIST.md 기준으로 promptit 테스트를 진행해줘.
 자동 테스트는 전부 순차 실행하고, 실패가 있으면 built-in explorer 서브에이전트를 사용해서 실패 로그 정리, 체크리스트 매핑, 원인 분석을 진행해줘.
 코드 수정은 하지 말고, 마지막에는 결과 요약과 내가 수동으로 확인할 항목만 남겨줘.
 ```
@@ -229,7 +229,7 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - 브라우저 툴바 확장 아이콘 클릭은 자동화하지 않았다.
 - 일부 브라우저/확장 플랫폼 자체 동작은 Playwright보다 수동 점검이 더 현실적이다.
 - 실사이트 smoke는 OpenAI/Gemini UI 변경, 로그인 유도 모달, A/B 테스트의 영향을 받을 수 있다.
-- Gemini public page smoke는 no-submit 조건을 만족하지 못해 skip되어 있다. 2026-05-07 결과: Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state에 표시되고 composer text readback은 빈 문자열이었다. 즉, 자동 smoke가 확인하려는 "composer 안에 삽입되고 제출되지 않는다"는 조건을 public page에서 안정적으로 관찰할 수 없었다.
+- Gemini public page smoke는 no-submit 조건을 만족하지 못해 skip되어 있다. 2026-05-07 결과: promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state에 표시되고 composer text readback은 빈 문자열이었다. 즉, 자동 smoke가 확인하려는 "composer 안에 삽입되고 제출되지 않는다"는 조건을 public page에서 안정적으로 관찰할 수 없었다.
 - 백업/공유/복원/가져오기 옵션 E2E는 deterministic fixture에서 통과했지만, 실제 사용자의 다운로드 폴더, OS 파일 선택기, 수동 로드된 확장 상태는 release 전 수동 체크로 남긴다.
 - 자동화 커버리지의 세부 갭은 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)를 기준으로 관리한다.
 
@@ -238,7 +238,7 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - [ ] `pnpm test`
 - [ ] `pnpm test:e2e:live`
 - [ ] 테스트용 Chrome/MCP 프로세스 정리 확인
-- [ ] 툴바 Promptit 아이콘 클릭
+- [ ] 툴바 promptit 아이콘 클릭
 - [ ] 옵션 페이지 정상 오픈 확인
 - [ ] 백업/공유 실제 다운로드와 파일 선택 확인
 - [ ] 로그인된 ChatGPT/Gemini 전체 흐름 확인

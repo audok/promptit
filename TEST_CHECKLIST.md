@@ -1,6 +1,6 @@
-# Promptit Test Checklist
+# promptit Test Checklist
 
-이 문서는 Promptit에서 검증해야 하는 동작과 현재 커버 상태를 정리한 상세 체크리스트입니다.
+이 문서는 promptit에서 검증해야 하는 동작과 현재 커버 상태를 정리한 상세 체크리스트입니다.
 
 - 실행 순서와 운영 가이드는 [TESTING.md](TESTING.md)를 기준으로 본다.
 - 이 문서는 `무엇을 검증하는지`와 `무엇이 아직 비어 있는지`를 추적하는 용도로 쓴다.
@@ -17,12 +17,12 @@
 
 - [x] content script runtime message로 옵션 페이지를 연다. `Automated` via `tests/e2e/platform.spec.ts`
 - [x] malformed runtime message는 옵션 페이지를 열지 않고 무시한다. `Automated` via `tests/e2e/platform.spec.ts`
-- [x] 지원하지 않는 URL에서는 Promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
-- [x] test mode에서 지원하지 않는 localhost fixture에서는 Promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
-- [x] 실제 `chatgpt.com`에서 Promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [x] Gemini fixture에서 Promptit이 초기화된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] 지원하지 않는 URL에서는 promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
+- [x] test mode에서 지원하지 않는 localhost fixture에서는 promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
+- [x] 실제 `chatgpt.com`에서 promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [x] Gemini fixture에서 promptit이 초기화된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] 같은 페이지에서 중복 초기화 방지 가드가 명시적으로 검증된다. `Automated` via `tests/e2e/platform.spec.ts`
-- [ ] 브라우저 툴바 Promptit 아이콘 클릭으로 옵션 페이지가 열린다. `Manual`
+- [ ] 브라우저 툴바 promptit 아이콘 클릭으로 옵션 페이지가 열린다. `Manual`
 
 ## 2. 입력 감지와 trigger
 
@@ -142,7 +142,7 @@
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 insert할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 copy할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 empty state -> options가 된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [ ] 실제 public `gemini.google.com/app` no-submit smoke는 skip되어 있다. `Skipped live` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state로 이동했고 composer readback은 빈 문자열이었다. Deterministic Gemini no-submit은 `tests/e2e/gemini-slash-popup.spec.ts`에서 검증한다.
+- [ ] 실제 public `gemini.google.com/app` no-submit smoke는 skip되어 있다. `Skipped live` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state로 이동했고 composer readback은 빈 문자열이었다. Deterministic Gemini no-submit은 `tests/e2e/gemini-slash-popup.spec.ts`에서 검증한다.
 - [ ] 로그인된 ChatGPT, Gemini 세션에서 전체 흐름을 반복 검증한다. `Manual`
 
 ## 7. 릴리스 체크용 빠른 체크리스트
@@ -157,7 +157,7 @@
 - [x] popup/content English override localizes popup chrome, aria labels, empty state, success/failure toasts, and preserves prompt insert/copy data unchanged. `Automated` via `tests/e2e/slash-popup.spec.ts`
 - [x] options backup/share/restore/import deterministic E2E added and passing, including exact file shapes, disabled share state, restore preview/replacement/failure preservation, restore-editor stale body regression, and import append/no-overwrite. `Automated` via `tests/e2e/options.spec.ts`; focused run passed 61 options tests
 - [ ] 실사이트 smoke 실행
-- [ ] 브라우저 툴바 Promptit 아이콘 클릭
-- [ ] 옵션 페이지 제목이 `Promptit Settings`인지 확인
+- [ ] 브라우저 툴바 promptit 아이콘 클릭
+- [ ] 옵션 페이지 제목이 `promptit Settings`인지 확인
 - [ ] 백업/공유 실제 다운로드와 파일 선택 수동 확인
 - [ ] 로그인된 ChatGPT, Gemini 전체 흐름 수동 확인

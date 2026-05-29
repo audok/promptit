@@ -83,7 +83,7 @@ async function evaluateInPromptitContentScriptContext<T>(
 
   if (!context) {
     await cdpSession.detach();
-    throw new Error('Promptit content script execution context not found.');
+    throw new Error('promptit content script execution context not found.');
   }
 
   const result = await cdpSession.send('Runtime.evaluate', {
@@ -95,7 +95,7 @@ async function evaluateInPromptitContentScriptContext<T>(
   await cdpSession.detach();
 
   if (result.exceptionDetails) {
-    throw new Error('Promptit content script evaluation failed.');
+    throw new Error('promptit content script evaluation failed.');
   }
 
   return result.result.value as T;
@@ -248,7 +248,7 @@ test('ignores malformed runtime messages without opening the options page', asyn
   await expect(page.locator('[data-testid="promptit-popup"]')).toHaveCount(0);
 });
 
-test('does not initialize Promptit on unsupported URLs', async ({
+test('does not initialize promptit on unsupported URLs', async ({
   extension,
 }) => {
   const page = await extension.context.newPage();
@@ -305,7 +305,7 @@ test('does not register duplicate content script listeners on same-page reinject
           });
 
           if (!contentScriptResource) {
-            throw new Error('Promptit content script resource not found.');
+            throw new Error('promptit content script resource not found.');
           }
 
           const beforeReadyAttribute =
@@ -357,7 +357,7 @@ test('does not register duplicate content script listeners on same-page reinject
     });
 });
 
-test('does not initialize Promptit on unsupported localhost fixtures', async ({
+test('does not initialize promptit on unsupported localhost fixtures', async ({
   extension,
 }) => {
   const page = await extension.context.newPage();

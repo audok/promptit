@@ -39,7 +39,7 @@ async function openLiveGemini(page: Page): Promise<void> {
 }
 
 test.describe.skip('gemini.google.com live smoke', () => {
-  // Public Gemini currently moves the selected Promptit text into page-level
+  // Public Gemini currently moves the selected promptit text into page-level
   // submitted state and clears the composer, so this is not a safe no-submit
   // live smoke. Keep deterministic Gemini coverage in tests/e2e instead.
   test('opens the popup and inserts a saved prompt', async ({

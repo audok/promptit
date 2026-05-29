@@ -111,7 +111,7 @@ function sendRuntimeRequest(
   request: DataPortabilityRequest,
 ): Promise<DataPortabilityResponse> {
   if (!hasRuntimeApi()) {
-    throw new Error('Promptit runtime is unavailable.');
+    throw new Error('promptit runtime is unavailable.');
   }
 
   return sendPromptitRuntimeRequest(
