@@ -837,14 +837,6 @@ function parseRgbColor(value: string): {
   };
 }
 
-function expectRgbChannelsAtLeast(value: string, minimum: number): void {
-  const { channels } = parseRgbColor(value);
-
-  for (const channel of channels) {
-    expect(channel).toBeGreaterThanOrEqual(minimum);
-  }
-}
-
 function expectRgbChannelsBetween(
   value: string,
   minimum: number,
