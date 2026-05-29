@@ -112,6 +112,16 @@ Popup storage 테스트는 다음 경계를 우선 검증한다.
 - pin/unpin은 metadata mutation만 수행하고 persisted pinned state와 popup ordering을 갱신한다.
 - body read failure는 popup이 복구 가능한 상태로 남는다.
 
+Data portability 테스트는 옵션 페이지 UI를 통해 검증한다. 백업/공유/복원/가져오기 자동 테스트는 `tests/e2e/options.spec.ts`에 있으며, 2026-05-29 최종 검증에서 focused options E2E 61개와 full `pnpm test` 143개가 통과했다. 자동화는 다음 경계를 반복 가능하게 확인한다.
+
+- backup download JSON은 `type: "promptit.backup"`, `appVersion`, `exportedAt`, `data.prompts`, `data.settings.languagePreference`를 포함한다.
+- prompt share download JSON은 `type: "promptit.prompts"`, `appVersion`, `exportedAt`, `data.prompts`를 포함하며 공유 prompt object는 `title`과 `content`만 포함한다.
+- 저장된 프롬프트가 없을 때 `프롬프트 전체 공유`는 disabled이고 `저장된 프롬프트가 없습니다.` 안내가 표시되거나 연결된다.
+- restore는 파일 선택 후 preview를 먼저 보여주고, confirm 전에는 current prompts/settings를 바꾸지 않는다.
+- restore confirm은 current prompts와 language setting을 backup 내용으로 교체하며, validation 또는 persistence 실패 시 이전 prompts와 language setting을 보존한다.
+- restore가 같은 prompt id/timestamps를 가진 backup으로 교체해도 열린 editor body가 stale 상태로 남지 않는다.
+- import는 shared prompt file의 prompts를 새 record로 append하고 existing prompts를 overwrite하거나 remove하지 않는다.
+
 ## 권장 실행 순서
 
 릴리스 전에는 아래 순서를 권장한다.
@@ -127,7 +137,7 @@ pnpm test:e2e:live
 
 ## 수동 최종 체크
 
-자동화되지 않은 최종 체크는 현재 2개다.
+자동화되지 않은 최종 체크는 현재 3개다.
 
 ### 브라우저 툴바 아이콘 클릭
 
@@ -155,6 +165,18 @@ pnpm test:e2e:live
 - 2026-05-07 자동 live smoke에서 public Gemini page는 Promptit 선택 후 텍스트가 composer에 남지 않고 page-level submitted state로 이동했다. 이 상태에서는 composer readback으로 no-submit 조건을 안전하게 증명할 수 없다.
 - 로그인된 실제 ChatGPT/Gemini composer의 최종 전체 흐름은 사용자 세션에서 확인해야 한다.
 
+### 백업/공유 실제 다운로드와 파일 선택
+
+1. Promptit 확장을 로드한 브라우저에서 옵션 페이지를 연다.
+2. `백업/공유`를 열고 `백업`과 `프롬프트 전체 공유`가 실제 다운로드 폴더에 JSON 파일을 만드는지 확인한다.
+3. 백업 JSON을 `복원`에 다시 선택했을 때 preview가 먼저 표시되고, confirm 후 데이터가 교체되는지 확인한다.
+4. 공유 JSON을 `프롬프트 가져오기`에 선택했을 때 기존 프롬프트가 유지되고 새 프롬프트가 추가되는지 확인한다.
+
+이 항목을 수동으로 두는 이유:
+
+- Playwright는 다운로드 파일 shape와 file input flow를 자동화할 수 있지만, 실제 사용자의 브라우저 다운로드 위치, OS 파일 선택기, 확장 수동 로드 상태는 환경 차이가 있다.
+- Release 전에는 자동화와 별도로 실제 패키징/수동 로드 환경에서 파일이 사용자에게 도달하는지 확인해야 한다.
+
 ## 언제 어떤 테스트를 돌릴지
 
 ### 구현 중
@@ -173,6 +195,7 @@ pnpm test:e2e:live
 - `pnpm test:e2e:live`
 - 브라우저 테스트 후 `chrome-devtools-mcp` / 테스트용 Chrome 프로세스 정리 확인
 - 브라우저 툴바 아이콘 수동 체크
+- 백업/공유 실제 다운로드와 파일 선택 수동 체크
 - 로그인된 ChatGPT/Gemini 전체 흐름 수동 체크
 
 ### 브라우저 프로세스 정리
@@ -180,13 +203,13 @@ pnpm test:e2e:live
 브라우저/DevTools/Playwright를 사용한 뒤에는 호스트 프로세스 기준으로 테스트용 브라우저가 남았는지 확인한다.
 
 ```bash
-ps -ef | rg 'chrome-devtools-mcp|puppeteer_dev_chrome_profile|/opt/google/chrome/chrome'
+ps -ef | rg '[c]hrome-devtools-mcp|[p]uppeteer_dev_chrome_profile|/opt/google/[c]hrome/chrome|[p]romptit-playwright'
 ```
 
 테스트용 프로세스가 남아 있으면 일반 사용자 Chrome이 아닌지 확인한 뒤 종료한다.
 
 ```bash
-pkill -f 'chrome-devtools-mcp|puppeteer_dev_chrome_profile'
+pkill -f 'chrome-devtools-mcp|puppeteer_dev_chrome_profile|promptit-playwright'
 ```
 
 ## 추천 프롬프트
@@ -207,6 +230,7 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - 일부 브라우저/확장 플랫폼 자체 동작은 Playwright보다 수동 점검이 더 현실적이다.
 - 실사이트 smoke는 OpenAI/Gemini UI 변경, 로그인 유도 모달, A/B 테스트의 영향을 받을 수 있다.
 - Gemini public page smoke는 no-submit 조건을 만족하지 못해 skip되어 있다. 2026-05-07 결과: Promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state에 표시되고 composer text readback은 빈 문자열이었다. 즉, 자동 smoke가 확인하려는 "composer 안에 삽입되고 제출되지 않는다"는 조건을 public page에서 안정적으로 관찰할 수 없었다.
+- 백업/공유/복원/가져오기 옵션 E2E는 deterministic fixture에서 통과했지만, 실제 사용자의 다운로드 폴더, OS 파일 선택기, 수동 로드된 확장 상태는 release 전 수동 체크로 남긴다.
 - 자동화 커버리지의 세부 갭은 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)를 기준으로 관리한다.
 
 ## 빠른 체크리스트
@@ -216,4 +240,5 @@ TESTING.md와 TEST_CHECKLIST.md 기준으로 Promptit 테스트를 진행해줘.
 - [ ] 테스트용 Chrome/MCP 프로세스 정리 확인
 - [ ] 툴바 Promptit 아이콘 클릭
 - [ ] 옵션 페이지 정상 오픈 확인
+- [ ] 백업/공유 실제 다운로드와 파일 선택 확인
 - [ ] 로그인된 ChatGPT/Gemini 전체 흐름 확인
