@@ -156,10 +156,6 @@ export function showToast(
   }, 1800);
 }
 
-export function showCopyToast(message: string, variant: 'success' | 'error' = 'success'): void {
-  showToast(message, variant);
-}
-
 export function setToastTheme(theme: ResolvedTheme): void {
   currentTheme = theme;
 

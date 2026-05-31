@@ -11,10 +11,6 @@ export function isThemePreference(
   return value === 'system' || value === 'light' || value === 'dark';
 }
 
-export function isResolvedTheme(value: unknown): value is ResolvedTheme {
-  return value === 'light' || value === 'dark';
-}
-
 export function getSystemTheme(): ResolvedTheme {
   if (typeof window === 'undefined' || !window.matchMedia) {
     return DEFAULT_THEME;

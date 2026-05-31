@@ -37,7 +37,6 @@ import {
   type PromptEditorConflictState,
   type PromptEditorLoadState,
   type PromptEditorMode,
-  type PromptEditorSaveState,
   type PromptFormErrors,
   type PromptFormState,
   type PromptMovePlacement,

@@ -850,7 +850,7 @@ export function expectRgbChannelsBetween(
   }
 }
 
-export function getRelativeLuminance(value: string): number {
+function getRelativeLuminance(value: string): number {
   const { alpha, channels } = parseRgbColor(value);
   expect(alpha).toBe(1);
 

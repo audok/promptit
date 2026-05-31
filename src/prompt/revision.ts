@@ -34,16 +34,6 @@ export async function publishPromptRevision(
   });
 }
 
-export async function publishPromptRevisionBestEffort(
-  failureMessage = '[promptit] Failed to publish prompt revision.',
-): Promise<void> {
-  try {
-    await publishPromptRevision();
-  } catch (error) {
-    console.error(failureMessage, error);
-  }
-}
-
 function hasChromeStorageApi(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local);
 }

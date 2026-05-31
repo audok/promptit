@@ -70,7 +70,7 @@ export async function openOptionsPageShell(
   return page;
 }
 
-export async function expectKoreanOptionsLanding(page: Page): Promise<void> {
+async function expectKoreanOptionsLanding(page: Page): Promise<void> {
   await expect(
     page.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
   ).toBeVisible();
@@ -274,7 +274,7 @@ export async function getOptionsThemeSnapshot(page: Page): Promise<{
   });
 }
 
-export function parseRgbChannels(value: string): number[] {
+function parseRgbChannels(value: string): number[] {
   const match = /^rgba?\((\d+), (\d+), (\d+)(?:, [\d.]+)?\)$/.exec(value);
 
   expect(match).not.toBeNull();
@@ -361,14 +361,14 @@ export async function getComputedThemeStyle(locator: Locator): Promise<{
   });
 }
 
-export function getBackupShareOpenButton(page: Page): Locator {
+function getBackupShareOpenButton(page: Page): Locator {
   return getPromptList(page).getByRole('button', {
     name: '백업/공유',
     exact: true,
   });
 }
 
-export function getBackupShareModal(page: Page): Locator {
+function getBackupShareModal(page: Page): Locator {
   return page.getByRole('dialog', { name: '백업/공유' });
 }
 
@@ -418,7 +418,7 @@ export async function readDownloadedJson<T = unknown>(
   };
 }
 
-export function getPromptListButtons(page: Page): Locator {
+function getPromptListButtons(page: Page): Locator {
   return getPromptList(page).locator('[data-testid="prompt-card"]');
 }
 
@@ -495,7 +495,7 @@ export async function expectPromptMetaValuesToUseTwoLineLayout(
   }
 }
 
-export async function getTypographyStyle(locator: Locator): Promise<{
+async function getTypographyStyle(locator: Locator): Promise<{
   fontSize: string;
   fontWeight: number;
   letterSpacing: number;
@@ -580,7 +580,7 @@ export function getPromptPinToggle(page: Page, title: string): Locator {
     .first();
 }
 
-export function escapeRegExp(value: string): string {
+function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -728,7 +728,7 @@ export async function setPromptPinnedThroughRuntime(
   );
 }
 
-export async function sendRawRuntimeMessageResult(
+async function sendRawRuntimeMessageResult(
   extension: LoadedExtension,
   message: unknown,
 ): Promise<

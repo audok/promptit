@@ -46,8 +46,6 @@ import {
   type ListPromptMetasResponse,
   type MovePromptRequest,
   type MovePromptResponse,
-  type PromptMutationRequest,
-  type PromptMutationResponse,
   type PromptRequest,
   type PromptResponse,
   type SetPromptPinnedRequest,
@@ -107,12 +105,6 @@ export function handlePromptRequest(
   request: PromptRequest,
 ): Promise<PromptResponse> {
   return enqueueStorageRequest(() => executePromptRequest(request));
-}
-
-export function handlePromptMutationRequest(
-  request: PromptMutationRequest,
-): Promise<PromptMutationResponse> {
-  return handlePromptRequest(request) as Promise<PromptMutationResponse>;
 }
 
 async function executePromptRequest(
