@@ -184,6 +184,30 @@
                 aria-hidden="true"
               ></div>
             </rich-textarea>
+            <script>
+              (() => {
+                const variant = new URLSearchParams(window.location.search)
+                  .get('variant');
+                const wrapper = document.querySelector(
+                  '.text-input-field_textarea-wrapper',
+                );
+                const richTextarea = document.querySelector('rich-textarea');
+
+                if (
+                  variant !== 'standalone-ql-editor' ||
+                  !(wrapper instanceof HTMLElement) ||
+                  !(richTextarea instanceof HTMLElement)
+                ) {
+                  return;
+                }
+
+                while (richTextarea.firstChild) {
+                  wrapper.insertBefore(richTextarea.firstChild, richTextarea);
+                }
+
+                richTextarea.remove();
+              })();
+            </script>
           </div>
           <div class="composer-actions">
             <button
