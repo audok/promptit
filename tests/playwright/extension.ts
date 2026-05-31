@@ -27,7 +27,10 @@ import {
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = path.dirname(currentFilePath);
-const extensionPath = path.resolve(currentDirPath, '../../dist');
+const configuredExtensionPath = process.env.PROMPTIT_EXTENSION_PATH;
+const extensionPath = configuredExtensionPath
+  ? path.resolve(process.cwd(), configuredExtensionPath)
+  : path.resolve(currentDirPath, '../../dist');
 const extensionManifestPath = path.join(extensionPath, 'manifest.json');
 const originalHomePath = process.env.HOME || os.homedir();
 const browserCachePath =

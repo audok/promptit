@@ -5,15 +5,15 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:test": "VITE_PROMPTIT_TEST_MODE=1 vite build",
+    "build": "env -u VITE_PROMPTIT_TEST_MODE vite build",
+    "build:test": "VITE_PROMPTIT_TEST_MODE=1 PROMPTIT_BUILD_OUT_DIR=dist-test vite build",
     "check:manifest": "node scripts/check-production-manifest.mjs",
     "typecheck": "tsc --noEmit",
     "test": "pnpm typecheck && pnpm build && pnpm check:manifest && pnpm test:e2e && pnpm build && pnpm check:manifest",
-    "test:e2e": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test",
-    "test:e2e:live": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --config playwright.live.config.ts && pnpm build && pnpm check:manifest",
-    "test:e2e:headed": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --headed",
-    "test:e2e:ui": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 playwright test --ui"
+    "test:e2e": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test",
+    "test:e2e:live": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test --config playwright.live.config.ts && pnpm build && pnpm check:manifest",
+    "test:e2e:headed": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test --headed",
+    "test:e2e:ui": "pnpm build:test && xvfb-run -a env TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test --ui"
   },
   "keywords": [],
   "author": "",
@@ -39,6 +39,11 @@
     "@vitejs/plugin-react": "^6.0.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
-    "vite": "^8.0.3"
+    "vite": "^8.0.14"
+  },
+  "pnpm": {
+    "overrides": {
+      "@crxjs/vite-plugin>rollup": "2.80.0"
+    }
   }
 }

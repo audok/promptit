@@ -9,5 +9,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), crx({ manifest })],
   build: {
     target: 'es2022',
+    outDir: process.env.PROMPTIT_BUILD_OUT_DIR || 'dist',
   },
 });
