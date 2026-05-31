@@ -22,6 +22,9 @@
 - [x] 실제 `chatgpt.com`에서 promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] Gemini fixture에서 promptit이 초기화된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] 같은 페이지에서 중복 초기화 방지 가드가 명시적으로 검증된다. `Automated` via `tests/e2e/platform.spec.ts`
+- [x] runtime request/response public builder output은 parser가 받아들이고 malformed payload는 mutation 없이 거부한다. `Automated` via `tests/e2e/runtime-contracts.spec.ts`
+- [x] 같은 페이지 navigation 뒤 새 composer가 삽입되어도 content script가 promptit popup을 열고 한 번만 insert한다. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`
+- [x] composer replacement 후 content script 재주입이 있어도 popup listener가 중복 등록되지 않는다. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`
 - [ ] 브라우저 툴바 promptit 아이콘 클릭으로 옵션 페이지가 열린다. `Manual`
 
 ## 2. 입력 감지와 trigger
@@ -36,6 +39,9 @@
 - [x] `readonly` textarea는 무시한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] `disabled` textarea는 무시한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] Gemini `rich-textarea div.ql-editor[role="textbox"]` composer에서 `/ ` 입력 시 팝업이 열린다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] ChatGPT textarea id selector와 data-testid selector variant가 `/ ` trigger와 insert를 지원한다. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`
+- [x] ChatGPT contenteditable role selector without ProseMirror와 Lexical data-testid selector variant가 `/ ` trigger와 insert를 지원한다. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`
+- [x] Gemini `rich-textarea div.ql-editor`와 standalone `div.ql-editor.textarea` selector variant가 `/ ` trigger와 insert를 지원한다. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`
 - [x] Gemini Quill `.ql-clipboard` contenteditable은 입력창으로 취급하지 않는다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] trigger resolution이 끝나기 전에 composer DOM이 제거되면 stale popup을 열지 않는다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] 입력창 내부 자식 노드에서 이벤트가 올라와도 같은 composer로 안정적으로 resolve되는지 명시적으로 검증한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
@@ -60,7 +66,7 @@
 - [x] resize로 닫을 때 trigger text를 정리한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] 팝업이 열린 상태에서 일반 타이핑을 계속하면 팝업이 닫히고 입력은 유지된다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] 열린 팝업은 storage 변경을 즉시 반영한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
-- [ ] malformed/corrupt popup prompt storage normalization still needs repeatable coverage before claiming popup render safety. `Gap`
+- [x] malformed/corrupt popup prompt storage normalization is repeatably covered with raw IndexedDB metadata/body rows and missing body rows. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
 - [x] empty state에서 옵션 페이지를 열 수 있다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
 - [x] empty state -> options 흐름이 실제 `chatgpt.com`에서도 동작한다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] hover로 active cell이 바뀐다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
@@ -70,6 +76,7 @@
 - [x] pin/copy focus가 검은 badge border 없이 기존 active 배경/아이콘 색을 쓰고, pinned pin icon이 filled SVG path와 검정 fill로 표시되는지 검증된다. `Automated` via `tests/e2e/slash-popup-ui.spec.ts`
 - [x] contenteditable에서 multiline break를 보존하며 insert와 cleanup을 수행한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] 항목이 많을 때 active row가 보이도록 리스트를 스크롤한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
+- [x] 150개 저장 프롬프트가 있어도 popup keyboard navigation과 insert가 동작한다. `Automated` via `tests/e2e/responsive-and-scale.spec.ts`
 - [x] 정지한 포인터 아래로 리스트가 스크롤되더라도 키보드 active cell이 hover에 덮어써지지 않는다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] 뷰포트 여유에 따라 팝업을 위 또는 아래에 배치한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] ChatGPT fixture에서 팝업 폭이 좁은 editor surface가 아니라 composer form wrapper 폭과 일치한다. `Automated` via `tests/e2e/slash-popup-ui.spec.ts`
@@ -86,7 +93,10 @@
 - [x] insert 실패 시 error toast를 띄우고 입력 포커스를 복구한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
 - [x] copy 실패 시 error toast를 띄우고 팝업을 유지한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
 - [x] trigger 전 prompt storage read 실패 시 error toast를 띄우고 팝업을 열지 않는다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
+- [x] 실제 malformed IndexedDB metadata row가 있을 때 trigger 전 prompt list read failure toast를 띄우고 팝업을 열지 않는다. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
 - [x] 프롬프트 body read 실패 시 error toast를 띄우고 팝업과 입력 포커스를 유지한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
+- [x] 실제 malformed IndexedDB body row 또는 missing body row가 있을 때 body read failure toast를 띄우고 popup/composer를 복구 가능한 상태로 유지한다. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
+- [x] descriptor-backed runtime failure message가 locale별 content toast copy로 번역된다. `Automated` via `tests/e2e/runtime-contracts.spec.ts`
 - [x] stale popup pin activation conflict 시 success toast를 띄우지 않고 외부 pinned state를 보존한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
 - [x] trigger cleanup 실패 시 error toast를 띄우고 팝업을 다시 유지한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 
@@ -119,6 +129,8 @@
 - [x] selected prompt body load 실패 시 edit save를 차단한다. `Automated` via `tests/e2e/options-editor-conflicts.spec.ts`
 - [x] storage read 실패 시 오류를 표시하고 기존 storage 값을 보존한다. `Automated` via `tests/e2e/options-editor-conflicts.spec.ts`
 - [x] initial prompt storage read 실패 시 load error를 표시하고 기존 prompt records를 보존한다. `Automated` via `tests/e2e/options-editor-conflicts.spec.ts`
+- [x] 실제 malformed IndexedDB metadata row가 있을 때 options page가 load failure 상태와 options-specific recovery copy를 표시한다. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
+- [x] 실제 malformed IndexedDB body row가 있을 때 options page가 selected body load failure를 표시하고 edit save를 차단한다. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
 - [x] 저장 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options-editor-conflicts.spec.ts`
 - [x] 삭제 실패 시 오류 메시지를 표시한다. `Automated` via `tests/e2e/options-editor-conflicts.spec.ts`
 - [x] `normalOrder`가 같은 경우 `createdAt`, `id` tie-break 정렬이 명시적으로 검증된다. `Automated` via `tests/e2e/options-ordering.spec.ts`
@@ -136,6 +148,12 @@
 - [x] shared prompt import는 existing prompts를 유지하고 shared file prompts를 새 ids/fresh timestamps로 normal list 끝에 append한다. `Automated` via `tests/e2e/options-backup-share.spec.ts`
 - [x] shared prompt import는 existing prompt ids/title/content를 overwrite하거나 remove하지 않는다. `Automated` via `tests/e2e/options-backup-share.spec.ts`
 - [x] invalid shared prompt import는 storage를 변경하지 않고 failure toast를 표시한다. `Automated` via `tests/e2e/options-backup-share.spec.ts`
+- [x] options list/editor는 HTML-looking title/body text를 DOM으로 실행하지 않는다. `Automated` via `tests/e2e/security-rendering.spec.ts`
+- [x] contenteditable insert는 HTML-looking prompt body를 DOM nodes가 아니라 text로 삽입한다. `Automated` via `tests/e2e/security-rendering.spec.ts`
+- [x] options page는 mobile width에서 document horizontal overflow가 없다. `Automated` via `tests/e2e/responsive-and-scale.spec.ts`
+- [x] slash popup은 narrow width에서 document/popup horizontal overflow가 없다. `Automated` via `tests/e2e/responsive-and-scale.spec.ts`
+- [x] options page는 150개 저장 프롬프트 중 하나를 선택해 수정할 수 있다. `Automated` via `tests/e2e/responsive-and-scale.spec.ts`
+- [x] backup export는 150개 저장 프롬프트 count를 보존한다. `Automated` via `tests/e2e/responsive-and-scale.spec.ts`
 
 ## 6. 실사이트 smoke
 
@@ -149,14 +167,15 @@
 ## 7. 릴리스 체크용 빠른 체크리스트
 
 - [x] `pnpm test` passed: `pnpm typecheck`, production build/manifest check, fixture-based `pnpm test:e2e`, and final production build/manifest check
-- [x] fixture-based Playwright E2E passed as part of full `pnpm test` with `156 passed`
+- [x] fixture-based Playwright E2E passed as part of full `pnpm test` with `182 passed`; inventory is `182 tests in 17 files`.
 - [x] options coverage includes prompt record storage, body size, failure, conflict, reorder, and hidden internal order field checks
 - [x] slash popup and Gemini fixture coverage includes popup storage, pin, insert/copy, and host adapter flows
 - [x] production manifest policy check rejects `host_permissions` and test-only localhost matches in `dist/manifest.json`
 - [x] production/test manifest locale invariants are checked: `default_locale`, raw `__MSG_*__` placeholders, matching `_locales/ko` and `_locales/en` keys, and fixed `promptit` app name. `Automated` via `scripts/check-production-manifest.mjs` and `tests/e2e/platform.spec.ts`
 - [x] 옵션 페이지 English override keeps fixed literals and Korean prompt data untranslated while localizing hero/list/editor/validation/save toast/confirm dialogs. `Automated` via `tests/e2e/options-preferences.spec.ts`
 - [x] popup/content English override localizes popup chrome, aria labels, empty state, success/failure toasts, and preserves prompt insert/copy data unchanged. `Automated` via `tests/e2e/slash-popup-ui.spec.ts`
-- [x] options backup/share/restore/import deterministic E2E added and passing, including exact file shapes with language and theme backup settings, disabled share state, restore preview/replacement/failure preservation including theme-write failure rollback, malformed restore rejection, restore-editor stale body regression, and import append/no-overwrite. `Automated` via `tests/e2e/options-backup-share.spec.ts`; full `pnpm test` fixture E2E passed with `156 passed`
+- [x] options backup/share/restore/import deterministic E2E added and passing, including exact file shapes with language and theme backup settings, disabled share state, restore preview/replacement/failure preservation including theme-write failure rollback, malformed restore rejection, restore-editor stale body regression, and import append/no-overwrite. `Automated` via `tests/e2e/options-backup-share.spec.ts`
+- [x] runtime contracts, malformed storage, host selector matrix, XSS/text rendering, responsive layout, and 150-prompt scale paths are deterministic local E2E coverage. `Automated` via `tests/e2e/runtime-contracts.spec.ts`, `tests/e2e/prompt-storage-corruption.spec.ts`, `tests/e2e/host-fixture-matrix.spec.ts`, `tests/e2e/security-rendering.spec.ts`, `tests/e2e/responsive-and-scale.spec.ts`
 - [ ] 실사이트 smoke 실행
 - [ ] 브라우저 툴바 promptit 아이콘 클릭
 - [ ] 옵션 페이지 제목이 `promptit Settings`인지 확인

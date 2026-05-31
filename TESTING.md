@@ -61,6 +61,12 @@ pnpm test:e2e
   - toast 기반 실패 복구 경로
   - prompt read failure, composer detach stale-open regression
   - popup placement, long-list scroll
+  - malformed IndexedDB prompt metadata/body rows, missing body rows, and options load/body failure recovery
+  - runtime request/response public contract parser coverage and descriptor-backed feedback translation
+  - ChatGPT/Gemini selector matrix via query-driven local fixture variants
+  - same-page composer replacement and reinjection duplicate-listener guard
+  - HTML-looking prompt title/body text rendering without script execution
+  - mobile-width overflow checks and 150-prompt popup/options/backup scale checks
   - popup pin action persistence, visual active state, ordering, and stale conflict handling
   - popup/content i18n: explicit English popup chrome/aria labels, English empty state, localized failure toasts, fixed `promptit`/`/`, and untranslated prompt insert/copy data
   - unsupported URL no-op, same-page duplicate initialization guard
@@ -92,13 +98,18 @@ pnpm test:e2e:live
 | --- | --- | --- |
 | `tests/e2e/controller-helpers.spec.ts` | popup controller helper의 refresh/active-cell fallback 단위 회귀 | `팝업 상호작용` |
 | `tests/e2e/gemini-slash-popup.spec.ts` | Gemini fixture, adapter routing, Quill composer insert/cleanup, child-node resolve, Enter no-submit host regression, clipboard ignore, wrapper anchoring | `플랫폼과 초기화`, `입력 감지와 trigger`, `팝업 상호작용` |
+| `tests/e2e/host-fixture-matrix.spec.ts` | ChatGPT/Gemini selector variants, same-page composer insertion, composer replacement plus reinjection duplicate handling | `플랫폼과 초기화`, `입력 감지와 trigger`, `팝업 상호작용` |
 | `tests/e2e/options-backup-share.spec.ts` | backup/share/restore/import JSON shape, preview, rollback, stale editor refresh, malformed runtime messages | `옵션 페이지와 스토리지` |
 | `tests/e2e/options-editor-conflicts.spec.ts` | editor draft 보존, validation, delete, selected body load 실패, stale save/delete/body conflict, save/delete 실패 | `옵션 페이지와 스토리지` |
 | `tests/e2e/options-ordering.spec.ts` | pinned/normal ordering, list pin toggle, drag-handle keyboard/pointer reorder, conflict/error paths | `옵션 페이지와 스토리지` |
 | `tests/e2e/options-preferences.spec.ts` | options open, theme/language preference, options localization | `옵션 페이지와 스토리지`, `릴리스 체크용 빠른 체크리스트` |
 | `tests/e2e/options-prompts.spec.ts` | prompt create/update, append-by-default, IndexedDB body storage, body size, metadata-only/body save, runtime mutation conflicts | `옵션 페이지와 스토리지` |
 | `tests/e2e/platform.spec.ts` | 지원 URL 범위, same-page duplicate initialization guard, runtime message 경로, malformed message no-op | `플랫폼과 초기화` |
+| `tests/e2e/prompt-storage-corruption.spec.ts` | raw IndexedDB malformed metadata/body and missing body rows across content popup and options page failure UI | `팝업 상호작용`, `실패 복구와 toast`, `옵션 페이지와 스토리지` |
 | `tests/e2e/promptEditorReducer.spec.ts` | prompt editor reducer conflict/delete recovery state transitions | `옵션 페이지와 스토리지` |
+| `tests/e2e/responsive-and-scale.spec.ts` | mobile overflow, narrow popup overflow, 150-prompt keyboard/options/backup scale | `팝업 상호작용`, `옵션 페이지와 스토리지`, `릴리스 체크용 빠른 체크리스트` |
+| `tests/e2e/runtime-contracts.spec.ts` | public runtime request/response contract builders/parsers and descriptor-backed content feedback | `플랫폼과 초기화`, `실패 복구와 toast` |
+| `tests/e2e/security-rendering.spec.ts` | popup/options/composer rendering of HTML-looking prompt text without execution | `팝업 상호작용`, `옵션 페이지와 스토리지` |
 | `tests/e2e/slash-popup-actions.spec.ts` | insert/copy/pin/open-options actions, metadata/body reads, busy state, storage refresh, action error toasts | `팝업 상호작용`, `실패 복구와 toast` |
 | `tests/e2e/slash-popup-triggering.spec.ts` | trigger detection/cleanup, IME, selection boundaries, composer detach, multiline insert, scroll/placement | `입력 감지와 trigger`, `팝업 상호작용`, `실패 복구와 toast` |
 | `tests/e2e/slash-popup-ui.spec.ts` | popup open, theme/localization, accessibility, toast semantics/appearance, Tab behavior, width/focus/icon UI | `팝업 상호작용`, `릴리스 체크용 빠른 체크리스트` |
@@ -120,7 +131,7 @@ Popup storage 테스트는 다음 경계를 우선 검증한다.
 - pin/unpin은 metadata mutation만 수행하고 persisted pinned state와 popup ordering을 갱신한다.
 - body read failure는 popup이 복구 가능한 상태로 남는다.
 
-Data portability 테스트는 옵션 페이지 UI를 통해 검증한다. 백업/공유/복원/가져오기 자동 테스트는 `tests/e2e/options-backup-share.spec.ts`에 있다. 2026-05-29 요구사항 변경으로 `promptit.backup`은 saved prompts, language setting, theme setting을 모두 포함한다. `themePreference`가 없는 old backup file compatibility는 요구하지 않는다. 최근 확인된 full `pnpm test` fixture E2E 결과는 `156 passed`다. 자동화는 다음 경계를 반복 가능하게 확인한다.
+Data portability 테스트는 옵션 페이지 UI를 통해 검증한다. 백업/공유/복원/가져오기 자동 테스트는 `tests/e2e/options-backup-share.spec.ts`에 있다. 2026-05-29 요구사항 변경으로 `promptit.backup`은 saved prompts, language setting, theme setting을 모두 포함한다. `themePreference`가 없는 old backup file compatibility는 요구하지 않는다. 최근 확인된 fixture E2E 결과는 `182 passed`이고 inventory는 `182 tests in 17 files`다. 자동화는 다음 경계를 반복 가능하게 확인한다.
 
 - backup download JSON은 `type: "promptit.backup"`, `appVersion`, `exportedAt`, `data.prompts`, `data.settings.languagePreference`, `data.settings.themePreference`를 포함한다.
 - prompt share download JSON은 `type: "promptit.prompts"`, `appVersion`, `exportedAt`, `data.prompts`를 포함하며 공유 prompt object는 `title`과 `content`만 포함한다.
