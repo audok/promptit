@@ -42,6 +42,8 @@ export {
   buildUpdatePromptRecordSuccessResponse,
   buildDeletePromptSuccessResponse,
   buildPromptNotFoundResponse,
+  buildPromptMetaConflictResponse,
+  buildPromptRecordConflictResponse,
   buildPromptConflictResponse,
   buildPromptErrorResponse,
 } from './messageContracts/prompt';

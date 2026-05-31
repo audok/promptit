@@ -28,10 +28,11 @@ import {
   buildGetPromptBodySuccessResponse,
   buildGetPromptRecordSuccessResponse,
   buildListPromptMetasSuccessResponse,
-  buildPromptConflictResponse,
   buildPromptErrorResponse,
+  buildPromptMetaConflictResponse,
   buildPromptMetaSuccessResponse,
   buildPromptNotFoundResponse,
+  buildPromptRecordConflictResponse,
   buildUpdatePromptBodySuccessResponse,
   buildUpdatePromptRecordSuccessResponse,
   type CreatePromptRequest,
@@ -212,12 +213,11 @@ async function handleUpdatePromptMetaRequest(
         UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         UPDATE_PROMPT_META_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
-        undefined,
         UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
@@ -245,7 +245,7 @@ async function handleUpdatePromptBodyRequest(
         UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptRecordConflictResponse(
         UPDATE_PROMPT_BODY_MESSAGE,
         result.id,
         result.currentMeta,
@@ -278,7 +278,7 @@ async function handleUpdatePromptRecordRequest(
         UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptRecordConflictResponse(
         UPDATE_PROMPT_RECORD_MESSAGE,
         result.id,
         result.currentMeta,
@@ -311,12 +311,11 @@ async function handleDeletePromptRequest(
         DELETE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         DELETE_PROMPT_MESSAGE,
         result.id,
         result.currentMeta,
         DELETE_PROMPT_CONFLICT_MESSAGE,
-        undefined,
         DELETE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
@@ -346,12 +345,11 @@ async function handleMovePromptRequest(
         UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         MOVE_PROMPT_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
-        undefined,
         UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
@@ -381,12 +379,11 @@ async function handleSetPromptPinnedRequest(
         PIN_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         SET_PROMPT_PINNED_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
-        undefined,
         PIN_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }

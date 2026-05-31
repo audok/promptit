@@ -48,12 +48,18 @@ type ExistingPromptMessageType =
   | typeof SET_PROMPT_PINNED_MESSAGE;
 
 type PromptConflictMessageType =
+  | PromptMetaConflictMessageType
+  | PromptRecordConflictMessageType;
+
+type PromptMetaConflictMessageType =
   | typeof UPDATE_PROMPT_META_MESSAGE
-  | typeof UPDATE_PROMPT_BODY_MESSAGE
-  | typeof UPDATE_PROMPT_RECORD_MESSAGE
   | typeof DELETE_PROMPT_MESSAGE
   | typeof MOVE_PROMPT_MESSAGE
   | typeof SET_PROMPT_PINNED_MESSAGE;
+
+type PromptRecordConflictMessageType =
+  | typeof UPDATE_PROMPT_BODY_MESSAGE
+  | typeof UPDATE_PROMPT_RECORD_MESSAGE;
 
 export type ListPromptMetasRequest = {
   type: typeof LIST_PROMPT_METAS_MESSAGE;
@@ -213,7 +219,7 @@ type PromptNotFoundResponse<T extends ExistingPromptMessageType> = {
   messageDescriptor?: RuntimeMessageDescriptor;
 };
 
-type PromptConflictResponse<T extends PromptConflictMessageType> = {
+type PromptConflictBaseResponse<T extends PromptConflictMessageType> = {
   type: T;
   ok: false;
   status: 'conflict';
@@ -221,8 +227,22 @@ type PromptConflictResponse<T extends PromptConflictMessageType> = {
   message: string;
   messageDescriptor?: RuntimeMessageDescriptor;
   currentMeta: PromptMeta;
-  currentRecord?: PromptRecord;
 };
+
+type PromptMetaConflictResponse<T extends PromptMetaConflictMessageType> =
+  PromptConflictBaseResponse<T>;
+
+type PromptRecordConflictResponse<T extends PromptRecordConflictMessageType> =
+  PromptConflictBaseResponse<T> & {
+    currentRecord?: PromptRecord;
+  };
+
+type PromptConflictResponse<T extends PromptConflictMessageType> =
+  T extends PromptRecordConflictMessageType
+    ? PromptRecordConflictResponse<T>
+    : T extends PromptMetaConflictMessageType
+      ? PromptMetaConflictResponse<T>
+      : never;
 
 type PromptErrorResponse<T extends PromptMessageType> = {
   type: T;
@@ -524,14 +544,15 @@ export function buildPromptNotFoundResponse<T extends ExistingPromptMessageType>
   };
 }
 
-export function buildPromptConflictResponse<T extends PromptConflictMessageType>(
+export function buildPromptMetaConflictResponse<
+  T extends PromptMetaConflictMessageType,
+>(
   type: T,
   id: string,
   currentMeta: PromptMeta,
   message: string,
-  currentRecord?: PromptRecord,
   messageDescriptor?: RuntimeMessageDescriptor,
-): PromptConflictResponse<T> {
+): PromptMetaConflictResponse<T> {
   return {
     type,
     ok: false,
@@ -540,8 +561,95 @@ export function buildPromptConflictResponse<T extends PromptConflictMessageType>
     message,
     messageDescriptor,
     currentMeta,
-    currentRecord,
   };
+}
+
+export function buildPromptRecordConflictResponse<
+  T extends PromptRecordConflictMessageType,
+>(
+  type: T,
+  id: string,
+  currentMeta: PromptMeta,
+  message: string,
+  currentRecord?: PromptRecord,
+  messageDescriptor?: RuntimeMessageDescriptor,
+): PromptRecordConflictResponse<T> {
+  const response: PromptRecordConflictResponse<T> = {
+    type,
+    ok: false,
+    status: 'conflict',
+    id,
+    message,
+    messageDescriptor,
+    currentMeta,
+  };
+
+  if (typeof currentRecord !== 'undefined') {
+    response.currentRecord = currentRecord;
+  }
+
+  return response;
+}
+
+export function buildPromptConflictResponse<T extends PromptMetaConflictMessageType>(
+  type: T,
+  id: string,
+  currentMeta: PromptMeta,
+  message: string,
+  messageDescriptor?: RuntimeMessageDescriptor,
+): PromptMetaConflictResponse<T>;
+export function buildPromptConflictResponse<T extends PromptMetaConflictMessageType>(
+  type: T,
+  id: string,
+  currentMeta: PromptMeta,
+  message: string,
+  currentRecord: undefined,
+  messageDescriptor?: RuntimeMessageDescriptor,
+): PromptMetaConflictResponse<T>;
+export function buildPromptConflictResponse<T extends PromptRecordConflictMessageType>(
+  type: T,
+  id: string,
+  currentMeta: PromptMeta,
+  message: string,
+  currentRecord?: PromptRecord,
+  messageDescriptor?: RuntimeMessageDescriptor,
+): PromptRecordConflictResponse<T>;
+export function buildPromptConflictResponse(
+  type: PromptConflictMessageType,
+  id: string,
+  currentMeta: PromptMeta,
+  message: string,
+  currentRecordOrDescriptor?: PromptRecord | RuntimeMessageDescriptor,
+  messageDescriptor?: RuntimeMessageDescriptor,
+): PromptConflictResponse<PromptConflictMessageType> {
+  const descriptor =
+    messageDescriptor ??
+    (isRuntimeMessageDescriptorValue(currentRecordOrDescriptor)
+      ? currentRecordOrDescriptor
+      : undefined);
+
+  if (isPromptMetaConflictMessageType(type)) {
+    return buildPromptMetaConflictResponse(
+      type,
+      id,
+      currentMeta,
+      message,
+      descriptor,
+    );
+  }
+
+  const currentRecord = isRuntimeMessageDescriptorValue(currentRecordOrDescriptor)
+    ? undefined
+    : currentRecordOrDescriptor;
+
+  return buildPromptRecordConflictResponse(
+    type,
+    id,
+    currentMeta,
+    message,
+    currentRecord,
+    descriptor,
+  );
 }
 
 export function buildPromptErrorResponse<T extends PromptMessageType>(
@@ -558,6 +666,23 @@ export function buildPromptErrorResponse<T extends PromptMessageType>(
     message,
     messageDescriptor,
   };
+}
+
+function isPromptMetaConflictMessageType(
+  type: PromptConflictMessageType,
+): type is PromptMetaConflictMessageType {
+  return (
+    type === UPDATE_PROMPT_META_MESSAGE ||
+    type === DELETE_PROMPT_MESSAGE ||
+    type === MOVE_PROMPT_MESSAGE ||
+    type === SET_PROMPT_PINNED_MESSAGE
+  );
+}
+
+function isRuntimeMessageDescriptorValue(
+  value: PromptRecord | RuntimeMessageDescriptor | undefined,
+): value is RuntimeMessageDescriptor {
+  return typeof value === 'object' && value !== null && 'key' in value;
 }
 
 export function parsePromptRuntimeRequest(
@@ -820,7 +945,7 @@ function parsePromptMetaResponse<
 >(value: Record<string, unknown>, type: T):
   | PromptMetaSuccessResponse<T>
   | PromptNotFoundResponse<T>
-  | PromptConflictResponse<T>
+  | PromptMetaConflictResponse<T>
   | PromptErrorResponse<T>
   | null {
   if (value.ok === true && value.status === 'success') {
@@ -830,7 +955,7 @@ function parsePromptMetaResponse<
 
   return (
     parseNotFoundResponse(value, type) ??
-    parseConflictResponse(value, type) ??
+    parseMetaConflictResponse(value, type) ??
     parsePromptErrorResponse(value, type)
   );
 }
@@ -845,7 +970,7 @@ function parseUpdatePromptBodyResponse(
 
   return (
     parseNotFoundResponse(value, UPDATE_PROMPT_BODY_MESSAGE) ??
-    parseConflictResponse(value, UPDATE_PROMPT_BODY_MESSAGE) ??
+    parseRecordConflictResponse(value, UPDATE_PROMPT_BODY_MESSAGE) ??
     parsePromptErrorResponse(value, UPDATE_PROMPT_BODY_MESSAGE)
   );
 }
@@ -860,7 +985,7 @@ function parseUpdatePromptRecordResponse(
 
   return (
     parseNotFoundResponse(value, UPDATE_PROMPT_RECORD_MESSAGE) ??
-    parseConflictResponse(value, UPDATE_PROMPT_RECORD_MESSAGE) ??
+    parseRecordConflictResponse(value, UPDATE_PROMPT_RECORD_MESSAGE) ??
     parsePromptErrorResponse(value, UPDATE_PROMPT_RECORD_MESSAGE)
   );
 }
@@ -876,7 +1001,7 @@ function parseDeletePromptResponse(
 
   return (
     parseNotFoundResponse(value, DELETE_PROMPT_MESSAGE) ??
-    parseConflictResponse(value, DELETE_PROMPT_MESSAGE) ??
+    parseMetaConflictResponse(value, DELETE_PROMPT_MESSAGE) ??
     parsePromptErrorResponse(value, DELETE_PROMPT_MESSAGE)
   );
 }
@@ -904,10 +1029,67 @@ function parseNotFoundResponse<T extends ExistingPromptMessageType>(
   return null;
 }
 
-function parseConflictResponse<T extends PromptConflictMessageType>(
+type ParsedPromptConflictBase = {
+  id: string;
+  currentMeta: PromptMeta;
+  message: string;
+  messageDescriptor?: RuntimeMessageDescriptor;
+};
+
+function parseMetaConflictResponse<T extends PromptMetaConflictMessageType>(
   value: Record<string, unknown>,
   type: T,
-): PromptConflictResponse<T> | null {
+): PromptMetaConflictResponse<T> | null {
+  const conflict = parseConflictResponseBase(value);
+
+  if (
+    conflict === null ||
+    Object.prototype.hasOwnProperty.call(value, 'currentRecord')
+  ) {
+    return null;
+  }
+
+  return buildPromptMetaConflictResponse(
+    type,
+    conflict.id,
+    conflict.currentMeta,
+    conflict.message,
+    conflict.messageDescriptor,
+  );
+}
+
+function parseRecordConflictResponse<T extends PromptRecordConflictMessageType>(
+  value: Record<string, unknown>,
+  type: T,
+): PromptRecordConflictResponse<T> | null {
+  const conflict = parseConflictResponseBase(value);
+
+  if (conflict === null) {
+    return null;
+  }
+
+  const currentRecord =
+    typeof value.currentRecord === 'undefined'
+      ? undefined
+      : parsePromptRecord(value.currentRecord);
+
+  if (currentRecord === null) {
+    return null;
+  }
+
+  return buildPromptRecordConflictResponse(
+    type,
+    conflict.id,
+    conflict.currentMeta,
+    conflict.message,
+    currentRecord,
+    conflict.messageDescriptor,
+  );
+}
+
+function parseConflictResponseBase(
+  value: Record<string, unknown>,
+): ParsedPromptConflictBase | null {
   const id = parsePromptId(value.id);
   const currentMeta = parsePromptMeta(value.currentMeta);
 
@@ -921,23 +1103,12 @@ function parseConflictResponse<T extends PromptConflictMessageType>(
     return null;
   }
 
-  const currentRecord =
-    typeof value.currentRecord === 'undefined'
-      ? undefined
-      : parsePromptRecord(value.currentRecord);
-
-  if (currentRecord === null) {
-    return null;
-  }
-
-  return buildPromptConflictResponse(
-    type,
+  return {
     id,
     currentMeta,
-    value.message,
-    currentRecord,
-    parseRuntimeMessageDescriptor(value.messageDescriptor),
-  );
+    message: value.message,
+    messageDescriptor: parseRuntimeMessageDescriptor(value.messageDescriptor),
+  };
 }
 
 function parsePromptErrorResponse<T extends PromptMessageType>(

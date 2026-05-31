@@ -37,10 +37,11 @@ import {
   buildOpenOptionsPageErrorResponse,
   buildOpenOptionsPageRequest,
   buildOpenOptionsPageSuccessResponse,
-  buildPromptConflictResponse,
   buildPromptErrorResponse,
+  buildPromptMetaConflictResponse,
   buildPromptMetaSuccessResponse,
   buildPromptNotFoundResponse,
+  buildPromptRecordConflictResponse,
   buildRestoreBackupRequest,
   buildRestoreBackupSuccessResponse,
   buildSetPromptPinnedRequest,
@@ -51,6 +52,12 @@ import {
   buildUpdatePromptRecordSuccessResponse,
   parsePromptitRuntimeRequest,
   parsePromptitRuntimeResponse,
+  type DeletePromptResponse,
+  type MovePromptResponse,
+  type SetPromptPinnedResponse,
+  type UpdatePromptBodyResponse,
+  type UpdatePromptMetaResponse,
+  type UpdatePromptRecordResponse,
 } from '../../src/runtime/messages';
 import {
   type PromptBody,
@@ -132,6 +139,33 @@ const sharedPrompts: PromptitSharedPromptsFile = {
     ],
   },
 };
+
+type MetaOnlyConflictResponse =
+  | UpdatePromptMetaResponse
+  | DeletePromptResponse
+  | MovePromptResponse
+  | SetPromptPinnedResponse;
+
+type RecordConflictResponse =
+  | UpdatePromptBodyResponse
+  | UpdatePromptRecordResponse;
+
+function expectMetaOnlyConflictContract(
+  response: MetaOnlyConflictResponse,
+): void {
+  if (!response.ok && response.status === 'conflict') {
+    expect(response.currentMeta.id).toBe(prompt.id);
+    // @ts-expect-error Meta-only conflict responses must not expose records.
+    expect(response.currentRecord).toBeUndefined();
+  }
+}
+
+function expectRecordConflictContract(response: RecordConflictResponse): void {
+  if (!response.ok && response.status === 'conflict') {
+    expect(response.currentMeta.id).toBe(prompt.id);
+    expect(response.currentRecord?.id).toBe(prompt.id);
+  }
+}
 
 test('runtime contract parses every valid request builder output', () => {
   const requests = [
@@ -240,7 +274,22 @@ test('runtime contract parses every valid response builder output', () => {
       'Not found',
       descriptor,
     ),
-    buildPromptConflictResponse(
+    buildPromptMetaConflictResponse(
+      UPDATE_PROMPT_META_MESSAGE,
+      prompt.id,
+      meta,
+      'Conflict',
+      descriptor,
+    ),
+    buildPromptRecordConflictResponse(
+      UPDATE_PROMPT_BODY_MESSAGE,
+      prompt.id,
+      meta,
+      'Conflict',
+      undefined,
+      descriptor,
+    ),
+    buildPromptRecordConflictResponse(
       UPDATE_PROMPT_RECORD_MESSAGE,
       prompt.id,
       meta,
@@ -269,6 +318,27 @@ test('runtime contract parses every valid response builder output', () => {
   for (const response of responses) {
     expect(parsePromptitRuntimeResponse(response)).toEqual(response);
   }
+});
+
+test('prompt conflict response types match record availability by message family', () => {
+  const metaConflict = buildPromptMetaConflictResponse(
+    DELETE_PROMPT_MESSAGE,
+    prompt.id,
+    meta,
+    'Conflict',
+    descriptor,
+  );
+  const recordConflict = buildPromptRecordConflictResponse(
+    UPDATE_PROMPT_RECORD_MESSAGE,
+    prompt.id,
+    meta,
+    'Conflict',
+    prompt,
+    descriptor,
+  );
+
+  expectMetaOnlyConflictContract(metaConflict);
+  expectRecordConflictContract(recordConflict);
 });
 
 test('runtime contract rejects malformed response payloads', () => {
@@ -312,6 +382,24 @@ test('runtime contract rejects malformed response payloads', () => {
       id: prompt.id,
       message: 'Conflict',
       currentMeta: invalidMeta,
+    },
+    {
+      type: UPDATE_PROMPT_META_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: prompt.id,
+      message: 'Conflict',
+      currentMeta: meta,
+      currentRecord: prompt,
+    },
+    {
+      type: UPDATE_PROMPT_RECORD_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: prompt.id,
+      message: 'Conflict',
+      currentMeta: meta,
+      currentRecord: invalidPrompt,
     },
     {
       type: DELETE_PROMPT_MESSAGE,
