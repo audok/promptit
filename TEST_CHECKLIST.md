@@ -23,7 +23,8 @@
 
 - [x] ChatGPT/Gemini fixture의 supported composer selector matrix에서 `/ ` trigger와 insert가 동작한다. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] `contenteditable`, `textarea`, Gemini Quill composer, child-node event bubbling을 안정적으로 resolve한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
-- [x] `/` 단독, non-collapsed selection, IME composition, NBSP, readonly/disabled textarea, contenteditable block boundary, detached/stale composer 경계를 검증한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
+- [x] `/` 단독, non-collapsed selection, NBSP, readonly/disabled textarea, contenteditable block boundary, detached/stale composer 경계를 검증한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
+- [x] IME 조합 중에는 popup open과 popup keyboard command를 실행하지 않는다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] close paths가 trigger text를 정리하거나 입력을 보존한다: Escape, Backspace, outside click, blur, resize, 일반 typing, composer detach. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
 - [x] popup placement, scroll reposition, long-list active row visibility, ChatGPT/Gemini wrapper anchoring을 검증한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/slash-popup-ui.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
 

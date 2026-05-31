@@ -18,7 +18,7 @@ pnpm test
 
 - PR 전 기본 로컬 회귀 게이트다.
 - 순서: `pnpm typecheck`, production `pnpm build`, `pnpm check:manifest`, `pnpm test:e2e`, 최종 production `pnpm build`, `pnpm check:manifest`.
-- `pnpm test:e2e`는 test-mode manifest를 생성하므로 마지막 production build/check가 필요하다.
+- `pnpm test:e2e`는 test-mode bundle을 `dist-test/`에 만들고 `PROMPTIT_EXTENSION_PATH=dist-test`로 Playwright를 실행한다.
 - 실제 ChatGPT/Gemini smoke는 외부 사이트 상태에 의존하므로 포함하지 않는다.
 
 ### 결정적 E2E
@@ -28,9 +28,12 @@ pnpm test:e2e
 ```
 
 - 로컬 fixture 기반 Playwright 회귀 테스트다.
-- test-mode `dist/`를 빌드하고 ChatGPT/Gemini fixture, popup, options, storage, manifest/i18n, security rendering, responsive/scale 경로를 반복 가능하게 검증한다.
+- test-mode `dist-test/`를 빌드하고 ChatGPT/Gemini fixture, popup, options, storage, manifest/i18n, security rendering, responsive/scale 경로를 반복 가능하게 검증한다.
+- Playwright는 `PROMPTIT_EXTENSION_PATH=dist-test`로 test-mode extension bundle을 로드한다.
+- `/ ` trigger는 일반 trusted keyboard/input 경로로 검증한다.
+- IME 관련 자동화는 조합 중 popup open과 popup keyboard command를 막는 경계를 검증한다. `/ ` trigger 자체는 IME 조합 확정에 의존하지 않는다.
 - fixture 테스트 목록은 필요할 때 `pnpm exec playwright test --list`로 확인한다.
-- 실행 후 확장을 수동 로드하거나 패키징하려면 `pnpm build && pnpm check:manifest` 또는 `pnpm test`를 다시 실행한다.
+- 실행 후 확장을 수동 로드하거나 패키징하려면 production `pnpm build && pnpm check:manifest` 또는 `pnpm test`를 다시 실행한다.
 
 ### 실사이트 Smoke
 
@@ -42,7 +45,7 @@ pnpm test:e2e:live
 - fresh temporary Chromium profile을 쓰므로 사용자의 실제 로그인 브라우저 세션을 대표하지 않는다.
 - 실패는 다른 E2E처럼 일반 Playwright 실패로 처리되며, output/artifacts에 live site/step context가 남는다.
 - live smoke 목록은 필요할 때 `pnpm exec playwright test --config playwright.live.config.ts --list`로 확인한다.
-- 성공하면 script가 production `dist/`를 다시 빌드하고 manifest policy를 검사한다. 중간 실패로 script가 멈추면 `pnpm build && pnpm check:manifest`를 별도로 실행한다.
+- live smoke도 `dist-test/` test-mode bundle을 로드하고, 성공하면 script가 production `dist/`를 다시 빌드하고 manifest policy를 검사한다. 중간 실패로 script가 멈추면 `pnpm build && pnpm check:manifest`를 별도로 실행한다.
 
 ### 보조 명령
 
@@ -54,9 +57,9 @@ pnpm build:test
 ```
 
 - `typecheck`: TypeScript 타입 오류를 검사한다.
-- `build`: production extension bundle을 만든다.
+- `build`: production extension bundle을 `dist/`에 만든다. ambient `VITE_PROMPTIT_TEST_MODE`가 있어도 script가 이를 unset한다.
 - `check:manifest`: production manifest가 release policy를 만족하는지 검사한다.
-- `build:test`: localhost fixture match가 포함된 test-mode bundle을 만든다.
+- `build:test`: localhost fixture match가 포함된 test-mode bundle을 `dist-test/`에 만든다.
 
 ## 권장 실행 순서
 
@@ -81,12 +84,13 @@ pnpm test:e2e:live
 
 그 다음 맨 아래의 수동 테스트 3개를 실행한다: 툴바 아이콘 클릭, 로그인된 ChatGPT/Gemini 전체 흐름, 실제 다운로드/파일 선택.
 
-## dist 주의사항
+## build output 주의사항
 
-- `pnpm build`, `pnpm build:test`, `pnpm test:e2e`, `pnpm test:e2e:live`는 같은 `dist/`를 공유하므로 같은 작업트리에서 병렬 실행하지 않는다.
-- fixture E2E 중 `dist/`가 production manifest로 바뀌면 localhost fixture가 content script match에서 빠져 `data-promptit-ready`가 붙지 않는 실패처럼 보일 수 있다.
-- 그런 경우 제품 회귀로 판단하기 전에 `pnpm build:test` 후 실패한 E2E를 다시 실행한다.
-- 확장을 수동 로드하거나 패키징할 때는 마지막 명령이 production `pnpm build`와 `pnpm check:manifest`를 완료한 상태여야 한다.
+- Production build output은 `dist/`이고 test-mode E2E build output은 `dist-test/`다.
+- `pnpm build`는 `env -u VITE_PROMPTIT_TEST_MODE vite build`로 실행되어 ambient test-mode 환경변수를 release build에 반영하지 않는다.
+- `pnpm build:test`, `pnpm test:e2e`, `pnpm test:e2e:headed`, `pnpm test:e2e:ui`, `pnpm test:e2e:live`는 `dist-test/`를 만든 뒤 `PROMPTIT_EXTENSION_PATH=dist-test`로 Playwright를 실행한다.
+- 같은 작업트리에서 production build와 E2E build를 병렬 실행하면 output directory는 분리되어 있지만, 의존성 설치나 Playwright artifact 같은 다른 공유 리소스 때문에 결과를 해석하기 어려울 수 있으므로 순차 실행을 권장한다.
+- 확장을 수동 로드하거나 패키징할 때는 production `pnpm build`와 `pnpm check:manifest`를 완료한 `dist/`를 사용한다.
 
 ## 브라우저 프로세스 정리
 
