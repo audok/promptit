@@ -120,9 +120,14 @@ export function bootstrapContentScript(): void {
     },
   });
 
-  subscribeToContentPromptMetas((nextItems) => {
-    handlePromptStorageChange(nextItems, session, popup, adapter);
-  });
+  subscribeToContentPromptMetas(
+    (nextItems) => {
+      handlePromptStorageChange(nextItems, session, popup, adapter);
+    },
+    {
+      shouldRefresh: () => session.status === 'open',
+    },
+  );
   void readLanguagePreference()
     .then((preference) => {
       applyContentLanguagePreference(preference, session, popup, adapter);
@@ -491,13 +496,7 @@ function registerWindowListeners(
         return;
       }
 
-      popup.update(
-        session.items,
-        session.activeCell,
-        adapter.getPopupAnchorRect(session.activeInput),
-        currentLocale,
-        currentTheme,
-      );
+      popup.reposition(adapter.getPopupAnchorRect(session.activeInput));
     },
     true,
   );

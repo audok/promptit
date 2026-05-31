@@ -174,6 +174,14 @@ export class PromptPopup {
     this.position(anchorRect);
   }
 
+  reposition(anchorRect: DOMRect): void {
+    if (!this.host || !this.shadowRoot) {
+      return;
+    }
+
+    this.position(anchorRect);
+  }
+
   destroy(): void {
     this.host?.remove();
     this.host = null;

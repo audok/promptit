@@ -1,4 +1,5 @@
 import type { PromptMeta } from '../prompt/schema';
+import type { PromptMetasSubscriptionOptions } from '../prompt/runtimeStorageClient';
 import {
   PromptitRuntimeError,
   getPromptBody,
@@ -40,10 +41,11 @@ export function isPromptitRuntimeError(
 
 export function subscribeToContentPromptMetas(
   listener: (metas: PromptMeta[]) => void,
+  options: PromptMetasSubscriptionOptions = {},
 ): () => void {
   return subscribeToPromptMetas((metas) => {
     listener(metas);
-  });
+  }, options);
 }
 
 export async function readPromptMetasForContentTrigger(): Promise<PromptMeta[]> {

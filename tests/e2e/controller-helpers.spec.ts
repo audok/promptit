@@ -4,9 +4,26 @@ import type { AdapterMutationResult } from '../../src/adapters/base';
 import { getAdapterMutationFailureDetail } from '../../src/content/adapterMutation';
 import { buildLauncherItems } from '../../src/content/launcher-items';
 import { reconcilePopupItems } from '../../src/content/popupRefresh';
-import type { PromptMeta } from '../../src/prompt/schema';
+import {
+  PROMPT_REVISION_STORAGE_KEY,
+  type PromptMeta,
+} from '../../src/prompt/schema';
+import {
+  subscribeToPromptMetas,
+  type PromptMetasSubscriptionEvent,
+} from '../../src/prompt/runtimeStorageClient';
+import { buildListPromptMetasSuccessResponse } from '../../src/runtime/messages';
 
 const baseTimestamp = '2026-03-29T00:00:00.000Z';
+
+type PromptMetasSubscriptionOptions = {
+  shouldRefresh?: (event: PromptMetasSubscriptionEvent) => boolean;
+};
+
+type SubscribeToPromptMetasWithOptions = (
+  listener: Parameters<typeof subscribeToPromptMetas>[0],
+  options?: PromptMetasSubscriptionOptions,
+) => () => void;
 
 function promptMeta(
   id: string,
@@ -123,4 +140,109 @@ test('popup refresh falls back to title when the active column is invalid', () =
     rowIndex: 0,
     column: 'title',
   });
+});
+
+test('prompt metas subscription honors shouldRefresh before runtime reads', async () => {
+  type StorageChangedListener = Parameters<
+    typeof chrome.storage.onChanged.addListener
+  >[0];
+
+  const globalWithChrome = globalThis as typeof globalThis & {
+    chrome?: typeof chrome;
+  };
+  const previousChrome = globalWithChrome.chrome;
+  const meta = promptMeta('refreshable', 'Refreshable prompt', 1);
+  const sendMessageCalls: unknown[] = [];
+  let storageListener: StorageChangedListener | null = null;
+
+  globalWithChrome.chrome = {
+    runtime: {
+      sendMessage: async (request: unknown): Promise<unknown> => {
+        sendMessageCalls.push(request);
+        return buildListPromptMetasSuccessResponse([meta]);
+      },
+    },
+    storage: {
+      local: {},
+      onChanged: {
+        addListener: (listener: StorageChangedListener): void => {
+          storageListener = listener;
+        },
+        removeListener: (listener: StorageChangedListener): void => {
+          if (storageListener === listener) {
+            storageListener = null;
+          }
+        },
+      },
+    },
+  } as unknown as typeof chrome;
+
+  const triggerPromptRevisionChange = (): void => {
+    if (!storageListener) {
+      throw new Error('Storage listener was not registered.');
+    }
+
+    storageListener(
+      {
+        [PROMPT_REVISION_STORAGE_KEY]: {
+          oldValue: undefined,
+          newValue: {
+            reason: 'records-replaced',
+          },
+        },
+      },
+      'local',
+    );
+  };
+
+  const subscribeWithOptions =
+    subscribeToPromptMetas as SubscribeToPromptMetasWithOptions;
+
+  try {
+    const skippedEvents: PromptMetasSubscriptionEvent[] = [];
+    const unsubscribeSkipped = subscribeWithOptions(
+      (_metas, event) => {
+        skippedEvents.push(event);
+      },
+      {
+        shouldRefresh: () => false,
+      },
+    );
+
+    triggerPromptRevisionChange();
+    await Promise.resolve();
+
+    expect(sendMessageCalls).toEqual([]);
+    expect(skippedEvents).toEqual([]);
+
+    unsubscribeSkipped();
+    sendMessageCalls.length = 0;
+
+    const refreshedEvents: PromptMetasSubscriptionEvent[] = [];
+    const refreshedMetas: PromptMeta[][] = [];
+    const unsubscribeRefreshed = subscribeWithOptions(
+      (metas, event) => {
+        refreshedMetas.push(metas);
+        refreshedEvents.push(event);
+      },
+      {
+        shouldRefresh: () => true,
+      },
+    );
+
+    triggerPromptRevisionChange();
+
+    await expect.poll(() => refreshedMetas.length).toBe(1);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(refreshedMetas).toEqual([[meta]]);
+    expect(refreshedEvents).toEqual([{ reason: 'records-replaced' }]);
+
+    unsubscribeRefreshed();
+  } finally {
+    if (previousChrome) {
+      globalWithChrome.chrome = previousChrome;
+    } else {
+      Reflect.deleteProperty(globalWithChrome, 'chrome');
+    }
+  }
 });

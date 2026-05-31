@@ -57,6 +57,39 @@ test('opens from a nested contenteditable child input event and inserts the acti
   );
 });
 
+test('opens from a contenteditable large prefix while reporting only trigger debug text', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await setContenteditableComposerState(page, {
+    text: `${'x'.repeat(50_000)}/`,
+  });
+  await page.keyboard.type(' ');
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-promptit-trigger-result',
+    'contenteditable-match',
+  );
+
+  const encodedTriggerText = await page.locator('html').getAttribute(
+    'data-promptit-trigger-text',
+  );
+  expect(encodedTriggerText).not.toBeNull();
+  const triggerText = decodeURIComponent(encodedTriggerText ?? '');
+  expect({
+    length: triggerText.length,
+    suffix: triggerText.slice(-2),
+  }).toEqual({
+    length: 2,
+    suffix: '/ ',
+  });
+});
+
 test('does not open from a page-created untrusted contenteditable input event', async ({
   extension,
 }) => {
@@ -922,7 +955,7 @@ test('keeps keyboard navigation active while the hovered popup cell scrolls out 
     .toBeGreaterThan(0);
 });
 
-test('repositions the open popup on window scroll instead of closing', async ({
+test('repositions the open popup on window scroll without rebuilding rows', async ({
   extension,
 }) => {
   await extension.setPromptRecords(basePrompts);
@@ -949,6 +982,21 @@ test('repositions the open popup on window scroll instead of closing', async ({
 
   await openPromptPopup(page);
   const beforePosition = await getPopupPositionSnapshot(page);
+  const markedRow = await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const row = host?.shadowRoot?.querySelector('[data-role="prompt-row"]');
+
+    if (!(row instanceof HTMLElement)) {
+      throw new Error('Popup row not found.');
+    }
+
+    row.dataset.promptitReuseMarker = 'before-scroll';
+
+    return {
+      itemId: row.dataset.itemId ?? null,
+      marker: row.dataset.promptitReuseMarker ?? null,
+    };
+  });
 
   await page.evaluate(() => {
     window.scrollBy(0, 120);
@@ -963,9 +1011,23 @@ test('repositions the open popup on window scroll instead of closing', async ({
     .toBe(true);
 
   const afterPosition = await getPopupPositionSnapshot(page);
+  const rowAfterScroll = await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const row = host?.shadowRoot?.querySelector('[data-role="prompt-row"]');
+
+    if (!(row instanceof HTMLElement)) {
+      throw new Error('Popup row not found.');
+    }
+
+    return {
+      itemId: row.dataset.itemId ?? null,
+      marker: row.dataset.promptitReuseMarker ?? null,
+    };
+  });
   const isAnchoredBelow = afterPosition.popupTop >= afterPosition.anchorBottom;
   const isAnchoredAbove = afterPosition.popupBottom <= afterPosition.anchorTop;
 
+  expect(rowAfterScroll).toEqual(markedRow);
   expect(isAnchoredBelow || isAnchoredAbove).toBe(true);
   expect(afterPosition.popupTop).toBeGreaterThanOrEqual(0);
   expect(afterPosition.popupBottom).toBeLessThanOrEqual(
