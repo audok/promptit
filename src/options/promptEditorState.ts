@@ -282,7 +282,10 @@ export function mergeMetaIntoRecord(
 export function getLoadErrorMessage(
   error: unknown,
 ): LocalizedMessageDescriptor {
-  return getCaughtErrorMessage(error, LOAD_ERROR_MESSAGE);
+  return {
+    ...LOAD_ERROR_MESSAGE,
+    fallback: getCaughtErrorMessage(error, LOAD_ERROR_MESSAGE).fallback,
+  };
 }
 
 export function getConflictRetryAlertMessage(

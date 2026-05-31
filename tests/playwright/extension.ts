@@ -57,6 +57,9 @@ export type LoadedExtension = {
   getPromptBody: (id: string) => Promise<PromptBody | null>;
   getPromptRecords: () => Promise<PromptRecord[]>;
   setPromptRecords: (records: PromptRecord[]) => Promise<void>;
+  putRawPromptMetas: (records: unknown[]) => Promise<void>;
+  putRawPromptBodies: (records: unknown[]) => Promise<void>;
+  clearPromptStores: () => Promise<void>;
   deletePromptBody: (id: string) => Promise<void>;
   getLanguagePreference: () => Promise<unknown>;
   setLanguagePreference: (preference: LanguagePreference) => Promise<void>;
@@ -282,6 +285,9 @@ export async function launchExtension(
       | 'get-metas'
       | 'get-body'
       | 'get-records'
+      | 'put-raw-bodies'
+      | 'put-raw-metas'
+      | 'clear-stores'
       | 'set-records',
     payload?: unknown,
   ): Promise<T> {
@@ -409,6 +415,66 @@ export async function launchExtension(
         });
       }
 
+      async function clearPromptStores(
+        database: IDBDatabase,
+        options: PromptDatabaseOptions,
+      ): Promise<void> {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction(
+            [options.metaStoreName, options.bodyStoreName],
+            'readwrite',
+          );
+
+          transaction.objectStore(options.bodyStoreName).clear();
+          transaction.objectStore(options.metaStoreName).clear();
+
+          transaction.oncomplete = () => {
+            resolve();
+          };
+          transaction.onerror = () => {
+            reject(
+              transaction.error ?? new Error('Failed to clear prompt stores.'),
+            );
+          };
+          transaction.onabort = () => {
+            reject(
+              transaction.error ?? new Error('Prompt store clear was aborted.'),
+            );
+          };
+        });
+      }
+
+      async function putRawRecords(
+        database: IDBDatabase,
+        storeName: string,
+        records: unknown[],
+      ): Promise<void> {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction(storeName, 'readwrite');
+          const store = transaction.objectStore(storeName);
+
+          for (const record of records) {
+            store.put(record);
+          }
+
+          transaction.oncomplete = () => {
+            resolve();
+          };
+          transaction.onerror = () => {
+            reject(
+              transaction.error ??
+                new Error(`Failed to write raw records to ${storeName}.`),
+            );
+          };
+          transaction.onabort = () => {
+            reject(
+              transaction.error ??
+                new Error(`Raw record write was aborted for ${storeName}.`),
+            );
+          };
+        });
+      }
+
       async function deletePromptBody(
         database: IDBDatabase,
         options: PromptDatabaseOptions,
@@ -477,6 +543,9 @@ export async function launchExtension(
       const database = await openPromptDatabase(request.options);
 
       switch (request.action) {
+        case 'clear-stores':
+          await clearPromptStores(database, request.options);
+          return undefined;
         case 'delete-body':
           await deletePromptBody(
             database,
@@ -519,6 +588,20 @@ export async function launchExtension(
             };
           });
         }
+        case 'put-raw-bodies':
+          await putRawRecords(
+            database,
+            request.options.bodyStoreName,
+            request.payload as unknown[],
+          );
+          return undefined;
+        case 'put-raw-metas':
+          await putRawRecords(
+            database,
+            request.options.metaStoreName,
+            request.payload as unknown[],
+          );
+          return undefined;
         case 'set-records':
           await replacePromptRecords(
             database,
@@ -592,6 +675,18 @@ export async function launchExtension(
     },
     async setPromptRecords(records) {
       await evaluatePromptDatabase<void>('set-records', records);
+      await publishPromptStorageRevision();
+    },
+    async putRawPromptMetas(records) {
+      await evaluatePromptDatabase<void>('put-raw-metas', records);
+      await publishPromptStorageRevision();
+    },
+    async putRawPromptBodies(records) {
+      await evaluatePromptDatabase<void>('put-raw-bodies', records);
+      await publishPromptStorageRevision();
+    },
+    async clearPromptStores() {
+      await evaluatePromptDatabase<void>('clear-stores');
       await publishPromptStorageRevision();
     },
     async deletePromptBody(id) {
