@@ -147,3 +147,4 @@ _codex/
 # Playwright outputs
 playwright-report/
 test-results/
+test-results-live/
