@@ -230,6 +230,10 @@ export function getIncomingPromptEffect(input: {
   }
 
   if (event?.reason === 'records-replaced') {
+    if (state.isDirty) {
+      return { type: 'none' };
+    }
+
     return { type: 'load-record', prompt: currentPrompt };
   }
 
@@ -620,11 +624,25 @@ function applyIncomingPrompts(
     };
   }
 
-  if (
-    action.event?.reason === 'records-replaced' ||
-    !hasPromptTimestampChanged(currentMode, currentPrompt) ||
-    !state.isDirty
-  ) {
+  if (!state.isDirty) {
+    return nextState;
+  }
+
+  if (action.event?.reason === 'records-replaced') {
+    return {
+      ...nextState,
+      conflictState: {
+        status: 'stale',
+        reason: 'external-update',
+        promptId: currentPrompt.id,
+        message: EXTERNAL_CHANGE_MESSAGE,
+        currentPrompt,
+      },
+      alertMessage: EXTERNAL_CHANGE_MESSAGE,
+    };
+  }
+
+  if (!hasPromptTimestampChanged(currentMode, currentPrompt)) {
     return nextState;
   }
 

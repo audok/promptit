@@ -324,6 +324,93 @@ test('refreshes an open editor when restore replaces the same prompt id and time
   expect(savedPrompt.content).toBe(restoredPrompt.content);
 });
 
+test('dirty open editor keeps unsaved text when restore replaces the same prompt id and timestamps', async ({
+  extension,
+}, testInfo) => {
+  const initialPrompt = createPromptRecord({
+    id: 'restore-same-id-dirty-open-editor',
+    title: '더티 복원 대상',
+    content: 'old dirty body text',
+    normalOrder: 1,
+    createdAt: '2026-05-05T05:00:00.000Z',
+    updatedAt: '2026-05-05T06:00:00.000Z',
+    bodyUpdatedAt: '2026-05-05T07:00:00.000Z',
+  });
+  const restoredPrompt = createPromptRecord({
+    id: initialPrompt.id,
+    title: '백업의 같은 ID 제목',
+    content: 'backup body that must not replace the dirty draft',
+    normalOrder: initialPrompt.normalOrder,
+    pinned: initialPrompt.pinned,
+    createdAt: initialPrompt.createdAt,
+    updatedAt: initialPrompt.updatedAt,
+    bodyUpdatedAt: initialPrompt.bodyUpdatedAt,
+  });
+  const localTitle = '저장하지 않은 로컬 제목';
+  const localContent = 'unsaved local body that should survive restore';
+  const filePath = await writeJsonFixture(
+    testInfo,
+    'restore-dirty-same-id.json',
+    {
+      type: 'promptit.backup',
+      appVersion: '1.0.0',
+      exportedAt: '2026-05-05T08:00:00.000Z',
+      data: {
+        prompts: [restoredPrompt],
+        settings: {
+          languagePreference: 'ko',
+          themePreference: 'system',
+        },
+      },
+    },
+  );
+
+  await extension.setPromptRecords([initialPrompt]);
+
+  const editorPage = await openOptionsPage(extension);
+  await getPromptCard(editorPage, initialPrompt.title).click();
+  await expect(getTitleInput(editorPage)).toHaveValue(initialPrompt.title);
+  await expect(getContentInput(editorPage)).toHaveValue(initialPrompt.content);
+
+  await getTitleInput(editorPage).fill(localTitle);
+  await getContentInput(editorPage).fill(localContent);
+
+  const restorePage = await openOptionsPage(extension);
+  const modal = await openBackupShareModal(restorePage);
+
+  await modal.getByTestId('backup-restore-file-input').setInputFiles(filePath);
+  await expect(modal.getByRole('heading', { name: '복원할 백업 확인' })).toBeVisible();
+  await modal.getByTestId('backup-restore-confirm-button').click();
+  await expect(getOptionsToast(restorePage)).toContainText(
+    'restore-dirty-same-id.json로부터 데이터를 복원했습니다.',
+  );
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
+    restoredPrompt,
+  ]);
+
+  await expect(getTitleInput(editorPage)).toHaveValue(localTitle);
+  await expect(getContentInput(editorPage)).toHaveValue(localContent);
+  await expect(
+    editorPage.getByRole('alert').filter({
+      hasText:
+        '다른 창의 변경이 먼저 저장되었습니다. 현재 입력은 유지되며 저장 시 충돌이 발생할 수 있습니다.',
+    }),
+  ).toBeVisible();
+  await expect(
+    editorPage.getByRole('status').filter({ hasText: '충돌 감지됨' }),
+  ).toBeVisible();
+  await expect(getPromptCard(editorPage, restoredPrompt.title)).toBeVisible();
+
+  await getPromptSubmitButton(editorPage, '프롬프트 수정').click();
+  await expect(getOptionsToast(editorPage)).toContainText(
+    '프롬프트를 업데이트했습니다.',
+  );
+
+  const savedPrompt = await getRequiredPromptRecord(extension, initialPrompt.id);
+  expect(savedPrompt.title).toBe(localTitle);
+  expect(savedPrompt.content).toBe(localContent);
+});
+
 test('invalid restore files preserve current data', async ({
   extension,
 }, testInfo) => {

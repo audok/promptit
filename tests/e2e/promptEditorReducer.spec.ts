@@ -117,6 +117,65 @@ test('dirty edit with an external timestamp change becomes a stale conflict', ()
   expect(nextState.alertMessage).toBe(EXTERNAL_CHANGE_MESSAGE);
 });
 
+test('dirty edit with records-replaced preserves local fields and marks stale conflict', () => {
+  const prompt = createBasePrompt();
+  const dirtyTitleState = promptEditorReducer(getEditingState(prompt), {
+    type: 'field-updated',
+    field: 'title',
+    value: 'Unsaved records-replaced title',
+  });
+  const dirtyContentState = promptEditorReducer(dirtyTitleState, {
+    type: 'field-updated',
+    field: 'content',
+    value: 'Unsaved records-replaced body',
+  });
+  const dirtyPinnedState = promptEditorReducer(dirtyContentState, {
+    type: 'field-updated',
+    field: 'pinned',
+    value: true,
+  });
+  const restoredPrompt = {
+    ...prompt,
+    title: 'Restored title with matching timestamps',
+    content: 'Restored body with matching timestamps',
+    charCount: 'Restored body with matching timestamps'.length,
+  };
+
+  const effect = getIncomingPromptEffect({
+    state: dirtyPinnedState,
+    prompts: [restoredPrompt],
+    event: { reason: 'records-replaced' },
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  expect(effect).toEqual({ type: 'none' });
+
+  const nextState = promptEditorReducer(dirtyPinnedState, {
+    type: 'incoming-prompts-received',
+    prompts: [restoredPrompt],
+    event: { reason: 'records-replaced' },
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  expect(nextState.prompts).toEqual([restoredPrompt]);
+  expect(nextState.form).toEqual({
+    title: 'Unsaved records-replaced title',
+    content: 'Unsaved records-replaced body',
+    pinned: true,
+  });
+  expect(nextState.isDirty).toBe(true);
+  expect(nextState.conflictState).toEqual({
+    status: 'stale',
+    reason: 'external-update',
+    promptId: restoredPrompt.id,
+    message: EXTERNAL_CHANGE_MESSAGE,
+    currentPrompt: restoredPrompt,
+  });
+  expect(nextState.alertMessage).toBe(EXTERNAL_CHANGE_MESSAGE);
+});
+
 test('save echo and current saving prompt are not classified as external conflicts', () => {
   const prompt = createBasePrompt();
   const dirtyState = promptEditorReducer(getEditingState(prompt), {
