@@ -64,12 +64,6 @@ export type PromptEditorAction =
       prompt: PromptRecord;
     }
   | {
-      type: 'sync-conflict-prompt';
-      prompt: PromptRecord;
-      reason: 'save-conflict' | 'delete-conflict';
-      message: LocalizedMessageDescriptor;
-    }
-  | {
       type: 'body-load-started';
       prompt: PromptMeta;
       preserveDirtyDraftOnFailure: boolean;
@@ -305,14 +299,6 @@ export function promptEditorReducer(
 
     case 'sync-editing-prompt':
       return syncEditingPrompt(state, action.prompt);
-
-    case 'sync-conflict-prompt':
-      return syncConflictPrompt(
-        state,
-        action.prompt,
-        action.reason,
-        action.message,
-      );
 
     case 'body-load-started':
       return {

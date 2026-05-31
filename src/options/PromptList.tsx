@@ -26,6 +26,7 @@ import {
   formatTimestamp,
 } from './components';
 import { type OptionsToastTone } from './OptionsToast';
+import { getPromptGroup } from './promptEditorState';
 import { type PromptEditorLoadState } from './usePromptEditor';
 
 type DropPlacement = 'before' | 'after';
@@ -79,10 +80,6 @@ export function PromptList(props: PromptListProps) {
   function updateDropIndicator(nextDropIndicator: DropIndicatorState): void {
     dropIndicatorRef.current = nextDropIndicator;
     setDropIndicator(nextDropIndicator);
-  }
-
-  function getPromptGroup(prompt: PromptMeta): 'pinned' | 'normal' {
-    return prompt.pinned ? 'pinned' : 'normal';
   }
 
   function getPromptGroupLabel(prompt: PromptMeta): string {
