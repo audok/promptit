@@ -8,8 +8,7 @@
 ## 상태 기준
 
 - `Automated`: 로컬 Playwright 회귀 테스트에서 반복 가능하게 검증됨
-- `Live smoke`: 실제 `chatgpt.com`에서만 확인함
-- `Skipped live`: 실제 사이트 자동화 후보가 있지만 외부 사이트 상태 때문에 release gate로 쓰지 않음
+- `Live smoke`: 실제 `chatgpt.com` 또는 `gemini.google.com/app`에서 classified smoke로 확인함
 - `Manual`: 사람이 직접 확인해야 함
 - `Gap`: 구현은 있지만 아직 반복 가능한 검증이 없음
 
@@ -20,6 +19,7 @@
 - [x] 지원하지 않는 URL에서는 promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
 - [x] test mode에서 지원하지 않는 localhost fixture에서는 promptit이 초기화되지 않는다. `Automated` via `tests/e2e/platform.spec.ts`
 - [x] 실제 `chatgpt.com`에서 promptit이 초기화된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [x] 실제 `gemini.google.com/app`에서 promptit이 초기화된다. `Live smoke` via `tests/live/live-gemini.spec.ts`
 - [x] Gemini fixture에서 promptit이 초기화된다. `Automated` via `tests/e2e/gemini-slash-popup.spec.ts`
 - [x] 같은 페이지에서 중복 초기화 방지 가드가 명시적으로 검증된다. `Automated` via `tests/e2e/platform.spec.ts`
 - [x] runtime request/response public builder output은 parser가 받아들이고 malformed payload는 mutation 없이 거부한다. `Automated` via `tests/e2e/runtime-contracts.spec.ts`
@@ -69,6 +69,7 @@
 - [x] malformed/corrupt popup prompt storage normalization is repeatably covered with raw IndexedDB metadata/body rows and missing body rows. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
 - [x] empty state에서 옵션 페이지를 열 수 있다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
 - [x] empty state -> options 흐름이 실제 `chatgpt.com`에서도 동작한다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [x] empty state -> options 흐름이 실제 `gemini.google.com/app`에서도 classified smoke로 검증된다. `Live smoke` via `tests/live/live-gemini.spec.ts`
 - [x] hover로 active cell이 바뀐다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
 - [x] title click으로 프롬프트를 insert할 수 있다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
 - [x] copy button click으로 프롬프트를 복사할 수 있다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
@@ -160,8 +161,14 @@
 - [x] 실제 `chatgpt.com`에서 `/ ` 팝업이 열린다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 insert할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 저장 프롬프트를 copy할 수 있다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [x] 실제 `chatgpt.com`에서 pin toggle이 popup을 열린 상태로 유지하고 저장 상태를 갱신한다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
 - [x] 실제 `chatgpt.com`에서 empty state -> options가 된다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [ ] 실제 public `gemini.google.com/app` no-submit smoke는 skip되어 있다. `Skipped live` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 promptit 선택 후 텍스트가 composer가 아니라 page-level submitted state로 이동했고 composer readback은 빈 문자열이었다. Deterministic Gemini no-submit은 `tests/e2e/gemini-slash-popup.spec.ts`에서 검증한다.
+- [x] 실제 `gemini.google.com/app`에서 `/ ` 팝업이 열린다. `Live smoke` via `tests/live/live-gemini.spec.ts`
+- [x] 실제 `gemini.google.com/app`에서 저장 프롬프트 insert가 composer에 남는지 classified smoke로 검증된다. `Live smoke` via `tests/live/live-gemini.spec.ts`; 2026-05-07 자동화에서 텍스트가 composer가 아니라 page-level submitted state로 이동했던 경우는 이제 skip이 아니라 `actual-site-behavior-failure`로 보고한다.
+- [x] 실제 `gemini.google.com/app`에서 저장 프롬프트를 copy할 수 있는지 classified smoke로 검증된다. `Live smoke` via `tests/live/live-gemini.spec.ts`
+- [x] 실제 `gemini.google.com/app`에서 pin toggle이 popup을 열린 상태로 유지하고 저장 상태를 갱신하는지 classified smoke로 검증된다. `Live smoke` via `tests/live/live-gemini.spec.ts`
+- [x] 실제 `gemini.google.com/app`에서 empty state -> options가 되는지 classified smoke로 검증된다. `Live smoke` via `tests/live/live-gemini.spec.ts`
+- [x] Live smoke failure output is classified as `environment-blocked` or `actual-site-behavior-failure` with a `[promptit-live:<kind>]` terminal prefix and Playwright annotation. `Live smoke` via `tests/live/liveSmokeClassification.ts`
 - [ ] 로그인된 ChatGPT, Gemini 세션에서 전체 흐름을 반복 검증한다. `Manual`
 
 ## 7. 릴리스 체크용 빠른 체크리스트
