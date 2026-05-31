@@ -5,29 +5,14 @@ import {
 import { resolveAdapterForUrl } from '../adapters/registry';
 import type { PromptMeta } from '../prompt/schema';
 import {
-  PromptitRuntimeError,
-  getPromptBody,
-  getPromptMetas,
-  setPromptPinned,
-  subscribeToPromptMetas,
-} from '../prompt/storage';
-import {
-  OPEN_OPTIONS_PAGE_MESSAGE,
-  buildOpenOptionsPageRequest,
-  parsePromptitRuntimeResponse,
-} from '../runtime/messages';
-import {
   FALLBACK_LOCALE,
   getBrowserUiLanguage,
   readLanguagePreference,
   resolveLocale,
   subscribeToLanguagePreference,
   translate,
-  translateRuntimeMessage,
-  type I18nKey,
   type LanguagePreference,
   type Locale,
-  type RuntimeMessageDescriptor,
 } from '../shared/i18n';
 import {
   getSystemTheme,
@@ -67,14 +52,22 @@ import {
 import { setToastTheme, showToast } from './toast';
 import {
   markTestReady,
-  prepareOpenOptionsFailureForTest,
   registerTestListeners,
   shouldFailClipboardWriteForTest,
-  shouldFailPromptBodyReadForTest,
-  shouldFailPromptReadForTest,
-  waitForDeferredPromptBodyRead,
 } from './testControls';
 import { armTrigger, clearTriggerArm } from './trigger';
+import {
+  isPromptBodyReadError,
+  readPromptBodyContentForContentAction,
+  readPromptMetasForContentTrigger,
+  requestOpenOptionsPageFromContent,
+  setPromptPinnedFromContent,
+  subscribeToContentPromptMetas,
+} from './runtimeClient';
+import {
+  getContentRuntimeErrorToastMessage,
+  getContentRuntimeResponseToastMessage,
+} from './runtimeFeedback';
 
 declare global {
   interface Window {
@@ -93,14 +86,6 @@ let contentSystemTheme: ResolvedTheme = 'light';
 type ClosePopupOptions = {
   reopenOnCleanupFailure?: boolean;
 };
-
-class PromptBodyReadError extends Error {
-  constructor() {
-    super('Prompt body read failed.');
-    this.name = 'PromptBodyReadError';
-    Object.setPrototypeOf(this, PromptBodyReadError.prototype);
-  }
-}
 
 export function bootstrapContentScript(): void {
   const adapter = resolveAdapterForUrl(window.location.href);
@@ -135,7 +120,7 @@ export function bootstrapContentScript(): void {
     },
   });
 
-  subscribeToPromptMetas((nextItems) => {
+  subscribeToContentPromptMetas((nextItems) => {
     handlePromptStorageChange(nextItems, session, popup, adapter);
   });
   void readLanguagePreference()
@@ -167,7 +152,7 @@ export function bootstrapContentScript(): void {
 
   registerDocumentListeners(session, popup, adapter);
   registerWindowListeners(session, popup, adapter);
-  registerTestListeners(requestOpenOptionsPage);
+  registerTestListeners(requestOpenOptionsPageFromContent);
   markTestReady();
 }
 
@@ -508,29 +493,6 @@ function registerWindowListeners(
   );
 }
 
-async function requestOpenOptionsPage(): Promise<void> {
-  await prepareOpenOptionsFailureForTest();
-
-  const response = parsePromptitRuntimeResponse(
-    await chrome.runtime.sendMessage(buildOpenOptionsPageRequest()) as unknown,
-  );
-
-  if (!response) {
-    throw new Error('Invalid open options response.');
-  }
-
-  switch (response.type) {
-    case OPEN_OPTIONS_PAGE_MESSAGE:
-      if (!response.ok) {
-        throw new PromptitRuntimeError(
-          response.message,
-          response.messageDescriptor,
-        );
-      }
-      return;
-  }
-}
-
 function scheduleTriggerCheck(
   input: HTMLElement,
   session: PopupSessionState,
@@ -625,11 +587,7 @@ async function readPromptsForTrigger(
   session: PopupSessionState,
 ): Promise<PromptMeta[] | null> {
   try {
-    if (shouldFailPromptReadForTest()) {
-      throw new Error('mock prompt read failure');
-    }
-
-    return await getPromptMetas();
+    return await readPromptMetasForContentTrigger();
   } catch (error) {
     console.error('[promptit] Failed to read prompts before opening popup.', error);
 
@@ -716,7 +674,7 @@ async function handleSelection(
       return;
     }
 
-    const content = await readPromptBodyForAction(item.id);
+    const content = await readPromptBodyContentForContentAction(item.id);
 
     if (!isCurrentPopupActionToken(session, actionToken)) {
       return;
@@ -777,7 +735,7 @@ async function handleCopy(
       throw new Error('Clipboard API is not available.');
     }
 
-    const content = await readPromptBodyForAction(item.id);
+    const content = await readPromptBodyContentForContentAction(item.id);
 
     if (!isCurrentPopupActionToken(session, actionToken)) {
       return;
@@ -812,47 +770,26 @@ async function handleCopy(
 }
 
 function getSelectionErrorToastMessage(error: unknown): string {
-  if (error instanceof PromptBodyReadError) {
+  if (isPromptBodyReadError(error)) {
     return translate(currentLocale, 'content.toast.promptBodyReadFailed');
   }
 
-  return getRuntimeErrorToastMessage(error, 'content.toast.insertFailed');
+  return getContentRuntimeErrorToastMessage(
+    error,
+    currentLocale,
+    'content.toast.insertFailed',
+  );
 }
 
 function getCopyErrorToastMessage(error: unknown): string {
-  if (error instanceof PromptBodyReadError) {
+  if (isPromptBodyReadError(error)) {
     return translate(currentLocale, 'content.toast.promptBodyReadFailed');
   }
 
-  return getRuntimeErrorToastMessage(error, 'content.toast.copyFailed');
-}
-
-function getRuntimeErrorToastMessage(
-  error: unknown,
-  fallbackKey: I18nKey,
-): string {
-  if (error instanceof PromptitRuntimeError) {
-    return getRuntimeResponseToastMessage(
-      error.messageDescriptor,
-      error.message,
-      fallbackKey,
-    );
-  }
-
-  return translate(currentLocale, fallbackKey);
-}
-
-function getRuntimeResponseToastMessage(
-  descriptor: RuntimeMessageDescriptor | undefined,
-  fallback: string,
-  fallbackKey: I18nKey,
-): string {
-  return translateRuntimeMessage(
+  return getContentRuntimeErrorToastMessage(
+    error,
     currentLocale,
-    descriptor,
-    fallback.trim().length > 0
-      ? fallback
-      : translate(currentLocale, fallbackKey),
+    'content.toast.copyFailed',
   );
 }
 
@@ -878,7 +815,7 @@ async function handleTogglePinned(
   popup.setBusy(true);
 
   try {
-    const response = await setPromptPinned(item.id, nextPinned, {
+    const response = await setPromptPinnedFromContent(item.id, nextPinned, {
       expectedUpdatedAt: item.updatedAt,
     });
 
@@ -908,7 +845,8 @@ async function handleTogglePinned(
           mergePromptMeta(session.items, response.currentMeta),
         );
         showToast(
-          getRuntimeResponseToastMessage(
+          getContentRuntimeResponseToastMessage(
+            currentLocale,
             response.messageDescriptor,
             response.message,
             'content.toast.pinConflict',
@@ -924,7 +862,8 @@ async function handleTogglePinned(
           removePromptMeta(session.items, response.id),
         );
         showToast(
-          getRuntimeResponseToastMessage(
+          getContentRuntimeResponseToastMessage(
+            currentLocale,
             response.messageDescriptor,
             response.message,
             'content.toast.pinNotFound',
@@ -934,7 +873,8 @@ async function handleTogglePinned(
         break;
       case 'error':
         showToast(
-          getRuntimeResponseToastMessage(
+          getContentRuntimeResponseToastMessage(
+            currentLocale,
             response.messageDescriptor,
             response.message,
             'content.toast.pinFailed',
@@ -950,7 +890,11 @@ async function handleTogglePinned(
 
     console.error('[promptit] Failed to toggle prompt pinned state.', error);
     showToast(
-      getRuntimeErrorToastMessage(error, 'content.toast.pinFailed'),
+      getContentRuntimeErrorToastMessage(
+        error,
+        currentLocale,
+        'content.toast.pinFailed',
+      ),
       'error',
     );
   } finally {
@@ -964,22 +908,6 @@ async function handleTogglePinned(
     if (activeInput?.isConnected) {
       adapter.focusInput(activeInput);
     }
-  }
-}
-
-async function readPromptBodyForAction(id: string): Promise<string> {
-  try {
-    if (shouldFailPromptBodyReadForTest()) {
-      throw new Error('mock prompt body read failure');
-    }
-
-    await waitForDeferredPromptBodyRead();
-
-    const body = await getPromptBody(id);
-    return body.content;
-  } catch (error) {
-    console.error('[promptit] Failed to read prompt body for popup action.', error);
-    throw new PromptBodyReadError();
   }
 }
 
@@ -1079,7 +1007,7 @@ async function performOpenOptionsAction(
   popup.setBusy(true);
 
   try {
-    await requestOpenOptionsPage();
+    await requestOpenOptionsPageFromContent();
 
     if (!isCurrentPopupActionToken(session, actionToken)) {
       return false;
@@ -1107,7 +1035,11 @@ async function performOpenOptionsAction(
       adapter.focusInput(activeInput);
     }
     showToast(
-      getRuntimeErrorToastMessage(error, 'content.toast.openOptionsFailed'),
+      getContentRuntimeErrorToastMessage(
+        error,
+        currentLocale,
+        'content.toast.openOptionsFailed',
+      ),
       'error',
     );
     return false;
