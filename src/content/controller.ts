@@ -270,6 +270,10 @@ function registerDocumentListeners(
   document.addEventListener(
     'compositionstart',
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       const input = adapter.resolveTargetInput(event.target);
 
       if (!input) {
@@ -285,6 +289,10 @@ function registerDocumentListeners(
   document.addEventListener(
     'compositionend',
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       const input = adapter.resolveTargetInput(event.target);
 
       if (!input) {
@@ -303,6 +311,10 @@ function registerDocumentListeners(
   document.addEventListener(
     'input',
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       const input = adapter.resolveTargetInput(event.target);
 
       if (!input) {
@@ -334,6 +346,10 @@ function registerDocumentListeners(
   document.addEventListener(
     'keydown',
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       if (session.status !== 'open') {
         return;
       }
@@ -409,6 +425,10 @@ function registerDocumentListeners(
   document.addEventListener(
     'pointerdown',
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       if (session.status !== 'open' || session.isBusy) {
         return;
       }

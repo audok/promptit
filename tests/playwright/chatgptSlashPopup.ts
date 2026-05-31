@@ -8,6 +8,7 @@ import {
   createPromptRecord,
   dispatchPromptitTestEvent,
   getActivePopupCellLabel,
+  getComposer,
   getComposerText,
   getPopupTitles,
   getToastText,
@@ -153,6 +154,36 @@ export async function dispatchNestedChildComposerInput(
         data: ' ',
       }),
     );
+  });
+}
+
+export async function placeCaretAfterNestedChildSlash(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const child = document.createElement('span');
+    child.textContent = '/';
+    composer.replaceChildren(child);
+    composer.focus();
+
+    const textNode = child.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare child selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
   });
 }
 
@@ -304,6 +335,53 @@ export async function dispatchComposerKeydown(
   }, key);
 }
 
+export async function startTrustedImeComposition(
+  page: Page,
+  text: string,
+): Promise<void> {
+  const composer = await getComposer(page);
+  const insertionOffset = await composer.evaluate((element) => {
+    element.focus();
+
+    if (element instanceof HTMLTextAreaElement) {
+      element.selectionStart = element.value.length;
+      element.selectionEnd = element.value.length;
+      return element.value.length;
+    }
+
+    const selection = window.getSelection();
+
+    if (!selection) {
+      return element.textContent?.length ?? 0;
+    }
+
+    const range = document.createRange();
+    const lastChild = element.lastChild;
+
+    if (lastChild instanceof Text) {
+      range.setStart(lastChild, lastChild.data.length);
+    } else {
+      range.setStart(element, element.childNodes.length);
+    }
+
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    return element.textContent?.length ?? 0;
+  });
+
+  const client = await page.context().newCDPSession(page);
+  await client.send('Input.imeSetComposition', {
+    text,
+    selectionStart: text.length,
+    selectionEnd: text.length,
+    replacementStart: insertionOffset,
+    replacementEnd: insertionOffset,
+  });
+  await client.detach();
+}
+
 export async function setMultilineContenteditableComposerState(
   page: Parameters<typeof getComposerText>[0],
   options: {
@@ -392,6 +470,45 @@ export async function dispatchBlockBoundaryComposerInput(
   });
 }
 
+export async function placeCaretInBlockAfterSlashBlock(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    document.documentElement.setAttribute(
+      'data-promptit-trigger-result',
+      'pending',
+    );
+
+    const slashBlock = document.createElement('p');
+    slashBlock.textContent = '/';
+
+    const spaceBlock = document.createElement('p');
+    const spaceNode = document.createTextNode('');
+    spaceBlock.append(spaceNode);
+
+    composer.replaceChildren(slashBlock, spaceBlock);
+    composer.focus();
+
+    const selection = window.getSelection();
+
+    if (!selection) {
+      throw new Error('Selection not found.');
+    }
+
+    const range = document.createRange();
+    range.setStart(spaceNode, 0);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+}
+
 export async function dispatchLineBoundaryComposerInput(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<void> {
@@ -436,6 +553,42 @@ export async function dispatchLineBoundaryComposerInput(
   });
 }
 
+export async function placeCaretAfterLineBoundarySlash(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    document.documentElement.setAttribute(
+      'data-promptit-trigger-result',
+      'pending',
+    );
+
+    const slashNode = document.createTextNode('/');
+    const lineBreak = document.createElement('br');
+    const spaceNode = document.createTextNode('');
+
+    composer.replaceChildren(slashNode, lineBreak, spaceNode);
+    composer.focus();
+
+    const selection = window.getSelection();
+
+    if (!selection) {
+      throw new Error('Selection not found.');
+    }
+
+    const range = document.createRange();
+    range.setStart(spaceNode, 0);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+}
+
 export async function dispatchInlineWrapperComposerInput(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<void> {
@@ -475,6 +628,40 @@ export async function dispatchInlineWrapperComposerInput(
         data: ' ',
       }),
     );
+  });
+}
+
+export async function placeCaretAfterInlineWrappedSlash(
+  page: Parameters<typeof getComposerText>[0],
+): Promise<void> {
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    const slashWrapper = document.createElement('span');
+    slashWrapper.textContent = '/';
+
+    const spaceWrapper = document.createElement('strong');
+    const spaceNode = document.createTextNode('');
+    spaceWrapper.append(spaceNode);
+
+    composer.replaceChildren(slashWrapper, spaceWrapper);
+    composer.focus();
+
+    const selection = window.getSelection();
+
+    if (!selection) {
+      throw new Error('Selection not found.');
+    }
+
+    const range = document.createRange();
+    range.setStart(spaceNode, 0);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
   });
 }
 

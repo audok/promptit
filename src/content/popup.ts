@@ -17,6 +17,7 @@ import {
   type PopupActiveCell,
 } from './session';
 import { getPromptitFontStyles } from './fonts';
+import { IS_TEST_MODE } from './testControls';
 import popupStyles from './popup.css?inline';
 import themeStyles from '../shared/theme.css?inline';
 
@@ -226,14 +227,24 @@ export class PromptPopup {
     this.host = document.createElement('div');
     this.host.setAttribute('data-promptit-popup-host', 'true');
     this.host.setAttribute('data-testid', 'promptit-popup-host');
-    this.shadowRoot = this.host.attachShadow({ mode: 'open' });
+    this.shadowRoot = this.host.attachShadow({
+      mode: IS_TEST_MODE ? 'open' : 'closed',
+    });
     document.documentElement.append(this.host);
 
     this.shadowRoot.addEventListener('pointerdown', (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       event.preventDefault();
     });
 
     this.shadowRoot.addEventListener('pointermove', (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       const nextActiveCell = getTargetCell(event.target);
 
       if (
@@ -248,6 +259,10 @@ export class PromptPopup {
     });
 
     this.shadowRoot.addEventListener('click', (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       const target = event.target instanceof HTMLElement ? event.target : null;
 
       if (!target) {

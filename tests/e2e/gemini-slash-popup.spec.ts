@@ -38,7 +38,7 @@ const geminiPrompts = [
   }),
 ];
 
-async function dispatchNestedChildGeminiInput(
+async function placeCaretAfterNestedGeminiChildSlash(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<void> {
   await page.evaluate((composerSelector) => {
@@ -49,7 +49,7 @@ async function dispatchNestedChildGeminiInput(
     }
 
     const child = document.createElement('span');
-    child.textContent = '/ ';
+    child.textContent = '/';
     composer.replaceChildren(child);
     composer.focus();
 
@@ -65,14 +65,6 @@ async function dispatchNestedChildGeminiInput(
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
-
-    child.dispatchEvent(
-      new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: ' ',
-      }),
-    );
   }, GEMINI_COMPOSER_SELECTOR);
 }
 
@@ -159,7 +151,7 @@ test('reads the Gemini prompt body on selection instead of popup open', async ({
   );
 });
 
-test('opens from a nested Gemini child input event and inserts the active prompt', async ({
+test('opens from a nested Gemini child with trusted input and inserts the active prompt', async ({
   extension,
 }) => {
   await extension.setPromptRecords(geminiPrompts);
@@ -167,7 +159,8 @@ test('opens from a nested Gemini child input event and inserts the active prompt
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
 
-  await dispatchNestedChildGeminiInput(page);
+  await placeCaretAfterNestedGeminiChildSlash(page);
+  await page.keyboard.type(' ');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect(await getPopupTitles(page)).toEqual([

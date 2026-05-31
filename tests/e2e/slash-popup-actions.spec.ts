@@ -103,6 +103,103 @@ test('fetches the latest prompt body when selecting an already-open popup item',
   await expect(await getComposerText(page)).toBe('선택 시점에 읽은 본문');
 });
 
+test('ignores a page-created untrusted Enter keydown after a trusted popup open', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    deferPromptBodyRead: true,
+  });
+
+  try {
+    await page.evaluate(() => {
+      const composer = document.querySelector('#prompt-textarea');
+
+      if (!(composer instanceof HTMLElement)) {
+        throw new Error('Composer not found.');
+      }
+
+      composer.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    await page.waitForTimeout(50);
+
+    await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+    await expect(await getComposerText(page)).toBe('/ ');
+    await expect(await getPopupStateSnapshot(page)).toMatchObject({
+      isBusy: false,
+      isVisible: true,
+    });
+  } finally {
+    await dispatchPromptitTestEvent(
+      page,
+      'promptit:test-release-prompt-body-read',
+    );
+  }
+});
+
+test('ignores a page-created untrusted select click after a trusted popup open', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await dispatchPromptitTestEvent(page, 'promptit:test-set-controls', {
+    deferPromptBodyRead: true,
+  });
+
+  try {
+    await page.evaluate(() => {
+      const host = document.querySelector('[data-testid="promptit-popup-host"]');
+      const selectButton = host?.shadowRoot?.querySelector<HTMLButtonElement>(
+        'button[data-action="select"]',
+      );
+
+      if (
+        !(host instanceof HTMLElement) ||
+        !host.shadowRoot ||
+        !(selectButton instanceof HTMLButtonElement)
+      ) {
+        throw new Error('Popup select button not found.');
+      }
+
+      selectButton.dispatchEvent(
+        new MouseEvent('click', {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    await page.waitForTimeout(50);
+
+    await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+    await expect(await getComposerText(page)).toBe('/ ');
+    await expect(await getPopupStateSnapshot(page)).toMatchObject({
+      isBusy: false,
+      isVisible: true,
+    });
+  } finally {
+    await dispatchPromptitTestEvent(
+      page,
+      'promptit:test-release-prompt-body-read',
+    );
+  }
+});
+
 test('keeps the popup busy and open while prompt insertion is pending', async ({
   extension,
 }) => {

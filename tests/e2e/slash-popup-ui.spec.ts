@@ -2,7 +2,6 @@ import {
   test,
   basePrompts,
   setContenteditableComposerState,
-  dispatchComposerInput,
   getPopupAccessibilitySnapshot,
   getPopupChromeSnapshot,
   getToastAccessibilitySnapshot,
@@ -368,9 +367,9 @@ test('keeps the ChatGPT popup width usable for a tiny anchor rect', async ({
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
-  await setContenteditableComposerState(page, { text: '/ ' });
+  await setContenteditableComposerState(page, { text: '/' });
   await installTinyPopupAnchorRect(page);
-  await dispatchComposerInput(page, 'insertText', ' ');
+  await page.keyboard.type(' ');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
 

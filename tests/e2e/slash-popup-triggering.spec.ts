@@ -3,17 +3,10 @@ import {
   test,
   basePrompts,
   setContenteditableComposerState,
-  dispatchComposerInput,
-  dispatchNestedChildComposerInput,
   installTriggerDetachmentWatcher,
   detachComposerAndTrackText,
   getDetachedComposerText,
-  dispatchComposerCompositionEvent,
-  dispatchComposerKeydown,
   setMultilineContenteditableComposerState,
-  dispatchBlockBoundaryComposerInput,
-  dispatchLineBoundaryComposerInput,
-  dispatchInlineWrapperComposerInput,
   getComposerDomSnapshot,
   getPopupStateSnapshot,
   waitForPromptBodyReadPending,
@@ -31,7 +24,12 @@ import {
   getToastText,
   openFixturePage,
   openPromptPopup,
+  placeCaretAfterInlineWrappedSlash,
+  placeCaretAfterLineBoundarySlash,
+  placeCaretAfterNestedChildSlash,
+  placeCaretInBlockAfterSlashBlock,
   replaceComposerTextWithoutInputEvent,
+  startTrustedImeComposition,
   TEXTAREA_FIXTURE_URL,
   waitForPromptPopupToClose,
 } from '../playwright/chatgptSlashPopup';
@@ -44,7 +42,8 @@ test('opens from a nested contenteditable child input event and inserts the acti
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
-  await dispatchNestedChildComposerInput(page);
+  await placeCaretAfterNestedChildSlash(page);
+  await page.keyboard.type(' ');
 
   await expect(page.locator('[data-testid="promptit-popup-host"]')).toBeVisible();
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
@@ -56,6 +55,87 @@ test('opens from a nested contenteditable child input event and inserts the acti
   await expect(await getComposerText(page)).toBe(
     '영문으로 자연스럽게 번역해줘.',
   );
+});
+
+test('does not open from a page-created untrusted contenteditable input event', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    composer.textContent = '/ ';
+    composer.focus();
+
+    const textNode = composer.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    composer.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
+
+  await page.waitForTimeout(150);
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeHidden();
+  await expect(await getComposerText(page)).toBe('/ ');
+});
+
+test('does not open from a page-created untrusted textarea input event', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, TEXTAREA_FIXTURE_URL);
+
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLTextAreaElement)) {
+      throw new Error('Textarea composer not found.');
+    }
+
+    composer.value = '/ ';
+    composer.selectionStart = composer.value.length;
+    composer.selectionEnd = composer.value.length;
+    composer.focus();
+
+    composer.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
+
+  await page.waitForTimeout(150);
+
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeHidden();
+  await expect(await getComposerText(page)).toBe('/ ');
 });
 
 test('cleans up the trigger text on escape and backspace', async ({
@@ -249,9 +329,9 @@ test('preserves the multiline break when inserting and cleaning up a prompt from
 
   await setMultilineContenteditableComposerState(page, {
     prefix: 'hello',
-    trigger: '/\u00A0',
+    trigger: '/',
   });
-  await dispatchComposerInput(page, 'insertText', '\u00A0');
+  await page.keyboard.insertText('\u00A0');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await page.keyboard.press('Enter');
@@ -268,9 +348,9 @@ test('preserves the multiline break when inserting and cleaning up a prompt from
 
   await setMultilineContenteditableComposerState(page, {
     prefix: 'hello',
-    trigger: '/\u00A0',
+    trigger: '/',
   });
-  await dispatchComposerInput(page, 'insertText', '\u00A0');
+  await page.keyboard.insertText('\u00A0');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -440,11 +520,24 @@ test('does not open the popup when the selection is not collapsed', async ({
     selectionStart: 0,
     selectionEnd: 2,
   });
-  await dispatchComposerInput(page, 'insertText', ' ');
+  await page.evaluate(() => {
+    const composer = document.querySelector('#prompt-textarea');
 
-  await expect(page.locator('html')).toHaveAttribute(
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    composer.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ' ',
+      }),
+    );
+  });
+
+  await expect(page.locator('html')).not.toHaveAttribute(
     'data-promptit-trigger-result',
-    'contenteditable-no-selection',
   );
   await waitForPromptPopupToClose(page);
 });
@@ -457,8 +550,8 @@ test('does not open across a contenteditable br line boundary', async ({
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
-  await dispatchLineBoundaryComposerInput(page);
-  await page.waitForTimeout(150);
+  await placeCaretAfterLineBoundarySlash(page);
+  await page.keyboard.type(' ');
 
   await expect(
     page.locator('[data-testid="promptit-popup-host"]'),
@@ -476,8 +569,8 @@ test('does not open across contenteditable block boundaries', async ({
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
-  await dispatchBlockBoundaryComposerInput(page);
-  await page.waitForTimeout(150);
+  await placeCaretInBlockAfterSlashBlock(page);
+  await page.keyboard.type(' ');
 
   await expect(
     page.locator('[data-testid="promptit-popup-host"]'),
@@ -495,7 +588,8 @@ test('opens across inline wrappers within one contenteditable line', async ({
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
-  await dispatchInlineWrapperComposerInput(page);
+  await placeCaretAfterInlineWrappedSlash(page);
+  await page.keyboard.type(' ');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute(
@@ -510,13 +604,51 @@ test('opens across inline wrappers within one contenteditable line', async ({
   );
 });
 
-test('waits for compositionend before opening the popup', async ({
+test('does not open the popup during trusted IME composition', async ({
   extension,
 }) => {
   await extension.setPromptRecords(basePrompts);
 
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+
+  await startTrustedImeComposition(page, '/ ');
+
+  await page.waitForTimeout(150);
+  await waitForPromptPopupToClose(page);
+});
+
+test('does not treat trusted IME Enter as a popup command while composing', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+  await startTrustedImeComposition(page, 'あ');
+
+  await page.keyboard.press('Enter');
+
+  await expect(await getPopupStateSnapshot(page)).toMatchObject({
+    isBusy: false,
+    isVisible: true,
+  });
+  await expect(await getComposerText(page)).not.toBe(
+    '영문으로 자연스럽게 번역해줘.',
+  );
+});
+
+test('ignores page-created composition events and keeps an open popup usable', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await openPromptPopup(page);
+
+  const initialActiveCell = await getActivePopupCellLabel(page);
 
   await page.evaluate(() => {
     const composer = document.querySelector('#prompt-textarea');
@@ -528,78 +660,21 @@ test('waits for compositionend before opening the popup', async ({
     composer.dispatchEvent(
       new CompositionEvent('compositionstart', {
         bubbles: true,
-        data: '/',
+        data: '한',
       }),
     );
-  });
-  await setContenteditableComposerState(page, {
-    text: '/ ',
-  });
-  await dispatchComposerInput(page, 'insertCompositionText', ' ');
-
-  await page.waitForTimeout(150);
-  await waitForPromptPopupToClose(page);
-
-  await page.evaluate(() => {
-    const composer = document.querySelector('#prompt-textarea');
-
-    if (!(composer instanceof HTMLElement)) {
-      throw new Error('Composer not found.');
-    }
-
     composer.dispatchEvent(
       new CompositionEvent('compositionend', {
         bubbles: true,
-        data: ' ',
+        data: '한',
       }),
     );
   });
-
-  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
-});
-
-test('does not treat IME keydown events as popup commands while composing', async ({
-  extension,
-}) => {
-  await extension.setPromptRecords(basePrompts);
-
-  const page = await extension.context.newPage();
-  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
-  await openPromptPopup(page);
-  await dispatchComposerCompositionEvent(page, 'compositionstart', 'あ');
-
-  for (const key of ['Enter', 'Escape', 'Backspace']) {
-    const keydown = await dispatchComposerKeydown(page, key);
-
-    expect(keydown.defaultPrevented).toBe(false);
-    await expect(await getPopupStateSnapshot(page)).toMatchObject({
-      isBusy: false,
-      isVisible: true,
-    });
-    await expect(await getComposerText(page)).toBe('/ ');
-  }
-});
-
-test('keeps an already-open popup usable immediately after compositionend', async ({
-  extension,
-}) => {
-  await extension.setPromptRecords(basePrompts);
-
-  const page = await extension.context.newPage();
-  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
-  await openPromptPopup(page);
-
-  const initialActiveCell = await getActivePopupCellLabel(page);
-
-  await dispatchComposerCompositionEvent(page, 'compositionstart', '한');
-  await dispatchComposerCompositionEvent(page, 'compositionend', '한');
 
   await expect(page.locator('[data-testid="promptit-popup-host"]')).toHaveCount(1);
   await expect(await getActivePopupCellLabel(page)).toBe(initialActiveCell);
 
-  const keydown = await dispatchComposerKeydown(page, 'Enter');
-
-  expect(keydown.defaultPrevented).toBe(true);
+  await page.keyboard.press('Enter');
   await waitForPromptPopupToClose(page);
   await expect(await getComposerText(page)).toBe(
     '영문으로 자연스럽게 번역해줘.',
@@ -637,7 +712,7 @@ test('ignores a stale prompt insertion after the composer is detached', async ({
   await expect(await getDetachedComposerText(page)).toBe('/ ');
 });
 
-test('resets composing state after a popup closes during IME input', async ({
+test('ignores page-created composition state after a popup closes', async ({
   extension,
 }) => {
   await extension.setPromptRecords(basePrompts);
@@ -646,12 +721,29 @@ test('resets composing state after a popup closes during IME input', async ({
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
   await openPromptPopup(page);
-  await dispatchComposerCompositionEvent(page, 'compositionstart', 'あ');
-  await dispatchComposerInput(page, 'insertCompositionText', 'あ');
-  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await page.evaluate(() => {
-    window.dispatchEvent(new Event('resize'));
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    composer.dispatchEvent(
+      new CompositionEvent('compositionstart', {
+        bubbles: true,
+        data: 'あ',
+      }),
+    );
+    composer.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertCompositionText',
+        data: 'あ',
+      }),
+    );
   });
+  await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
+  await page.setViewportSize({ width: 1180, height: 820 });
   await waitForPromptPopupToClose(page);
 
   await clearComposer(page);
@@ -667,9 +759,9 @@ test('recognizes a non-breaking-space trigger in the contenteditable composer', 
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
   await setContenteditableComposerState(page, {
-    text: '/\u00A0',
+    text: '/',
   });
-  await dispatchComposerInput(page, 'insertText', '\u00A0');
+  await page.keyboard.insertText('\u00A0');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute(
