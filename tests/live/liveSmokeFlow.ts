@@ -11,11 +11,7 @@ import {
   openPromptPopup,
   waitForPromptPopupToClose,
 } from '../playwright/promptit';
-import {
-  behaviorFailure,
-  environmentBlocked,
-  runLiveStep,
-} from './liveSmokeClassification';
+import { runLiveStep } from './liveSmokeClassification';
 import type { LiveSiteAdapter } from './liveSiteAdapters';
 
 export const test = base.extend<{
@@ -60,58 +56,11 @@ async function openLiveSite(
     {
       site: adapter.name,
       step: 'open site',
-      behaviorMessage: 'could not navigate to the live site',
     },
     async () => {
-      let response;
-
-      try {
-        response = await page.goto(adapter.startUrl, {
-          waitUntil: 'domcontentloaded',
-        });
-      } catch (error) {
-        throw environmentBlocked(
-          adapter.name,
-          'open site',
-          'navigation failed before the live site could be exercised',
-          error,
-        );
-      }
-
-      const status = response?.status();
-
-      if (
-        status === 401 ||
-        status === 403 ||
-        status === 429 ||
-        (status !== undefined && status >= 500)
-      ) {
-        throw environmentBlocked(
-          adapter.name,
-          'open site',
-          `live site returned HTTP ${status}`,
-        );
-      }
-    },
-  );
-
-  await runLiveStep(
-    testInfo,
-    {
-      site: adapter.name,
-      step: 'detect blockers after navigation',
-      behaviorMessage: 'could not inspect the live site for blocking UI',
-    },
-    async () => {
-      const blockerReason = await adapter.detectEnvironmentBlockers(page);
-
-      if (blockerReason) {
-        throw environmentBlocked(
-          adapter.name,
-          'detect blockers after navigation',
-          blockerReason,
-        );
-      }
+      await page.goto(adapter.startUrl, {
+        waitUntil: 'domcontentloaded',
+      });
     },
   );
 
@@ -120,45 +69,13 @@ async function openLiveSite(
     {
       site: adapter.name,
       step: 'wait for Promptit ready marker',
-      behaviorMessage:
-        'Promptit did not mark the real site ready after the composer became available',
     },
     async () => {
-      const ready = await page
-        .locator('html')
-        .getAttribute('data-promptit-ready', { timeout: 20_000 })
-        .catch(() => null);
-
-      if (ready === 'true') {
-        return;
-      }
-
-      const blockerReason = await adapter.detectEnvironmentBlockers(page);
-
-      if (blockerReason) {
-        throw environmentBlocked(
-          adapter.name,
-          'wait for Promptit ready marker',
-          blockerReason,
-        );
-      }
-
-      const composerVisible = await page
-        .locator(adapter.composerSelector)
-        .first()
-        .isVisible({ timeout: 1_000 })
-        .catch(() => false);
-
-      if (composerVisible) {
-        throw behaviorFailure(
-          adapter.name,
-          'wait for Promptit ready marker',
-          'composer is visible, but Promptit never set html[data-promptit-ready="true"]',
-        );
-      }
-
-      // Let the composer step classify a missing production-supported composer.
-      return;
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-promptit-ready',
+        'true',
+        { timeout: 20_000 },
+      );
     },
   );
 
@@ -167,15 +84,8 @@ async function openLiveSite(
     {
       site: adapter.name,
       step: 'find composer',
-      behaviorMessage: 'Promptit could not find the real site composer',
     },
     async () => {
-      const blockerReason = await adapter.detectEnvironmentBlockers(page);
-
-      if (blockerReason) {
-        throw environmentBlocked(adapter.name, 'find composer', blockerReason);
-      }
-
       await getComposer(page, adapter.composerSelector);
     },
   );
@@ -202,12 +112,134 @@ async function expectPopupTitles(
     {
       site: adapter.name,
       step: 'verify popup titles',
-      behaviorMessage: 'saved prompt titles did not render in the popup',
     },
     async () => {
       await expect.poll(async () => await getPopupTitles(page)).toEqual(titles);
     },
   );
+}
+
+function normalizeComposerText(text: string): string {
+  return text.replace(/\u00A0/g, ' ').replace(/\r\n/g, '\n');
+}
+
+async function readVisibleComposerText(
+  page: Page,
+  composerSelector: string,
+): Promise<string> {
+  const composer = await getComposer(page, composerSelector);
+  const text = await composer.evaluate((element) => {
+    if (element instanceof HTMLTextAreaElement) {
+      return element.value;
+    }
+
+    if (element instanceof HTMLElement) {
+      return element.innerText;
+    }
+
+    return element.textContent ?? '';
+  });
+
+  return normalizeComposerText(text);
+}
+
+async function expectComposerContainsWithoutSubmit(
+  adapter: LiveSiteAdapter,
+  page: Page,
+  composerText: string,
+  expectedTexts: readonly string[],
+): Promise<void> {
+  const normalizedComposerText = normalizeComposerText(composerText);
+  const missingText = expectedTexts.find(
+    (expectedText) => !normalizedComposerText.includes(expectedText),
+  );
+
+  if (!missingText) {
+    return;
+  }
+
+  const submittedText = await adapter.readSubmittedText(page);
+
+  if (
+    normalizedComposerText.trim() === '' &&
+    expectedTexts.some((expectedText) => submittedText?.includes(expectedText))
+  ) {
+    throw new Error(
+      'prompt text appears to have submitted or moved out of the composer instead of staying in the composer',
+    );
+  }
+
+  throw new Error(
+    `composer text did not contain ${JSON.stringify(missingText)}; observed ${JSON.stringify(normalizedComposerText)}`,
+  );
+}
+
+async function expectComposerPreservesMultilinePrompt(
+  adapter: LiveSiteAdapter,
+  page: Page,
+  composerText: string,
+  firstLine: string,
+  secondLine: string,
+): Promise<void> {
+  await expectComposerContainsWithoutSubmit(
+    adapter,
+    page,
+    composerText,
+    [firstLine, secondLine],
+  );
+
+  const normalizedComposerText = normalizeComposerText(composerText);
+  const firstLineIndex = normalizedComposerText.indexOf(firstLine);
+  const secondLineIndex = normalizedComposerText.indexOf(
+    secondLine,
+    firstLineIndex + firstLine.length,
+  );
+  const textBetweenLines = normalizedComposerText.slice(
+    firstLineIndex + firstLine.length,
+    secondLineIndex,
+  );
+
+  if (secondLineIndex === -1 || !textBetweenLines.includes('\n')) {
+    throw new Error(
+      `visible composer text did not preserve the multiline prompt line break; observed ${JSON.stringify(normalizedComposerText)}`,
+    );
+  }
+}
+
+async function clickPopupFooterSettingsButton(page: Page): Promise<void> {
+  const settingsButton = page.locator(
+    '.promptit-footer-button[data-action="open-options"]',
+  );
+
+  try {
+    await settingsButton.click({ timeout: 2_000 });
+    return;
+  } catch {
+    // Playwright normally pierces open shadow roots for CSS locators. Keep a
+    // narrow fallback so selector-engine behavior does not hide a missing
+    // popup control on the live site.
+  }
+
+  const clickedByFallback = await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="promptit-popup-host"]');
+    const root = host?.shadowRoot;
+    const settingsButton = root?.querySelector<HTMLButtonElement>(
+      '.promptit-footer-button[data-action="open-options"], [data-action="open-options"].promptit-footer-button',
+    );
+
+    if (!(settingsButton instanceof HTMLButtonElement)) {
+      return false;
+    }
+
+    settingsButton.click();
+    return true;
+  });
+
+  if (!clickedByFallback) {
+    throw new Error(
+      'popup footer settings control was not found after the popup became visible',
+    );
+  }
 }
 
 export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
@@ -239,8 +271,6 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
             {
               site: adapter.name,
               step: 'open popup',
-              behaviorMessage:
-                'the `/ ` trigger did not open the Promptit popup',
             },
             async () => {
               await openPromptPopup(page, adapter.composerSelector);
@@ -253,6 +283,44 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
             `${adapter.name} live translate`,
             `${adapter.name} live summarize`,
           ]);
+        },
+      },
+      {
+        title: 'closes the popup with Escape and cleans up the trigger on the real site',
+        run: async ({ extension }, testInfo) => {
+          await extension.setPromptRecords([
+            createPromptRecord({
+              id: `${adapter.name.toLowerCase()}-live-escape-cleanup`,
+              title: `${adapter.name} live cleanup`,
+              content: `${adapter.name} live cleanup prompt`,
+              normalOrder: 1,
+            }),
+          ]);
+
+          const page = await newLivePage(extension, adapter, testInfo);
+
+          await runLiveStep(
+            testInfo,
+            {
+              site: adapter.name,
+              step: 'close popup with Escape',
+            },
+            async () => {
+              await openPromptPopup(page, adapter.composerSelector);
+              await page.keyboard.press('Escape');
+              await waitForPromptPopupToClose(page);
+
+              const composerText = normalizeComposerText(
+                await adapter.readComposerText(page),
+              );
+
+              if (composerText !== '') {
+                throw new Error(
+                  `composer was not empty after Escape cleanup; observed ${JSON.stringify(composerText)}`,
+                );
+              }
+            },
+          );
         },
       },
       {
@@ -276,37 +344,105 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
             {
               site: adapter.name,
               step: 'insert saved prompt',
-              behaviorMessage:
-                'the selected prompt did not remain in the real site composer',
             },
             async () => {
               await openPromptPopup(page, adapter.composerSelector);
               await page.keyboard.press('Enter');
               await waitForPromptPopupToClose(page);
 
-              const composerText = await adapter.readComposerText(page);
+              await expectComposerContainsWithoutSubmit(
+                adapter,
+                page,
+                await adapter.readComposerText(page),
+                [promptContent],
+              );
+            },
+          );
+        },
+      },
+      {
+        title: 'preserves existing composer text when inserting on the real site',
+        run: async ({ extension }, testInfo) => {
+          const prefix = `${adapter.name} live prefix: `;
+          const promptContent = `${adapter.name} live preserved prompt body`;
 
-              if (composerText.includes(promptContent)) {
-                return;
-              }
+          await extension.setPromptRecords([
+            createPromptRecord({
+              id: `${adapter.name.toLowerCase()}-live-preserve-prefix`,
+              title: `${adapter.name} live preserve prefix`,
+              content: promptContent,
+              normalOrder: 1,
+            }),
+          ]);
 
-              const submittedText = await adapter.readSubmittedText(page);
+          const page = await newLivePage(extension, adapter, testInfo);
 
-              if (
-                composerText === '' &&
-                submittedText?.includes(promptContent)
-              ) {
-                throw behaviorFailure(
-                  adapter.name,
-                  'insert saved prompt',
-                  'prompt text appears to have submitted or moved out of the composer',
-                );
-              }
+          await runLiveStep(
+            testInfo,
+            {
+              site: adapter.name,
+              step: 'insert saved prompt after existing text',
+            },
+            async () => {
+              const composer = await getComposer(page, adapter.composerSelector);
+              await composer.click();
+              await page.keyboard.type(prefix);
+              await expect
+                .poll(async () => await adapter.readComposerText(page))
+                .toContain(prefix);
 
-              throw behaviorFailure(
-                adapter.name,
-                'insert saved prompt',
-                `composer text did not contain the saved prompt; observed ${JSON.stringify(composerText)}`,
+              await page.keyboard.type('/ ');
+              await expect(
+                page.locator('[data-testid="promptit-popup"]'),
+              ).toBeVisible();
+              await page.keyboard.press('Enter');
+              await waitForPromptPopupToClose(page);
+
+              await expectComposerContainsWithoutSubmit(
+                adapter,
+                page,
+                await adapter.readComposerText(page),
+                [prefix, promptContent],
+              );
+            },
+          );
+        },
+      },
+      {
+        title: 'inserts multiline prompts without submitting on the real site',
+        run: async ({ extension }, testInfo) => {
+          const firstLine = 'line 1';
+          const secondLine = 'line 2';
+          const promptContent = `${firstLine}\n${secondLine}`;
+
+          await extension.setPromptRecords([
+            createPromptRecord({
+              id: `${adapter.name.toLowerCase()}-live-multiline`,
+              title: `${adapter.name} live multiline`,
+              content: promptContent,
+              normalOrder: 1,
+            }),
+          ]);
+
+          const page = await newLivePage(extension, adapter, testInfo);
+
+          await runLiveStep(
+            testInfo,
+            {
+              site: adapter.name,
+              step: 'insert multiline prompt',
+            },
+            async () => {
+              await openPromptPopup(page, adapter.composerSelector);
+              await page.keyboard.press('Enter');
+              await waitForPromptPopupToClose(page);
+
+              await expectComposerPreservesMultilinePrompt(
+                adapter,
+                page,
+                await readVisibleComposerText(page, adapter.composerSelector),
+                firstLine,
+                secondLine,
               );
             },
           );
@@ -320,7 +456,6 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
             {
               site: adapter.name,
               step: 'grant clipboard permissions',
-              behaviorMessage: 'clipboard permissions could not be granted',
             },
             async () => {
               try {
@@ -329,11 +464,9 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
                   { origin: adapter.origin },
                 );
               } catch (error) {
-                throw environmentBlocked(
-                  adapter.name,
-                  'grant clipboard permissions',
+                throw new Error(
                   'Chromium denied clipboard permissions for the live origin',
-                  error,
+                  { cause: error },
                 );
               }
             },
@@ -361,8 +494,6 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
             {
               site: adapter.name,
               step: 'copy saved prompt',
-              behaviorMessage:
-                'the popup copy command did not copy the selected prompt',
             },
             async () => {
               await openPromptPopup(page, adapter.composerSelector);
@@ -374,15 +505,75 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
               const clipboardText = await page
                 .evaluate(() => navigator.clipboard.readText())
                 .catch((error: unknown) => {
-                  throw environmentBlocked(
-                    adapter.name,
-                    'copy saved prompt',
+                  throw new Error(
                     'Chromium or the live origin denied clipboard readback',
-                    error,
+                    { cause: error },
                   );
                 });
 
               expect(clipboardText).toBe(`${adapter.name} clipboard prompt body`);
+            },
+          );
+        },
+      },
+      {
+        title: 'persists pinned ordering after reopening the real site popup',
+        run: async ({ extension }, testInfo) => {
+          const firstTitle = `${adapter.name} live first normal`;
+          const secondTitle = `${adapter.name} live second pinned later`;
+
+          await extension.setPromptRecords([
+            createPromptRecord({
+              id: `${adapter.name.toLowerCase()}-live-reopen-pin-first`,
+              title: firstTitle,
+              content: `${adapter.name} live first normal prompt`,
+              normalOrder: 1,
+            }),
+            createPromptRecord({
+              id: `${adapter.name.toLowerCase()}-live-reopen-pin-second`,
+              title: secondTitle,
+              content: `${adapter.name} live second normal prompt`,
+              normalOrder: 2,
+            }),
+          ]);
+
+          const page = await newLivePage(extension, adapter, testInfo);
+
+          await runLiveStep(
+            testInfo,
+            {
+              site: adapter.name,
+              step: 'persist pinned ordering after reopen',
+            },
+            async () => {
+              await openPromptPopup(page, adapter.composerSelector);
+              await expectPopupTitles(adapter, page, testInfo, [
+                firstTitle,
+                secondTitle,
+              ]);
+
+              await page.keyboard.press('ArrowDown');
+              await page.keyboard.press('ArrowLeft');
+              await page.keyboard.press('Enter');
+
+              await expect
+                .poll(async () => {
+                  return (await extension.getPromptMetas()).find(
+                    (prompt) =>
+                      prompt.id ===
+                      `${adapter.name.toLowerCase()}-live-reopen-pin-second`,
+                  )?.pinned;
+                })
+                .toBe(true);
+
+              await page.keyboard.press('Escape');
+              await waitForPromptPopupToClose(page);
+
+              await openPromptPopup(page, adapter.composerSelector);
+              await expectPopupTitles(adapter, page, testInfo, [
+                secondTitle,
+                firstTitle,
+              ]);
             },
           );
         },
@@ -414,8 +605,6 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
             {
               site: adapter.name,
               step: 'toggle pinned state',
-              behaviorMessage:
-                'the popup pin command did not persist pinned state on the live site',
             },
             async () => {
               await openPromptPopup(page, adapter.composerSelector);
@@ -444,6 +633,42 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
         },
       },
       {
+        title: 'opens the options page from a non-empty real site popup',
+        run: async ({ extension }, testInfo) => {
+          await extension.setPromptRecords([
+            createPromptRecord({
+              id: `${adapter.name.toLowerCase()}-live-non-empty-options`,
+              title: `${adapter.name} live options prompt`,
+              content: `${adapter.name} live options prompt body`,
+              normalOrder: 1,
+            }),
+          ]);
+
+          const page = await newLivePage(extension, adapter, testInfo);
+
+          await runLiveStep(
+            testInfo,
+            {
+              site: adapter.name,
+              step: 'open options from non-empty popup',
+            },
+            async () => {
+              await openPromptPopup(page, adapter.composerSelector);
+              await expect(
+                page.locator('[data-testid="promptit-popup"]'),
+              ).toBeVisible();
+
+              const optionsPagePromise = extension.context.waitForEvent('page');
+              await clickPopupFooterSettingsButton(page);
+
+              const optionsPage = await optionsPagePromise;
+              await optionsPage.waitForLoadState('domcontentloaded');
+              await expect(optionsPage).toHaveTitle(/promptit Settings/i);
+            },
+          );
+        },
+      },
+      {
         title: 'opens the options page from the real site empty state',
         run: async ({ extension }, testInfo) => {
           await extension.setPromptRecords([]);
@@ -455,8 +680,6 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
             {
               site: adapter.name,
               step: 'open options from empty state',
-              behaviorMessage:
-                'the popup empty state did not open the extension options page',
             },
             async () => {
               await openPromptPopup(page, adapter.composerSelector);
