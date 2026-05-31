@@ -1,0 +1,201 @@
+import { expect, test } from '@playwright/test';
+
+import {
+  DELETE_RECOVERY_MESSAGE,
+  EXTERNAL_CHANGE_MESSAGE,
+} from '../../src/options/promptEditorState';
+import {
+  createInitialPromptEditorState,
+  getIncomingPromptEffect,
+  promptEditorReducer,
+  type PromptEditorState,
+} from '../../src/options/promptEditorReducer';
+import { createPromptRecord } from '../playwright/promptit';
+
+function getEditingState(prompt = createBasePrompt()): PromptEditorState {
+  const state = promptEditorReducer(createInitialPromptEditorState(), {
+    type: 'incoming-prompts-received',
+    prompts: [prompt],
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  return promptEditorReducer(state, {
+    type: 'sync-editing-prompt',
+    prompt,
+  });
+}
+
+function createBasePrompt() {
+  return createPromptRecord({
+    id: 'reducer-prompt',
+    title: 'Reducer prompt',
+    content: 'Reducer body',
+    normalOrder: 1,
+    updatedAt: '2026-05-01T00:00:00.000Z',
+    bodyUpdatedAt: '2026-05-01T00:00:00.000Z',
+  });
+}
+
+test('clean edit with an external timestamp change keeps the record reload decision', () => {
+  const prompt = createBasePrompt();
+  const state = getEditingState(prompt);
+  const changedPrompt = {
+    ...prompt,
+    title: 'Externally changed title',
+    updatedAt: '2026-05-01T00:01:00.000Z',
+  };
+
+  const effect = getIncomingPromptEffect({
+    state,
+    prompts: [changedPrompt],
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  expect(effect).toEqual({
+    type: 'load-record',
+    prompt: changedPrompt,
+  });
+
+  const nextState = promptEditorReducer(state, {
+    type: 'incoming-prompts-received',
+    prompts: [changedPrompt],
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  expect(nextState.conflictState.status).toBe('idle');
+  expect(nextState.alertMessage).toBeNull();
+
+  if (effect.type !== 'load-record') {
+    throw new Error('Expected reducer follow-up to request a record load.');
+  }
+
+  const loadingState = promptEditorReducer(nextState, {
+    type: 'body-load-started',
+    prompt: effect.prompt,
+    preserveDirtyDraftOnFailure: false,
+  });
+
+  expect(loadingState.bodyLoadState).toEqual({
+    status: 'loading',
+    promptId: changedPrompt.id,
+  });
+  expect(loadingState.activePrompt).toBeNull();
+  expect(loadingState.form.title).toBe(changedPrompt.title);
+});
+
+test('dirty edit with an external timestamp change becomes a stale conflict', () => {
+  const prompt = createBasePrompt();
+  const dirtyState = promptEditorReducer(getEditingState(prompt), {
+    type: 'field-updated',
+    field: 'title',
+    value: 'Unsaved local title',
+  });
+  const changedPrompt = {
+    ...prompt,
+    title: 'Externally changed title',
+    updatedAt: '2026-05-01T00:02:00.000Z',
+  };
+
+  const nextState = promptEditorReducer(dirtyState, {
+    type: 'incoming-prompts-received',
+    prompts: [changedPrompt],
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  expect(nextState.form.title).toBe('Unsaved local title');
+  expect(nextState.conflictState).toEqual({
+    status: 'stale',
+    reason: 'external-update',
+    promptId: changedPrompt.id,
+    message: EXTERNAL_CHANGE_MESSAGE,
+    currentPrompt: changedPrompt,
+  });
+  expect(nextState.alertMessage).toBe(EXTERNAL_CHANGE_MESSAGE);
+});
+
+test('save echo and current saving prompt are not classified as external conflicts', () => {
+  const prompt = createBasePrompt();
+  const dirtyState = promptEditorReducer(getEditingState(prompt), {
+    type: 'field-updated',
+    field: 'content',
+    value: 'Unsaved local body',
+  });
+  const savedPrompt = {
+    ...prompt,
+    title: 'Saved title',
+    updatedAt: '2026-05-01T00:03:00.000Z',
+    bodyUpdatedAt: '2026-05-01T00:03:00.000Z',
+  };
+
+  const echoState = promptEditorReducer(dirtyState, {
+    type: 'incoming-prompts-received',
+    prompts: [savedPrompt],
+    savedPromptEcho: {
+      promptId: savedPrompt.id,
+      updatedAt: savedPrompt.updatedAt,
+      bodyUpdatedAt: savedPrompt.bodyUpdatedAt,
+    },
+    savingPromptId: null,
+  });
+
+  expect(echoState.conflictState.status).toBe('idle');
+  expect(echoState.alertMessage).toBeNull();
+
+  const savingState = promptEditorReducer(dirtyState, {
+    type: 'incoming-prompts-received',
+    prompts: [savedPrompt],
+    savedPromptEcho: null,
+    savingPromptId: savedPrompt.id,
+  });
+
+  expect(savingState.conflictState.status).toBe('idle');
+  expect(savingState.alertMessage).toBeNull();
+});
+
+test('deleting the edited prompt switches to create mode with delete recovery notice', () => {
+  const prompt = createBasePrompt();
+  const remainingPrompt = createPromptRecord({
+    id: 'remaining-reducer-prompt',
+    title: 'Remaining prompt',
+    content: 'Remaining body',
+    normalOrder: 2,
+  });
+  const state = getEditingState(prompt);
+
+  const nextState = promptEditorReducer(state, {
+    type: 'incoming-prompts-received',
+    prompts: [remainingPrompt],
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  expect(nextState.mode).toEqual({ kind: 'create' });
+  expect(nextState.activePrompt).toBeNull();
+  expect(nextState.form).toEqual({
+    title: '',
+    content: '',
+    pinned: false,
+  });
+  expect(nextState.notice).toBe(DELETE_RECOVERY_MESSAGE);
+  expect(nextState.alertMessage).toBeNull();
+
+  const deleteSuccessState = promptEditorReducer(state, {
+    type: 'prompt-delete-succeeded',
+    id: prompt.id,
+    activeMode: state.mode,
+  });
+
+  expect(deleteSuccessState.mode).toEqual({ kind: 'create' });
+  expect(deleteSuccessState.activePrompt).toBeNull();
+  expect(deleteSuccessState.form).toEqual({
+    title: '',
+    content: '',
+    pinned: false,
+  });
+  expect(deleteSuccessState.notice).toBe(DELETE_RECOVERY_MESSAGE);
+  expect(deleteSuccessState.alertMessage).toBeNull();
+});
