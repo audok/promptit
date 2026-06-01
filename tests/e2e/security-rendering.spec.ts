@@ -11,6 +11,7 @@ import {
 import {
   getContentInput,
   getPromptCard,
+  getTitleInput,
   openOptionsPage,
 } from '../playwright/optionsPage';
 
@@ -97,6 +98,7 @@ test('options list and editor render prompt text without executing HTML', async 
   await expect(getPromptCard(page, xssTitle)).toBeVisible();
   await expect(page.locator('img')).toHaveCount(0);
   await getPromptCard(page, xssTitle).click();
+  await expect(getTitleInput(page)).toHaveValue(xssTitle);
   await expect(getContentInput(page)).toHaveValue(htmlLookingBody);
   await expect(
     await page.evaluate(() => {

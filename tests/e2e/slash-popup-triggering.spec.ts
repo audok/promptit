@@ -1,3 +1,5 @@
+import { build } from 'vite';
+
 import {
   type TriggerWindowState,
   test,
@@ -33,6 +35,61 @@ import {
   TEXTAREA_FIXTURE_URL,
   waitForPromptPopupToClose,
 } from '../playwright/chatgptSlashPopup';
+
+let editableAdapterBrowserScript: string | null = null;
+
+type BrowserScriptBuildOutput = {
+  output: Array<{
+    code?: string;
+    type: string;
+  }>;
+};
+
+function isBrowserScriptBuildOutput(
+  value: unknown,
+): value is BrowserScriptBuildOutput {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'output' in value &&
+    Array.isArray(value.output)
+  );
+}
+
+async function getEditableAdapterBrowserScript(): Promise<string> {
+  if (editableAdapterBrowserScript) {
+    return editableAdapterBrowserScript;
+  }
+
+  const result = await build({
+    configFile: false,
+    logLevel: 'silent',
+    build: {
+      emptyOutDir: false,
+      minify: false,
+      write: false,
+      lib: {
+        entry: 'src/adapters/editable.ts',
+        formats: ['iife'],
+        name: 'PromptitEditableAdapterTestModule',
+      },
+    },
+  });
+  const buildOutputs = Array.isArray(result)
+    ? result
+    : isBrowserScriptBuildOutput(result)
+      ? [result]
+      : [];
+  const outputs = buildOutputs.flatMap((output) => output.output);
+  const chunk = outputs.find((output) => output.type === 'chunk');
+
+  if (!chunk?.code) {
+    throw new Error('Failed to bundle editable adapter test module.');
+  }
+
+  editableAdapterBrowserScript = chunk.code;
+  return chunk.code;
+}
 
 test('opens from a nested contenteditable child input event and inserts the active prompt', async ({
   extension,
@@ -540,7 +597,7 @@ test('shows an error toast when trigger cleanup fails', async ({
   await expect(await getComposerText(page)).toBe('x');
 });
 
-test('does not open the popup when the selection is not collapsed', async ({
+test('does not open from a page-created untrusted input when the contenteditable selection is not collapsed', async ({
   extension,
 }) => {
   await extension.setPromptRecords(basePrompts);
@@ -573,6 +630,80 @@ test('does not open the popup when the selection is not collapsed', async ({
     'data-promptit-trigger-result',
   );
   await waitForPromptPopupToClose(page);
+});
+
+test('adapter: returns no contenteditable trigger context when selection is not collapsed', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
+  await page.addScriptTag({
+    content: await getEditableAdapterBrowserScript(),
+  });
+
+  const result = await page.evaluate(() => {
+    const adapterModule = (
+      window as Window & {
+        PromptitEditableAdapterTestModule?: {
+          createContenteditableTriggerContext: (
+            input: HTMLElement,
+            setTriggerDebug?: (result: string, text: string) => void,
+          ) => unknown;
+        };
+      }
+    ).PromptitEditableAdapterTestModule;
+    const composer = document.querySelector('#prompt-textarea');
+
+    if (!adapterModule) {
+      throw new Error('Editable adapter test module not loaded.');
+    }
+
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error('Composer not found.');
+    }
+
+    composer.textContent = '/ ';
+    composer.focus();
+
+    const textNode = composer.firstChild;
+    const selection = window.getSelection();
+
+    if (!(textNode instanceof Text) || !selection) {
+      throw new Error('Failed to prepare non-collapsed selection.');
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, textNode.data.length);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    let debugResult: string | null = null;
+    let debugText: string | null = null;
+    const triggerContext = adapterModule.createContenteditableTriggerContext(
+      composer,
+      (nextResult, nextText) => {
+        debugResult = nextResult;
+        debugText = nextText;
+      },
+    );
+
+    return {
+      debugResult,
+      debugText,
+      selectedText: selection.getRangeAt(0).toString(),
+      triggerContext,
+    };
+  });
+
+  expect(result).toEqual({
+    debugResult: 'contenteditable-no-selection',
+    debugText: '',
+    selectedText: '/ ',
+    triggerContext: null,
+  });
 });
 
 test('does not open across a contenteditable br line boundary', async ({
@@ -645,7 +776,11 @@ test('does not open the popup during trusted IME composition', async ({
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
 
-  await startTrustedImeComposition(page, '/ ');
+  const composition = await startTrustedImeComposition(page, '/ ');
+
+  expect(composition.compositionEvents).toBeGreaterThan(0);
+  expect(composition.trustedInputEvents).toBeGreaterThan(0);
+  expect(composition.textAfterComposition).toContain('/ ');
 
   await page.waitForTimeout(150);
   await waitForPromptPopupToClose(page);
@@ -659,7 +794,11 @@ test('does not treat trusted IME Enter as a popup command while composing', asyn
   const page = await extension.context.newPage();
   await openFixturePage(page, CONTENTEDITABLE_FIXTURE_URL);
   await openPromptPopup(page);
-  await startTrustedImeComposition(page, 'あ');
+  const composition = await startTrustedImeComposition(page, 'あ');
+
+  expect(composition.compositionEvents).toBeGreaterThan(0);
+  expect(composition.trustedInputEvents).toBeGreaterThan(0);
+  expect(composition.textAfterComposition).toContain('あ');
 
   await page.keyboard.press('Enter');
 
@@ -827,49 +966,37 @@ test('ignores readonly and disabled textarea composers', async ({
 
   const page = await extension.context.newPage();
   await openFixturePage(page, TEXTAREA_FIXTURE_URL);
+  const composer = page.getByTestId('prompt-textarea');
 
-  await page.evaluate(() => {
-    const composer = document.querySelector('#prompt-textarea');
-
-    if (!(composer instanceof HTMLTextAreaElement)) {
+  await composer.click();
+  await composer.evaluate((element) => {
+    if (!(element instanceof HTMLTextAreaElement)) {
       throw new Error('Textarea composer not found.');
     }
 
-    composer.readOnly = true;
-    composer.value = '/ ';
-    composer.selectionStart = composer.value.length;
-    composer.selectionEnd = composer.value.length;
-    composer.dispatchEvent(
-      new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: ' ',
-      }),
-    );
+    element.value = '';
+    element.readOnly = true;
+    element.selectionStart = element.value.length;
+    element.selectionEnd = element.value.length;
   });
+  await page.keyboard.type('/ ');
   await page.waitForTimeout(150);
   await waitForPromptPopupToClose(page);
+  await expect(await getComposerText(page)).toBe('');
 
-  await page.evaluate(() => {
-    const composer = document.querySelector('#prompt-textarea');
-
-    if (!(composer instanceof HTMLTextAreaElement)) {
+  await composer.evaluate((element) => {
+    if (!(element instanceof HTMLTextAreaElement)) {
       throw new Error('Textarea composer not found.');
     }
 
-    composer.readOnly = false;
-    composer.disabled = true;
-    composer.dispatchEvent(
-      new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: ' ',
-      }),
-    );
+    element.readOnly = false;
+    element.disabled = true;
+    element.value = '';
   });
+  await page.keyboard.type('/ ');
   await page.waitForTimeout(150);
-
   await waitForPromptPopupToClose(page);
+  await expect(await getComposerText(page)).toBe('');
 });
 
 test('scrolls the popup list to keep the active row visible', async ({
@@ -955,7 +1082,7 @@ test('keeps keyboard navigation active while the hovered popup cell scrolls out 
     .toBeGreaterThan(0);
 });
 
-test('repositions the open popup on window scroll without rebuilding rows', async ({
+test('repositions the open popup on window scroll while keeping the same first visible prompt', async ({
   extension,
 }) => {
   await extension.setPromptRecords(basePrompts);
@@ -982,7 +1109,7 @@ test('repositions the open popup on window scroll without rebuilding rows', asyn
 
   await openPromptPopup(page);
   const beforePosition = await getPopupPositionSnapshot(page);
-  const markedRow = await page.evaluate(() => {
+  const rowBeforeScroll = await page.evaluate(() => {
     const host = document.querySelector('[data-testid="promptit-popup-host"]');
     const row = host?.shadowRoot?.querySelector('[data-role="prompt-row"]');
 
@@ -990,11 +1117,16 @@ test('repositions the open popup on window scroll without rebuilding rows', asyn
       throw new Error('Popup row not found.');
     }
 
-    row.dataset.promptitReuseMarker = 'before-scroll';
+    const titleCell = row.querySelector('[data-testid="promptit-title-cell"]');
 
     return {
       itemId: row.dataset.itemId ?? null,
-      marker: row.dataset.promptitReuseMarker ?? null,
+      label:
+        titleCell instanceof HTMLElement
+          ? titleCell.getAttribute('aria-label') ??
+            titleCell.textContent?.trim() ??
+            null
+          : null,
     };
   });
 
@@ -1019,15 +1151,22 @@ test('repositions the open popup on window scroll without rebuilding rows', asyn
       throw new Error('Popup row not found.');
     }
 
+    const titleCell = row.querySelector('[data-testid="promptit-title-cell"]');
+
     return {
       itemId: row.dataset.itemId ?? null,
-      marker: row.dataset.promptitReuseMarker ?? null,
+      label:
+        titleCell instanceof HTMLElement
+          ? titleCell.getAttribute('aria-label') ??
+            titleCell.textContent?.trim() ??
+            null
+          : null,
     };
   });
   const isAnchoredBelow = afterPosition.popupTop >= afterPosition.anchorBottom;
   const isAnchoredAbove = afterPosition.popupBottom <= afterPosition.anchorTop;
 
-  expect(rowAfterScroll).toEqual(markedRow);
+  expect(rowAfterScroll).toEqual(rowBeforeScroll);
   expect(isAnchoredBelow || isAnchoredAbove).toBe(true);
   expect(afterPosition.popupTop).toBeGreaterThanOrEqual(0);
   expect(afterPosition.popupBottom).toBeLessThanOrEqual(

@@ -25,9 +25,13 @@ export const test = base.extend<{
 }>({
   extension: async ({}, use) => {
     const extension = await launchExtension();
-    await extension.setLanguagePreference('en');
-    await use(extension);
-    await extension.close();
+
+    try {
+      await extension.setLanguagePreference('en');
+      await use(extension);
+    } finally {
+      await extension.close();
+    }
   },
 });
 
@@ -335,10 +339,34 @@ export async function dispatchComposerKeydown(
   }, key);
 }
 
+export type TrustedImeCompositionResult = {
+  compositionEvents: number;
+  trustedInputEvents: number;
+  textAfterComposition: string;
+};
+
+async function cleanupTrustedImeCompositionEvidence(page: Page): Promise<void> {
+  await page
+    .evaluate(() => {
+      const state = window as Window & {
+        __promptitTrustedImeCleanup?: () => void;
+        __promptitTrustedImeEvidence?: {
+          compositionEvents: number;
+          trustedInputEvents: number;
+        };
+      };
+
+      state.__promptitTrustedImeCleanup?.();
+      delete state.__promptitTrustedImeCleanup;
+      delete state.__promptitTrustedImeEvidence;
+    })
+    .catch(() => undefined);
+}
+
 export async function startTrustedImeComposition(
   page: Page,
   text: string,
-): Promise<void> {
+): Promise<TrustedImeCompositionResult> {
   const composer = await getComposer(page);
   const insertionOffset = await composer.evaluate((element) => {
     element.focus();
@@ -370,16 +398,110 @@ export async function startTrustedImeComposition(
 
     return element.textContent?.length ?? 0;
   });
+  await composer.evaluate((element) => {
+    const evidence = {
+      compositionEvents: 0,
+      trustedInputEvents: 0,
+    };
 
-  const client = await page.context().newCDPSession(page);
-  await client.send('Input.imeSetComposition', {
-    text,
-    selectionStart: text.length,
-    selectionEnd: text.length,
-    replacementStart: insertionOffset,
-    replacementEnd: insertionOffset,
+    const trackComposition = (event: Event): void => {
+      if (event instanceof CompositionEvent && event.isTrusted) {
+        evidence.compositionEvents += 1;
+      }
+    };
+    const trackInput = (event: Event): void => {
+      if (event instanceof InputEvent && event.isTrusted) {
+        evidence.trustedInputEvents += 1;
+      }
+    };
+
+    element.addEventListener('compositionstart', trackComposition, true);
+    element.addEventListener('compositionupdate', trackComposition, true);
+    element.addEventListener('input', trackInput, true);
+    (
+      window as Window & {
+        __promptitTrustedImeEvidence?: typeof evidence;
+        __promptitTrustedImeCleanup?: () => void;
+      }
+    ).__promptitTrustedImeEvidence = evidence;
+    (
+      window as Window & {
+        __promptitTrustedImeCleanup?: () => void;
+      }
+    ).__promptitTrustedImeCleanup = () => {
+      element.removeEventListener('compositionstart', trackComposition, true);
+      element.removeEventListener('compositionupdate', trackComposition, true);
+      element.removeEventListener('input', trackInput, true);
+    };
   });
-  await client.detach();
+
+  try {
+    const client = await page.context().newCDPSession(page);
+
+    try {
+      await client.send('Input.imeSetComposition', {
+        text,
+        selectionStart: text.length,
+        selectionEnd: text.length,
+        replacementStart: insertionOffset,
+        replacementEnd: insertionOffset,
+      });
+    } finally {
+      await client.detach().catch(() => undefined);
+    }
+
+    const evidence = await page.waitForFunction(
+      (expectedText) => {
+        const state = window as Window & {
+          __promptitTrustedImeEvidence?: {
+            compositionEvents: number;
+            trustedInputEvents: number;
+          };
+        };
+        const composer = document.querySelector('#prompt-textarea');
+        const textAfterComposition =
+          composer instanceof HTMLTextAreaElement
+            ? composer.value
+            : composer instanceof HTMLElement
+              ? composer.textContent ?? ''
+              : '';
+
+        return Boolean(
+          state.__promptitTrustedImeEvidence &&
+            state.__promptitTrustedImeEvidence.compositionEvents > 0 &&
+            state.__promptitTrustedImeEvidence.trustedInputEvents > 0 &&
+            textAfterComposition.includes(expectedText),
+        );
+      },
+      text,
+    );
+    await evidence.dispose();
+
+    return await composer.evaluate((element) => {
+      const state = window as Window & {
+        __promptitTrustedImeEvidence?: {
+          compositionEvents: number;
+          trustedInputEvents: number;
+        };
+      };
+      const imeEvidence = state.__promptitTrustedImeEvidence ?? {
+        compositionEvents: 0,
+        trustedInputEvents: 0,
+      };
+      const textAfterComposition =
+        element instanceof HTMLTextAreaElement
+          ? element.value
+          : element.textContent ?? '';
+
+      return {
+        compositionEvents: imeEvidence.compositionEvents,
+        trustedInputEvents: imeEvidence.trustedInputEvents,
+        textAfterComposition,
+      };
+    });
+  } finally {
+    await cleanupTrustedImeCompositionEvidence(page);
+  }
 }
 
 export async function setMultilineContenteditableComposerState(

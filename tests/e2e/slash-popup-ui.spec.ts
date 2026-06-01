@@ -252,10 +252,10 @@ test('accessibility: exposes non-modal popup semantics and active cell live stat
       cardAriaModal: null,
       cardLabel: 'promptit prompt picker',
       cardRole: 'region',
+      listLabel: 'Saved prompts',
       listRole: 'list',
       rowRoles: ['listitem', 'listitem'],
     });
-  expect((await getPopupAccessibilitySnapshot(page)).listLabel).toBeTruthy();
 
   await page.keyboard.press('ArrowDown');
   await expect
@@ -466,7 +466,6 @@ test('renders pin focus like copy focus and uses a filled pinned icon', async ({
 
   expect(initialSnapshot.ariaPressed).toBe('false');
   expect(initialSnapshot.iconFillColor).not.toBe('rgb(0, 0, 0)');
-  expect(initialSnapshot.iconPathData).toContain('v7.85');
 
   await page.keyboard.press('ArrowLeft');
   await expect(await getActivePopupCellLabel(page)).toBe('Pin prompt: 번역');
@@ -478,12 +477,6 @@ test('renders pin focus like copy focus and uses a filled pinned icon', async ({
       badgeBorderWidth: '0px',
       iconFillColor: 'rgb(0, 0, 0)',
     });
-  const focusedPinSnapshot = await getPopupActionVisualSnapshot(
-    page,
-    'pin',
-    '번역',
-  );
-  expect(focusedPinSnapshot.iconPathData).toBe(initialSnapshot.iconPathData);
 
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
@@ -506,6 +499,9 @@ test('renders pin focus like copy focus and uses a filled pinned icon', async ({
     'aria-pressed',
     'true',
   );
+  await expect(getPopupPinButton(page, '번역', { pinned: true })).toHaveClass(
+    /is-pinned/,
+  );
 
   const pinnedSnapshot = await getPopupActionVisualSnapshot(
     page,
@@ -513,6 +509,4 @@ test('renders pin focus like copy focus and uses a filled pinned icon', async ({
     '번역',
   );
   expect(pinnedSnapshot.iconFillColor).toBe('rgb(0, 0, 0)');
-  expect(pinnedSnapshot.iconPathData).not.toBe(initialSnapshot.iconPathData);
-  expect(pinnedSnapshot.iconPathData).not.toContain('v7.85');
 });

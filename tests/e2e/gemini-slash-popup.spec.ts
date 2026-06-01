@@ -215,32 +215,40 @@ test('ignores Gemini ql-clipboard edits', async ({ extension }) => {
       throw new Error('Gemini clipboard fixture not found.');
     }
 
-    clipboard.textContent = '/ ';
+    clipboard.textContent = '';
     clipboard.focus();
 
-    const textNode = clipboard.firstChild;
     const selection = window.getSelection();
 
-    if (!(textNode instanceof Text) || !selection) {
+    if (!selection) {
       throw new Error('Failed to prepare clipboard selection.');
     }
 
     const range = document.createRange();
-    range.setStart(textNode, textNode.data.length);
+    range.setStart(clipboard, 0);
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
-
-    clipboard.dispatchEvent(
-      new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: ' ',
-      }),
-    );
   });
+  await page.keyboard.type('/ ');
 
-  await page.waitForTimeout(150);
+  await expect
+    .poll(async () =>
+      await page.evaluate(() => {
+        const clipboard = document.querySelector(
+          '[data-testid="gemini-clipboard"]',
+        );
+        return (clipboard?.textContent ?? '').replace(/\u00A0/g, ' ');
+      }),
+    )
+    .toBe('/ ');
+  await expect(await getComposerText(page, GEMINI_COMPOSER_SELECTOR)).toBe('');
+  await expect(page.locator('[data-testid="gemini-host-submit-count"]')).toHaveText(
+    '0',
+  );
+  await expect(page.locator('[data-testid="gemini-host-submit-text"]')).toHaveText(
+    '',
+  );
   await waitForPromptPopupToClose(page);
 });
 
