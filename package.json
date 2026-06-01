@@ -12,6 +12,7 @@
     "test": "pnpm typecheck && pnpm build && pnpm check:manifest && pnpm test:e2e && pnpm build && pnpm check:manifest",
     "test:e2e": "pnpm build:test && xvfb-run -a env -u NO_COLOR TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test",
     "test:e2e:live": "pnpm build:test && xvfb-run -a env -u NO_COLOR TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test --config playwright.live.config.ts && pnpm build && pnpm check:manifest",
+    "test:e2e:live:prod": "pnpm build && pnpm check:manifest && xvfb-run -a env -u NO_COLOR TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist playwright test --config playwright.live.config.ts tests/live/live-prod-insert.spec.ts",
     "test:e2e:headed": "pnpm build:test && xvfb-run -a env -u NO_COLOR TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test --headed",
     "test:e2e:ui": "pnpm build:test && xvfb-run -a env -u NO_COLOR TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test playwright test --ui"
   },

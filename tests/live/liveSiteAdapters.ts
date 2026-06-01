@@ -21,9 +21,7 @@ export type LiveSiteAdapter = {
   readonly startUrl: string;
   readonly origin: string;
   readonly composerSelector: string;
-  readonly submittedTextSelector?: string;
   readComposerText(page: Page): Promise<string>;
-  readSubmittedText(page: Page): Promise<string | null>;
 };
 
 export const chatgptLiveSite: LiveSiteAdapter = {
@@ -34,9 +32,6 @@ export const chatgptLiveSite: LiveSiteAdapter = {
   async readComposerText(page) {
     return await getComposerText(page, CHATGPT_COMPOSER_SELECTOR);
   },
-  async readSubmittedText() {
-    return null;
-  },
 };
 
 export const geminiLiveSite: LiveSiteAdapter = {
@@ -46,8 +41,5 @@ export const geminiLiveSite: LiveSiteAdapter = {
   composerSelector: GEMINI_COMPOSER_SELECTOR,
   async readComposerText(page) {
     return await getComposerText(page, GEMINI_COMPOSER_SELECTOR);
-  },
-  async readSubmittedText() {
-    return null;
   },
 };

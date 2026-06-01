@@ -143,9 +143,7 @@ async function readVisibleComposerText(
   return normalizeComposerText(text);
 }
 
-async function expectComposerContainsWithoutSubmit(
-  adapter: LiveSiteAdapter,
-  page: Page,
+async function expectComposerContainsVisibleText(
   composerText: string,
   expectedTexts: readonly string[],
 ): Promise<void> {
@@ -158,32 +156,17 @@ async function expectComposerContainsWithoutSubmit(
     return;
   }
 
-  const submittedText = await adapter.readSubmittedText(page);
-
-  if (
-    normalizedComposerText.trim() === '' &&
-    expectedTexts.some((expectedText) => submittedText?.includes(expectedText))
-  ) {
-    throw new Error(
-      'prompt text appears to have submitted or moved out of the composer instead of staying in the composer',
-    );
-  }
-
   throw new Error(
     `composer text did not contain ${JSON.stringify(missingText)}; observed ${JSON.stringify(normalizedComposerText)}`,
   );
 }
 
 async function expectComposerPreservesMultilinePrompt(
-  adapter: LiveSiteAdapter,
-  page: Page,
   composerText: string,
   firstLine: string,
   secondLine: string,
 ): Promise<void> {
-  await expectComposerContainsWithoutSubmit(
-    adapter,
-    page,
+  await expectComposerContainsVisibleText(
     composerText,
     [firstLine, secondLine],
   );
@@ -206,6 +189,43 @@ async function expectComposerPreservesMultilinePrompt(
   }
 }
 
+async function expectComposerContainsOrderedTextWithoutTrigger(
+  composerText: string,
+  prefix: string,
+  promptContent: string,
+): Promise<void> {
+  const normalizedComposerText = normalizeComposerText(composerText);
+  const prefixIndex = normalizedComposerText.indexOf(prefix);
+
+  if (prefixIndex === -1) {
+    throw new Error(
+      `composer text did not contain prefix ${JSON.stringify(prefix)}; observed ${JSON.stringify(normalizedComposerText)}`,
+    );
+  }
+
+  const promptContentIndex = normalizedComposerText.indexOf(
+    promptContent,
+    prefixIndex + prefix.length,
+  );
+
+  if (promptContentIndex === -1) {
+    throw new Error(
+      `composer text did not contain prompt content ${JSON.stringify(promptContent)} after prefix ${JSON.stringify(prefix)}; observed ${JSON.stringify(normalizedComposerText)}`,
+    );
+  }
+
+  const textBetweenPrefixAndPrompt = normalizedComposerText.slice(
+    prefixIndex + prefix.length,
+    promptContentIndex,
+  );
+
+  if (textBetweenPrefixAndPrompt.includes('/ ')) {
+    throw new Error(
+      `composer text left the trigger between prefix and prompt content; observed ${JSON.stringify(normalizedComposerText)}`,
+    );
+  }
+}
+
 async function clickPopupFooterSettingsButton(page: Page): Promise<void> {
   const settingsButton = page.locator(
     '.promptit-footer-button[data-action="open-options"]',
@@ -213,31 +233,26 @@ async function clickPopupFooterSettingsButton(page: Page): Promise<void> {
 
   try {
     await settingsButton.click({ timeout: 2_000 });
-    return;
-  } catch {
-    // Playwright normally pierces open shadow roots for CSS locators. Keep a
-    // narrow fallback so selector-engine behavior does not hide a missing
-    // popup control on the live site.
-  }
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => {
+      const host = document.querySelector('[data-testid="promptit-popup-host"]');
+      const root = host?.shadowRoot;
+      const button = root?.querySelector<HTMLButtonElement>(
+        '.promptit-footer-button[data-action="open-options"], [data-action="open-options"].promptit-footer-button',
+      );
 
-  const clickedByFallback = await page.evaluate(() => {
-    const host = document.querySelector('[data-testid="promptit-popup-host"]');
-    const root = host?.shadowRoot;
-    const settingsButton = root?.querySelector<HTMLButtonElement>(
-      '.promptit-footer-button[data-action="open-options"], [data-action="open-options"].promptit-footer-button',
-    );
+      return {
+        hasPopupHost: Boolean(host),
+        hasOpenShadowRoot: Boolean(root),
+        hasSettingsButton: button instanceof HTMLButtonElement,
+        isSettingsButtonDisabled:
+          button instanceof HTMLButtonElement ? button.disabled : null,
+      };
+    });
 
-    if (!(settingsButton instanceof HTMLButtonElement)) {
-      return false;
-    }
-
-    settingsButton.click();
-    return true;
-  });
-
-  if (!clickedByFallback) {
     throw new Error(
-      'popup footer settings control was not found after the popup became visible',
+      `Playwright could not click the popup footer settings control: ${JSON.stringify(diagnostics)}`,
+      { cause: error },
     );
   }
 }
@@ -324,7 +339,7 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
         },
       },
       {
-        title: 'inserts a saved prompt without submitting on the real site',
+        title: 'inserts a saved prompt and keeps it visible in the composer on the real site',
         run: async ({ extension }, testInfo) => {
           const promptContent = `${adapter.name} live insert prompt body`;
 
@@ -350,9 +365,7 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
               await page.keyboard.press('Enter');
               await waitForPromptPopupToClose(page);
 
-              await expectComposerContainsWithoutSubmit(
-                adapter,
-                page,
+              await expectComposerContainsVisibleText(
                 await adapter.readComposerText(page),
                 [promptContent],
               );
@@ -361,7 +374,7 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
         },
       },
       {
-        title: 'preserves existing composer text when inserting on the real site',
+        title: 'preserves existing composer text and keeps the inserted prompt visible on the real site',
         run: async ({ extension }, testInfo) => {
           const prefix = `${adapter.name} live prefix: `;
           const promptContent = `${adapter.name} live preserved prompt body`;
@@ -398,18 +411,17 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
               await page.keyboard.press('Enter');
               await waitForPromptPopupToClose(page);
 
-              await expectComposerContainsWithoutSubmit(
-                adapter,
-                page,
+              await expectComposerContainsOrderedTextWithoutTrigger(
                 await adapter.readComposerText(page),
-                [prefix, promptContent],
+                prefix,
+                promptContent,
               );
             },
           );
         },
       },
       {
-        title: 'inserts multiline prompts without submitting on the real site',
+        title: 'inserts multiline prompts visibly in the composer on the real site',
         run: async ({ extension }, testInfo) => {
           const firstLine = 'line 1';
           const secondLine = 'line 2';
@@ -438,8 +450,6 @@ export function createLiveSmokeSuite(adapter: LiveSiteAdapter): LiveSmokeSuite {
               await waitForPromptPopupToClose(page);
 
               await expectComposerPreservesMultilinePrompt(
-                adapter,
-                page,
                 await readVisibleComposerText(page, adapter.composerSelector),
                 firstLine,
                 secondLine,
