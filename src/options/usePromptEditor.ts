@@ -92,21 +92,11 @@ export type UsePromptEditorResult = {
   updateField: (field: keyof PromptFormState, value: string | boolean) => void;
 };
 
-async function resolveConflictRecord(
-  meta: PromptMeta,
-  fallback: PromptRecord | null,
-): Promise<PromptRecord> {
+async function resolveConflictRecord(meta: PromptMeta): Promise<PromptRecord> {
   try {
     return await getPromptRecord(meta.id);
   } catch (error) {
     console.error('[promptit] Failed to load conflicted prompt body.', error);
-
-    if (fallback?.id === meta.id) {
-      return {
-        ...meta,
-        content: fallback.content,
-      };
-    }
 
     throw new Error(BODY_LOAD_ERROR_MESSAGE.fallback);
   }
@@ -349,11 +339,9 @@ export function usePromptEditor(): UsePromptEditorResult {
           expectedUpdatedAt: currentMode.expectedUpdatedAt,
           expectedBodyUpdatedAt: currentMode.expectedBodyUpdatedAt,
           form: parsedForm.form,
-          currentRecord,
           prompts: currentState.prompts,
           operations: {
             updatePromptRecord,
-            resolveConflictRecord,
           },
         });
 
@@ -538,13 +526,11 @@ export function usePromptEditor(): UsePromptEditorResult {
       });
 
       if (result.ok) {
-        startTransition(() => {
-          dispatch({
-            type: 'prompt-pin-succeeded',
-            id,
-            meta: result.meta,
-            activeMode: currentMode,
-          });
+        dispatch({
+          type: 'prompt-pin-succeeded',
+          id,
+          meta: result.meta,
+          activeMode: currentMode,
         });
         return true;
       }
@@ -649,8 +635,6 @@ export function usePromptEditor(): UsePromptEditorResult {
           'runtime.prompt.deleteConflict',
         );
         const latestState = editorStateRef.current;
-        const fallbackRecord =
-          latestState.activePrompt?.id === id ? latestState.activePrompt : null;
         const nextPrompts = upsertPromptMeta(
           latestState.prompts,
           result.currentMeta,
@@ -658,10 +642,7 @@ export function usePromptEditor(): UsePromptEditorResult {
         let conflictRecord: PromptRecord;
 
         try {
-          conflictRecord = await resolveConflictRecord(
-            result.currentMeta,
-            fallbackRecord,
-          );
+          conflictRecord = await resolveConflictRecord(result.currentMeta);
         } catch (error) {
           console.error('[promptit] Failed to resolve delete conflict.', error);
 

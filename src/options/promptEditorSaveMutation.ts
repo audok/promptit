@@ -13,10 +13,6 @@ import {
 
 type SaveExistingPromptOperations = {
   updatePromptRecord: typeof promptStorage.updatePromptRecord;
-  resolveConflictRecord: (
-    meta: PromptMeta,
-    fallback: PromptRecord | null,
-  ) => Promise<PromptRecord>;
 };
 
 export type SaveExistingPromptResult =
@@ -43,7 +39,6 @@ export async function saveExistingPrompt(input: {
   expectedUpdatedAt: string;
   expectedBodyUpdatedAt: string;
   form: NormalizedPromptForm;
-  currentRecord: PromptRecord;
   prompts: PromptMeta[];
   operations: SaveExistingPromptOperations;
 }): Promise<SaveExistingPromptResult> {
@@ -52,7 +47,6 @@ export async function saveExistingPrompt(input: {
     expectedUpdatedAt,
     expectedBodyUpdatedAt,
     form,
-    currentRecord,
     prompts,
     operations,
   } = input;
@@ -83,14 +77,10 @@ export async function saveExistingPrompt(input: {
       result,
       'runtime.prompt.updateConflict',
     );
-    const conflictRecord =
-      result.currentRecord ??
-      await operations.resolveConflictRecord(result.currentMeta, currentRecord);
-
     return {
       status: 'conflict',
       prompts: upsertPromptMeta(prompts, result.currentMeta),
-      record: conflictRecord,
+      record: result.currentRecord,
       message: conflictMessage,
       alertMessage: getConflictRetryAlertMessage(conflictMessage),
     };

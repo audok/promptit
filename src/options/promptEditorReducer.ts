@@ -603,6 +603,18 @@ function applyIncomingPrompts(
     sortedPrompts.find((prompt) => prompt.id === currentMode.promptId) ?? null;
 
   if (!currentPrompt) {
+    if (state.isDirty) {
+      return {
+        ...nextState,
+        activePrompt: null,
+        mode: { kind: 'create' },
+        bodyLoadState: { status: 'idle' },
+        conflictState: { status: 'idle' },
+        notice: DELETE_RECOVERY_MESSAGE,
+        alertMessage: null,
+      };
+    }
+
     return {
       ...moveToCreateMode(nextState),
       notice: DELETE_RECOVERY_MESSAGE,
@@ -755,15 +767,43 @@ function applyPromptMetaConflict(
     };
   }
 
+  const conflictState = {
+    status: 'stale',
+    reason: 'external-update',
+    promptId: action.id,
+    message: EXTERNAL_CHANGE_MESSAGE,
+    currentPrompt: action.meta,
+  } satisfies PromptEditorConflictState;
+  if (
+    state.mode.kind !== 'edit' ||
+    state.mode.promptId !== action.id ||
+    action.meta.bodyUpdatedAt !== state.mode.expectedBodyUpdatedAt ||
+    state.activePrompt?.id !== action.id ||
+    action.meta.title !== state.activePrompt.title
+  ) {
+    return {
+      ...nextState,
+      conflictState,
+      alertMessage: EXTERNAL_CHANGE_MESSAGE,
+    };
+  }
+
   return {
     ...nextState,
-    conflictState: {
-      status: 'stale',
-      reason: 'external-update',
-      promptId: action.id,
-      message: EXTERNAL_CHANGE_MESSAGE,
-      currentPrompt: action.meta,
+    activePrompt:
+      state.activePrompt && state.activePrompt.id === action.id
+        ? mergeMetaIntoRecord(state.activePrompt, action.meta)
+        : state.activePrompt,
+    mode: {
+      ...state.mode,
+      expectedUpdatedAt: action.meta.updatedAt,
+      expectedBodyUpdatedAt: action.meta.bodyUpdatedAt,
     },
+    form: {
+      ...state.form,
+      pinned: action.meta.pinned,
+    },
+    conflictState,
     alertMessage: EXTERNAL_CHANGE_MESSAGE,
   };
 }

@@ -756,6 +756,94 @@ test('keeps the active editor content when non-active delete conflict body load 
   ]);
 });
 
+test('keeps dirty active delete conflict unresolved when body load fails', async ({
+  extension,
+}) => {
+  const activePrompt = createPromptRecord({
+    id: 'delete-conflict-dirty-active',
+    title: '활성 삭제 충돌 대상',
+    content: '활성 삭제 충돌 전 본문',
+    normalOrder: 1,
+    updatedAt: '2026-05-10T01:00:00.000Z',
+    bodyUpdatedAt: '2026-05-10T02:00:00.000Z',
+  });
+  const { content: _content, ...conflictMeta } = {
+    ...activePrompt,
+    title: '최신 활성 삭제 충돌 제목',
+    updatedAt: '2026-05-10T03:00:00.000Z',
+    bodyUpdatedAt: '2026-05-10T04:00:00.000Z',
+  };
+  const localTitle = '저장하지 않은 활성 삭제 충돌 제목';
+  const localContent = 'active delete conflict body load failure keeps this draft';
+
+  await extension.setPromptRecords([activePrompt]);
+
+  const page = await openOptionsPage(extension);
+  await getPromptCard(page, activePrompt.title).click();
+  await getTitleInput(page).fill(localTitle);
+  await getContentInput(page).fill(localContent);
+
+  await page.evaluate((config) => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (typeof request === 'object' && request !== null) {
+        const type = String((request as { type?: unknown }).type);
+        const id = String((request as { id?: unknown }).id);
+
+        if (type === config.deleteMessage && id === config.promptId) {
+          return config.deleteConflictResponse;
+        }
+
+        if (
+          (type === config.getRecordMessage || type === config.getBodyMessage) &&
+          id === config.promptId
+        ) {
+          throw new Error('mock active delete conflict record load failure');
+        }
+      }
+
+      return await originalSendMessage(...args);
+    };
+  }, {
+    deleteConflictResponse: {
+      type: DELETE_PROMPT_MESSAGE,
+      ok: false,
+      status: 'conflict',
+      id: activePrompt.id,
+      message: 'mock active delete conflict',
+      currentMeta: conflictMeta,
+    },
+    deleteMessage: DELETE_PROMPT_MESSAGE,
+    getBodyMessage: GET_PROMPT_BODY_MESSAGE,
+    getRecordMessage: GET_PROMPT_RECORD_MESSAGE,
+    promptId: activePrompt.id,
+  });
+
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await getPromptList(page)
+    .getByRole('button', {
+      name: `${activePrompt.title} 삭제`,
+      exact: true,
+    })
+    .click();
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: BODY_LOAD_ERROR_MESSAGE }),
+  ).toBeVisible();
+  await expect(getTitleInput(page)).toHaveValue(localTitle);
+  await expect(getContentInput(page)).toHaveValue(localContent);
+  await expect(getPromptCard(page, conflictMeta.title)).toBeVisible();
+  expect(await extension.getPromptRecords()).toEqual([activePrompt]);
+});
+
 test('preserves prompts and shows a load error when prompt storage reads fail', async ({
   extension,
 }) => {

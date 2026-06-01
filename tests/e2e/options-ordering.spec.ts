@@ -7,6 +7,10 @@ import {
   getPromptEditor,
   getOptionsToast,
   getPromptCard,
+  getTitleInput,
+  getContentInput,
+  getPromptSubmitButton,
+  getRequiredPromptRecord,
   getPromptDragHandle,
   getPromptPinToggle,
   expectPinnedEditorCheckboxRemoved,
@@ -202,6 +206,7 @@ test('toggles pinned state from the prompt list pin button instead of the editor
   await getPromptPinToggle(page, secondPrompt.title).click();
 
   await expect(getOptionsToast(page)).toContainText('프롬프트를 고정했습니다.');
+  await expect(getOptionsToast(page)).toHaveCount(1);
   await expectVisiblePromptOrder(page, [secondPrompt.title, firstPrompt.title]);
   await expect(
     getPromptList(page).getByRole('button', {
@@ -230,6 +235,7 @@ test('toggles pinned state from the prompt list pin button instead of the editor
   await getPromptPinToggle(page, secondPrompt.title).click();
 
   await expect(getOptionsToast(page)).toContainText('프롬프트 고정을 해제했습니다.');
+  await expect(getOptionsToast(page)).toHaveCount(1);
   await expectVisiblePromptOrder(page, [firstPrompt.title, secondPrompt.title]);
   await expect(
     getPromptList(page).getByRole('button', {
@@ -254,6 +260,130 @@ test('toggles pinned state from the prompt list pin button instead of the editor
       pinned: false,
       pinnedOrder: null,
     });
+});
+
+test('syncs active pin conflict metadata with unchanged body timestamp before save', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'active-pin-conflict-sync',
+    title: '활성 고정 충돌',
+    content: '활성 고정 충돌 본문',
+    normalOrder: 1,
+    createdAt: '2026-05-11T00:00:00.000Z',
+    updatedAt: '2026-05-11T01:00:00.000Z',
+    bodyUpdatedAt: '2026-05-11T02:00:00.000Z',
+  });
+  const currentPrompt = {
+    ...prompt,
+    pinned: true,
+    pinnedOrder: 1,
+    updatedAt: '2026-05-11T03:00:00.000Z',
+    bodyUpdatedAt: prompt.bodyUpdatedAt,
+  };
+  const savedTitle = '활성 고정 충돌 이후 저장';
+  const savedContent = 'body saved after active pin conflict metadata sync';
+
+  await extension.setPromptRecords([prompt]);
+
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await preventExternalPromptStorageSubscription(nextPage);
+  });
+  await getPromptCard(page, prompt.title).click();
+  await expect(getTitleInput(page)).toHaveValue(prompt.title);
+  await expect(getContentInput(page)).toHaveValue(prompt.content);
+
+  await extension.setPromptRecords([currentPrompt]);
+  await getPromptPinToggle(page, prompt.title).click();
+
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
+  ).toBeVisible();
+  await expect(getOptionsToast(page)).toHaveCount(0);
+  await expect(
+    getPromptList(page).getByRole('button', {
+      name: `${prompt.title} 고정 해제`,
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-pressed', 'true');
+
+  await getTitleInput(page).fill(savedTitle);
+  await getContentInput(page).fill(savedContent);
+  await getPromptSubmitButton(page, '프롬프트 수정').click();
+
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트를 업데이트했습니다.',
+  );
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
+  ).toHaveCount(0);
+
+  const savedPrompt = await getRequiredPromptRecord(extension, prompt.id);
+  expect(savedPrompt.title).toBe(savedTitle);
+  expect(savedPrompt.content).toBe(savedContent);
+  expect(savedPrompt.pinned).toBe(true);
+});
+
+test('keeps active pin conflict stale when title changed with unchanged body timestamp', async ({
+  extension,
+}) => {
+  const prompt = createPromptRecord({
+    id: 'active-pin-title-conflict',
+    title: '활성 제목 충돌',
+    content: '활성 제목 충돌 본문',
+    normalOrder: 1,
+    createdAt: '2026-05-12T00:00:00.000Z',
+    updatedAt: '2026-05-12T01:00:00.000Z',
+    bodyUpdatedAt: '2026-05-12T02:00:00.000Z',
+  });
+  const currentPrompt = {
+    ...prompt,
+    title: '외부에서 바뀐 활성 제목',
+    pinned: true,
+    pinnedOrder: 1,
+    updatedAt: '2026-05-12T03:00:00.000Z',
+    bodyUpdatedAt: prompt.bodyUpdatedAt,
+  };
+  const attemptedBody = 'this stale save must not overwrite external title';
+
+  await extension.setPromptRecords([prompt]);
+
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await preventExternalPromptStorageSubscription(nextPage);
+  });
+  await getPromptCard(page, prompt.title).click();
+  await expect(getTitleInput(page)).toHaveValue(prompt.title);
+  await expect(getContentInput(page)).toHaveValue(prompt.content);
+
+  await extension.setPromptRecords([currentPrompt]);
+  await getPromptPinToggle(page, prompt.title).click();
+
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
+  ).toBeVisible();
+  await expect(getOptionsToast(page)).toHaveCount(0);
+  await expect(getTitleInput(page)).toHaveValue(prompt.title);
+  await expect(getContentInput(page)).toHaveValue(prompt.content);
+  await expect(getPromptCard(page, currentPrompt.title)).toBeVisible();
+
+  await getContentInput(page).fill(attemptedBody);
+  await getPromptSubmitButton(page, '프롬프트 수정').click();
+
+  await expect(
+    page.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
+  ).toBeVisible();
+  await expect(getOptionsToast(page)).toHaveCount(0);
+  expect(await getRequiredPromptRecord(extension, prompt.id)).toEqual(
+    currentPrompt,
+  );
 });
 
 test('reorders normal prompts within the normal group using drag-handle keyboard controls', async ({

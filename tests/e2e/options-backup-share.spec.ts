@@ -262,6 +262,90 @@ test('restore file selection previews without writing, then confirmation replace
   expect(await extension.getPromptStorageRevision()).not.toEqual(beforeRevision);
 });
 
+test('dirty restore cancel keeps preview open and preserves unsaved editor draft', async ({
+  extension,
+}, testInfo) => {
+  const currentPrompt = createPromptRecord({
+    id: 'restore-dirty-cancel-current',
+    title: '복원 취소 대상',
+    content: '복원 취소 전 본문',
+    normalOrder: 1,
+    createdAt: '2026-05-05T00:00:00.000Z',
+    updatedAt: '2026-05-05T01:00:00.000Z',
+    bodyUpdatedAt: '2026-05-05T02:00:00.000Z',
+  });
+  const restoredPrompt = createPromptRecord({
+    id: 'restore-dirty-cancel-backup',
+    title: '복원 취소 백업',
+    content: '복원이 승인된 뒤에만 적용되어야 하는 본문',
+    normalOrder: 2,
+    createdAt: '2026-05-06T00:00:00.000Z',
+    updatedAt: '2026-05-06T01:00:00.000Z',
+    bodyUpdatedAt: '2026-05-06T02:00:00.000Z',
+  });
+  const localTitle = '저장하지 않은 복원 취소 제목';
+  const localContent = 'restore cancel should preserve this draft body';
+  const filePath = await writeJsonFixture(
+    testInfo,
+    'restore-dirty-cancel.json',
+    {
+      type: 'promptit.backup',
+      appVersion: '1.0.0',
+      exportedAt: '2026-05-06T03:00:00.000Z',
+      data: {
+        prompts: [restoredPrompt],
+        settings: {
+          languagePreference: 'en',
+          themePreference: 'dark',
+        },
+      },
+    },
+  );
+
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
+  const beforeRevision = await extension.getPromptStorageRevision();
+
+  const page = await openOptionsPage(extension);
+  await getPromptCard(page, currentPrompt.title).click();
+  await getTitleInput(page).fill(localTitle);
+  await getContentInput(page).fill(localContent);
+
+  const modal = await openBackupShareModal(page);
+  await modal.getByTestId('backup-restore-file-input').setInputFiles(filePath);
+  await expect(modal.getByRole('heading', { name: '복원할 백업 확인' })).toBeVisible();
+
+  page.once('dialog', async (dialog) => {
+    await dialog.dismiss();
+  });
+  await modal.getByTestId('backup-restore-confirm-button').click();
+
+  await expect(modal.getByRole('heading', { name: '복원할 백업 확인' })).toBeVisible();
+  await expect(modal.getByTestId('backup-restore-confirm-button')).toBeEnabled();
+  await expect(getTitleInput(page)).toHaveValue(localTitle);
+  await expect(getContentInput(page)).toHaveValue(localContent);
+  expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
+  expect(await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
+  expect(await extension.getPromptStorageRevision()).toEqual(beforeRevision);
+
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await modal.getByTestId('backup-restore-confirm-button').click();
+
+  await expect(getOptionsToast(page)).toContainText(
+    'restore-dirty-cancel.json로부터 데이터를 복원했습니다.',
+  );
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
+    restoredPrompt,
+  ]);
+  await expect.poll(async () => await extension.getLanguagePreference()).toBe('en');
+  await expect.poll(async () => await extension.getThemePreference()).toBe('dark');
+  expect(await extension.getPromptStorageRevision()).not.toEqual(beforeRevision);
+});
+
 test('refreshes an open editor when restore replaces the same prompt id and timestamps', async ({
   extension,
 }, testInfo) => {

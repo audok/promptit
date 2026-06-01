@@ -17,7 +17,6 @@ import {
 } from '../backup/schema';
 import { type PromptMeta } from '../prompt/schema';
 import {
-  describeMessage,
   translate,
   translateLocalizedMessage,
   type I18nKey,
@@ -124,7 +123,7 @@ type OptionsPageBackupShare = {
     restoreBackup: (
       file: PromptitBackupFile,
       fileName: string,
-    ) => Promise<void>;
+    ) => Promise<boolean>;
     restoreBackupFailure: () => void;
   };
   state: {
@@ -387,20 +386,7 @@ export function useOptionsPageController(): OptionsPageController {
     id: string,
     pinned: boolean,
   ): Promise<boolean> {
-    const didToggle = await togglePromptPinned(id, pinned);
-
-    if (didToggle) {
-      const message = describeMessage(
-        pinned ? 'options.toast.promptPinned' : 'options.toast.promptUnpinned',
-      );
-      showOptionsToast(
-        formatMessage(message),
-        'success',
-      );
-      clearNotice();
-    }
-
-    return didToggle;
+    return await togglePromptPinned(id, pinned);
   }
 
   function handleSelectLanguage(nextLanguage: LanguagePreference): void {
@@ -460,7 +446,11 @@ export function useOptionsPageController(): OptionsPageController {
   async function handleRestoreBackup(
     file: PromptitBackupFile,
     fileName: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if (!confirmDiscardDirtyForm()) {
+      return false;
+    }
+
     setIsBackupShareBusy(true);
 
     try {
@@ -470,9 +460,11 @@ export function useOptionsPageController(): OptionsPageController {
         'success',
       );
       setIsBackupShareModalOpen(false);
+      return true;
     } catch (error) {
       console.error('[promptit] Failed to restore backup.', error);
       showOptionsToast(t('options.toast.backupRestoreFailed'), 'error');
+      return false;
     } finally {
       setIsBackupShareBusy(false);
     }

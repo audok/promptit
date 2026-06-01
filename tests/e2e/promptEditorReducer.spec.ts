@@ -258,3 +258,168 @@ test('deleting the edited prompt switches to create mode with delete recovery no
   expect(deleteSuccessState.notice).toBe(DELETE_RECOVERY_MESSAGE);
   expect(deleteSuccessState.alertMessage).toBeNull();
 });
+
+test('dirty edit with records-replaced deletion preserves local form as create draft', () => {
+  const prompt = createBasePrompt();
+  const remainingPrompt = createPromptRecord({
+    id: 'remaining-records-replaced-prompt',
+    title: 'Remaining after replace',
+    content: 'Remaining body',
+    normalOrder: 2,
+  });
+  const dirtyTitleState = promptEditorReducer(getEditingState(prompt), {
+    type: 'field-updated',
+    field: 'title',
+    value: 'Unsaved removed title',
+  });
+  const dirtyContentState = promptEditorReducer(dirtyTitleState, {
+    type: 'field-updated',
+    field: 'content',
+    value: 'Unsaved removed body',
+  });
+  const dirtyPinnedState = promptEditorReducer(dirtyContentState, {
+    type: 'field-updated',
+    field: 'pinned',
+    value: true,
+  });
+
+  const nextState = promptEditorReducer(dirtyPinnedState, {
+    type: 'incoming-prompts-received',
+    prompts: [remainingPrompt],
+    event: { reason: 'records-replaced' },
+    savedPromptEcho: null,
+    savingPromptId: null,
+  });
+
+  expect(nextState.prompts).toEqual([remainingPrompt]);
+  expect(nextState.mode).toEqual({ kind: 'create' });
+  expect(nextState.activePrompt).toBeNull();
+  expect(nextState.form).toEqual({
+    title: 'Unsaved removed title',
+    content: 'Unsaved removed body',
+    pinned: true,
+  });
+  expect(nextState.errors).toEqual({});
+  expect(nextState.isDirty).toBe(true);
+  expect(nextState.bodyLoadState).toEqual({ status: 'idle' });
+  expect(nextState.conflictState).toEqual({ status: 'idle' });
+  expect(nextState.notice).toBe(DELETE_RECOVERY_MESSAGE);
+  expect(nextState.alertMessage).toBeNull();
+});
+
+test('active pin conflict with unchanged body timestamp syncs editor metadata', () => {
+  const prompt = createBasePrompt();
+  const dirtyState = promptEditorReducer(getEditingState(prompt), {
+    type: 'field-updated',
+    field: 'title',
+    value: 'Unsaved local title survives pin conflict',
+  });
+  const { content: _content, ...conflictMeta } = {
+    ...prompt,
+    pinned: true,
+    pinnedOrder: 1,
+    updatedAt: '2026-05-01T00:10:00.000Z',
+    bodyUpdatedAt: prompt.bodyUpdatedAt,
+  };
+
+  const nextState = promptEditorReducer(dirtyState, {
+    type: 'prompt-meta-conflicted',
+    id: prompt.id,
+    meta: conflictMeta,
+    activeMode: dirtyState.mode,
+    alertMessage: EXTERNAL_CHANGE_MESSAGE,
+  });
+
+  expect(nextState.activePrompt).toEqual({
+    ...prompt,
+    ...conflictMeta,
+  });
+  expect(nextState.mode).toEqual({
+    kind: 'edit',
+    promptId: prompt.id,
+    expectedUpdatedAt: conflictMeta.updatedAt,
+    expectedBodyUpdatedAt: conflictMeta.bodyUpdatedAt,
+  });
+  expect(nextState.form).toEqual({
+    title: 'Unsaved local title survives pin conflict',
+    content: prompt.content,
+    pinned: true,
+  });
+  expect(nextState.conflictState).toEqual({
+    status: 'stale',
+    reason: 'external-update',
+    promptId: prompt.id,
+    message: EXTERNAL_CHANGE_MESSAGE,
+    currentPrompt: conflictMeta,
+  });
+});
+
+test('active pin conflict with changed body timestamp keeps stale editor contract', () => {
+  const prompt = createBasePrompt();
+  const state = getEditingState(prompt);
+  const { content: _content, ...conflictMeta } = {
+    ...prompt,
+    pinned: true,
+    pinnedOrder: 1,
+    updatedAt: '2026-05-01T00:11:00.000Z',
+    bodyUpdatedAt: '2026-05-01T00:12:00.000Z',
+  };
+
+  const nextState = promptEditorReducer(state, {
+    type: 'prompt-meta-conflicted',
+    id: prompt.id,
+    meta: conflictMeta,
+    activeMode: state.mode,
+    alertMessage: EXTERNAL_CHANGE_MESSAGE,
+  });
+
+  expect(nextState.activePrompt).toEqual(prompt);
+  expect(nextState.mode).toEqual(state.mode);
+  expect(nextState.form.pinned).toBe(prompt.pinned);
+  expect(nextState.conflictState).toEqual({
+    status: 'stale',
+    reason: 'external-update',
+    promptId: prompt.id,
+    message: EXTERNAL_CHANGE_MESSAGE,
+    currentPrompt: conflictMeta,
+  });
+  expect(nextState.alertMessage).toBe(EXTERNAL_CHANGE_MESSAGE);
+});
+
+test('active pin conflict with changed title keeps stale editor contract', () => {
+  const prompt = createBasePrompt();
+  const state = getEditingState(prompt);
+  const { content: _content, ...conflictMeta } = {
+    ...prompt,
+    title: 'External title changed while body timestamp stayed put',
+    pinned: true,
+    pinnedOrder: 1,
+    updatedAt: '2026-05-01T00:13:00.000Z',
+    bodyUpdatedAt: prompt.bodyUpdatedAt,
+  };
+
+  const nextState = promptEditorReducer(state, {
+    type: 'prompt-meta-conflicted',
+    id: prompt.id,
+    meta: conflictMeta,
+    activeMode: state.mode,
+    alertMessage: EXTERNAL_CHANGE_MESSAGE,
+  });
+
+  expect(nextState.prompts).toEqual([conflictMeta]);
+  expect(nextState.activePrompt).toEqual(prompt);
+  expect(nextState.mode).toEqual(state.mode);
+  expect(nextState.form).toEqual({
+    title: prompt.title,
+    content: prompt.content,
+    pinned: prompt.pinned,
+  });
+  expect(nextState.conflictState).toEqual({
+    status: 'stale',
+    reason: 'external-update',
+    promptId: prompt.id,
+    message: EXTERNAL_CHANGE_MESSAGE,
+    currentPrompt: conflictMeta,
+  });
+  expect(nextState.alertMessage).toBe(EXTERNAL_CHANGE_MESSAGE);
+});
