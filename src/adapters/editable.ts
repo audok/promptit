@@ -71,14 +71,6 @@ function getFocusedCollapsedSelectionRange(
   return range.cloneRange();
 }
 
-function getTextBeforeCaret(input: HTMLElement, range: Range): string {
-  const preCaretRange = range.cloneRange();
-  preCaretRange.selectNodeContents(input);
-  preCaretRange.setEnd(range.endContainer, range.endOffset);
-  const fragment = preCaretRange.cloneContents();
-  return fragment.textContent ?? preCaretRange.toString();
-}
-
 function normalizeTriggerText(text: string): string {
   return text.replace(/\u00A0/g, ' ');
 }
@@ -452,14 +444,6 @@ export function createContenteditableTriggerContext(
     return null;
   }
 
-  const textBeforeCaret = getTextBeforeCaret(input, selectionRange);
-  const normalizedTextBeforeCaret = normalizeTriggerText(textBeforeCaret);
-
-  if (!normalizedTextBeforeCaret.endsWith('/ ')) {
-    setTriggerDebug?.('contenteditable-no-match', textBeforeCaret);
-    return null;
-  }
-
   const triggerStart = moveBoundaryBackwardByText(
     input,
     selectionRange.endContainer,
@@ -468,22 +452,22 @@ export function createContenteditableTriggerContext(
   );
 
   if (!triggerStart) {
-    setTriggerDebug?.('contenteditable-range-resolution-failed', textBeforeCaret);
+    setTriggerDebug?.('contenteditable-no-match', '');
     return null;
   }
 
   const triggerRange = selectionRange.cloneRange();
   triggerRange.setStart(triggerStart.node, triggerStart.offset);
-
-  const expectedText = normalizeTriggerText(getRangeText(triggerRange));
+  const triggerText = getRangeText(triggerRange);
+  const expectedText = normalizeTriggerText(triggerText);
 
   if (expectedText !== '/ ') {
-    setTriggerDebug?.('contenteditable-range-resolution-failed', getRangeText(triggerRange));
+    setTriggerDebug?.('contenteditable-no-match', triggerText);
     return null;
   }
 
   if (rangeContainsHardBoundary(triggerRange)) {
-    setTriggerDebug?.('contenteditable-boundary-crossed', getRangeText(triggerRange));
+    setTriggerDebug?.('contenteditable-boundary-crossed', triggerText);
     return null;
   }
 
@@ -499,11 +483,11 @@ export function createContenteditableTriggerContext(
   );
 
   if (!startSnapshot || !endSnapshot) {
-    setTriggerDebug?.('contenteditable-range-resolution-failed', getRangeText(triggerRange));
+    setTriggerDebug?.('contenteditable-range-resolution-failed', triggerText);
     return null;
   }
 
-  setTriggerDebug?.('contenteditable-match', textBeforeCaret);
+  setTriggerDebug?.('contenteditable-match', triggerText);
 
   return {
     kind: 'contenteditable',

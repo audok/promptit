@@ -81,6 +81,7 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+dist-test/
 
 # Gatsby files
 .cache/
@@ -147,3 +148,4 @@ _codex/
 # Playwright outputs
 playwright-report/
 test-results/
+test-results-live/

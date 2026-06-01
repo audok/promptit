@@ -40,7 +40,10 @@ type BackupShareModalProps = {
   onImportSharedPromptsFailure: () => Promise<void> | void;
   onImportSharedPrompts: (file: PromptitSharedPromptsFile) => Promise<void>;
   onRestoreBackupFailure: () => Promise<void> | void;
-  onRestoreBackup: (file: PromptitBackupFile, fileName: string) => Promise<void>;
+  onRestoreBackup: (
+    file: PromptitBackupFile,
+    fileName: string,
+  ) => Promise<boolean>;
   openerRef: RefObject<HTMLButtonElement | null>;
   promptCount: number;
 };
@@ -178,8 +181,14 @@ export function BackupShareModal(props: BackupShareModalProps) {
       return;
     }
 
-    await props.onRestoreBackup(restorePreview.file, restorePreview.fileName);
-    setRestorePreview(null);
+    const didRestore = await props.onRestoreBackup(
+      restorePreview.file,
+      restorePreview.fileName,
+    );
+
+    if (didRestore) {
+      setRestorePreview(null);
+    }
   }
 
   function formatDateTime(value: string): string {

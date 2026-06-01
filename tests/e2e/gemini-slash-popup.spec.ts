@@ -38,7 +38,7 @@ const geminiPrompts = [
   }),
 ];
 
-async function dispatchNestedChildGeminiInput(
+async function placeCaretAfterNestedGeminiChildSlash(
   page: Parameters<typeof getComposerText>[0],
 ): Promise<void> {
   await page.evaluate((composerSelector) => {
@@ -49,7 +49,7 @@ async function dispatchNestedChildGeminiInput(
     }
 
     const child = document.createElement('span');
-    child.textContent = '/ ';
+    child.textContent = '/';
     composer.replaceChildren(child);
     composer.focus();
 
@@ -65,14 +65,6 @@ async function dispatchNestedChildGeminiInput(
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
-
-    child.dispatchEvent(
-      new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: ' ',
-      }),
-    );
   }, GEMINI_COMPOSER_SELECTOR);
 }
 
@@ -159,7 +151,7 @@ test('reads the Gemini prompt body on selection instead of popup open', async ({
   );
 });
 
-test('opens from a nested Gemini child input event and inserts the active prompt', async ({
+test('opens from a nested Gemini child with trusted input and inserts the active prompt', async ({
   extension,
 }) => {
   await extension.setPromptRecords(geminiPrompts);
@@ -167,7 +159,8 @@ test('opens from a nested Gemini child input event and inserts the active prompt
   const page = await extension.context.newPage();
   await openFixturePage(page, GEMINI_FIXTURE_URL, GEMINI_COMPOSER_SELECTOR);
 
-  await dispatchNestedChildGeminiInput(page);
+  await placeCaretAfterNestedGeminiChildSlash(page);
+  await page.keyboard.type(' ');
 
   await expect(page.locator('[data-testid="promptit-popup"]')).toBeVisible();
   await expect(await getPopupTitles(page)).toEqual([
@@ -222,32 +215,40 @@ test('ignores Gemini ql-clipboard edits', async ({ extension }) => {
       throw new Error('Gemini clipboard fixture not found.');
     }
 
-    clipboard.textContent = '/ ';
+    clipboard.textContent = '';
     clipboard.focus();
 
-    const textNode = clipboard.firstChild;
     const selection = window.getSelection();
 
-    if (!(textNode instanceof Text) || !selection) {
+    if (!selection) {
       throw new Error('Failed to prepare clipboard selection.');
     }
 
     const range = document.createRange();
-    range.setStart(textNode, textNode.data.length);
+    range.setStart(clipboard, 0);
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
-
-    clipboard.dispatchEvent(
-      new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: ' ',
-      }),
-    );
   });
+  await page.keyboard.type('/ ');
 
-  await page.waitForTimeout(150);
+  await expect
+    .poll(async () =>
+      await page.evaluate(() => {
+        const clipboard = document.querySelector(
+          '[data-testid="gemini-clipboard"]',
+        );
+        return (clipboard?.textContent ?? '').replace(/\u00A0/g, ' ');
+      }),
+    )
+    .toBe('/ ');
+  await expect(await getComposerText(page, GEMINI_COMPOSER_SELECTOR)).toBe('');
+  await expect(page.locator('[data-testid="gemini-host-submit-count"]')).toHaveText(
+    '0',
+  );
+  await expect(page.locator('[data-testid="gemini-host-submit-text"]')).toHaveText(
+    '',
+  );
   await waitForPromptPopupToClose(page);
 });
 

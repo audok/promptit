@@ -1,16 +1,18 @@
 import { getPromptitFontStyles } from './fonts';
+import { IS_TEST_MODE } from './testControls';
 import { type ResolvedTheme } from '../shared/theme';
 import themeStyles from '../shared/theme.css?inline';
 
 let host: HTMLDivElement | null = null;
+let toastShadowRoot: ShadowRoot | null = null;
 let hideTimer: number | null = null;
 let currentTheme: ResolvedTheme = 'light';
 
 function ensureToastHost(): {
   content: HTMLDivElement;
 } {
-  if (host?.isConnected && host.shadowRoot) {
-    const content = host.shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
+  if (host?.isConnected && toastShadowRoot) {
+    const content = toastShadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
 
     if (content) {
       applyToastTheme(content);
@@ -19,6 +21,7 @@ function ensureToastHost(): {
   }
 
   host?.remove();
+  toastShadowRoot = null;
   host = document.createElement('div');
   host.setAttribute('data-promptit-toast-host', 'true');
   host.style.position = 'fixed';
@@ -28,8 +31,10 @@ function ensureToastHost(): {
   host.style.transform = 'translateX(-50%)';
   host.style.pointerEvents = 'none';
 
-  const shadowRoot = host.attachShadow({ mode: 'open' });
-  shadowRoot.innerHTML = `
+  toastShadowRoot = host.attachShadow({
+    mode: IS_TEST_MODE ? 'open' : 'closed',
+  });
+  toastShadowRoot.innerHTML = `
     <style>
       :host {
         all: initial;
@@ -101,7 +106,7 @@ function ensureToastHost(): {
 
   document.documentElement.append(host);
   const content =
-    shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
+    toastShadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
 
   if (!content) {
     throw new Error('promptit toast content element could not be created.');
@@ -156,18 +161,14 @@ export function showToast(
   }, 1800);
 }
 
-export function showCopyToast(message: string, variant: 'success' | 'error' = 'success'): void {
-  showToast(message, variant);
-}
-
 export function setToastTheme(theme: ResolvedTheme): void {
   currentTheme = theme;
 
-  if (!host?.isConnected || !host.shadowRoot) {
+  if (!host?.isConnected || !toastShadowRoot) {
     return;
   }
 
-  const content = host.shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
+  const content = toastShadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
 
   if (content) {
     applyToastTheme(content);

@@ -75,6 +75,10 @@ export type PromptMetasSubscriptionEvent = {
   reason?: PromptRevisionReason;
 };
 
+export type PromptMetasSubscriptionOptions = {
+  shouldRefresh?: (event: PromptMetasSubscriptionEvent) => boolean;
+};
+
 export class PromptitRuntimeError extends Error {
   readonly messageDescriptor?: RuntimeMessageDescriptor;
 
@@ -286,6 +290,7 @@ export function subscribeToPromptMetas(
     metas: PromptMeta[],
     event: PromptMetasSubscriptionEvent,
   ) => void,
+  options: PromptMetasSubscriptionOptions = {},
 ): () => void {
   if (!hasStorageApi()) {
     return () => {};
@@ -302,6 +307,10 @@ export function subscribeToPromptMetas(
     const event = getPromptMetasSubscriptionEvent(
       changes[PROMPT_REVISION_STORAGE_KEY]?.newValue,
     );
+
+    if (options.shouldRefresh && !options.shouldRefresh(event)) {
+      return;
+    }
 
     void getPromptMetas()
       .then((metas) => listener(metas, event))

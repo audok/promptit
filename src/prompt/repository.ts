@@ -90,7 +90,7 @@ export type PromptBodyMutationResult =
   | {
       status: 'conflict';
       id: string;
-      currentRecord: PromptRecord | null;
+      currentRecord: PromptRecord;
       currentMeta: PromptMeta;
     };
 

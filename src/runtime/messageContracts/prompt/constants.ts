@@ -1,0 +1,10 @@
+export const LIST_PROMPT_METAS_MESSAGE = 'promptit/list-prompt-metas';
+export const GET_PROMPT_BODY_MESSAGE = 'promptit/get-prompt-body';
+export const GET_PROMPT_RECORD_MESSAGE = 'promptit/get-prompt-record';
+export const CREATE_PROMPT_MESSAGE = 'promptit/create-prompt';
+export const UPDATE_PROMPT_META_MESSAGE = 'promptit/update-prompt-meta';
+export const UPDATE_PROMPT_BODY_MESSAGE = 'promptit/update-prompt-body';
+export const UPDATE_PROMPT_RECORD_MESSAGE = 'promptit/update-prompt-record';
+export const DELETE_PROMPT_MESSAGE = 'promptit/delete-prompt';
+export const MOVE_PROMPT_MESSAGE = 'promptit/move-prompt';
+export const SET_PROMPT_PINNED_MESSAGE = 'promptit/set-prompt-pinned';

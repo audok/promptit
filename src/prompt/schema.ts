@@ -202,14 +202,6 @@ export function parsePromptDraft(value: unknown): PromptDraft | null {
   };
 }
 
-export function isPromptMeta(value: unknown): value is PromptMeta {
-  return parsePromptMeta(value) !== null;
-}
-
-export function isPromptBody(value: unknown): value is PromptBody {
-  return parsePromptBody(value) !== null;
-}
-
 export function sortPromptMetas(items: PromptMeta[]): PromptMeta[] {
   return [...items].sort((left, right) => {
     if (left.pinned !== right.pinned) {

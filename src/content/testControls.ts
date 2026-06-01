@@ -1,4 +1,4 @@
-export const IS_TEST_MODE = import.meta.env.VITE_PROMPTIT_TEST_MODE === '1';
+export const IS_TEST_MODE = import.meta.env?.VITE_PROMPTIT_TEST_MODE === '1';
 
 const TEST_READY_ATTRIBUTE = 'data-promptit-ready';
 const TEST_OPEN_OPTIONS_EVENT = 'promptit:test-open-options-page';
