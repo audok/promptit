@@ -140,6 +140,7 @@ test('options page can edit one prompt among 150 saved prompts', async ({
 
   const page = await openOptionsPage(extension);
   await getPromptCard(page, 'Scale 149').click();
+  await expect(getContentInput(page)).toHaveValue(prompts[148].content);
   await getContentInput(page).fill('Updated scale body 149');
   await getPromptSubmitButton(page, '프롬프트 수정').click();
 
