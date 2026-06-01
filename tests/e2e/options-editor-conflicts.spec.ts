@@ -889,7 +889,85 @@ test('surfaces a conflict when two options tabs save the same prompt stale', asy
     ]);
 });
 
-test('uses atomic record save so conflicts cannot partially commit editor changes', async ({
+test('rejects a stale title and body save through the real record update path without partial commits', async ({
+  extension,
+}) => {
+  const initialPrompt = createPromptRecord({
+    id: 'shared-record-prompt',
+    title: '원자 동시 수정 대상',
+    content: '두 탭 모두 이 원자 본문에서 시작한다.',
+    normalOrder: 2,
+  });
+
+  await extension.setPromptRecords([initialPrompt]);
+
+  const primaryPage = await openOptionsPage(extension);
+  const stalePage = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.addInitScript(() => {
+      const storageEventArea = chrome.storage.onChanged as typeof chrome.storage.onChanged & {
+        addListener: typeof chrome.storage.onChanged.addListener;
+      };
+
+      storageEventArea.addListener = () => {};
+    });
+  });
+
+  await getPromptCard(primaryPage, initialPrompt.title).click();
+  await getPromptCard(stalePage, initialPrompt.title).click();
+  await expect(getTitleInput(primaryPage)).toHaveValue(initialPrompt.title);
+  await expect(getContentInput(primaryPage)).toHaveValue(initialPrompt.content);
+  await expect(getTitleInput(stalePage)).toHaveValue(initialPrompt.title);
+  await expect(getContentInput(stalePage)).toHaveValue(initialPrompt.content);
+
+  await getTitleInput(primaryPage).fill('첫 번째 탭의 최신 제목');
+  await getContentInput(primaryPage).fill('첫 번째 탭의 최신 본문');
+  await getPromptSubmitButton(primaryPage, '프롬프트 수정').click();
+
+  await expect(getOptionsToast(primaryPage)).toContainText(
+    '프롬프트를 업데이트했습니다.',
+  );
+  await expect
+    .poll(async () =>
+      (await extension.getPromptRecords()).map((prompt) => ({
+        id: prompt.id,
+        title: prompt.title,
+        content: prompt.content,
+        normalOrder: prompt.normalOrder,
+      })),
+    )
+    .toEqual([
+      {
+        id: initialPrompt.id,
+        title: '첫 번째 탭의 최신 제목',
+        content: '첫 번째 탭의 최신 본문',
+        normalOrder: initialPrompt.normalOrder,
+      },
+    ]);
+
+  const recordsAfterPrimarySave = await extension.getPromptRecords();
+
+  await expect(getTitleInput(stalePage)).toHaveValue(initialPrompt.title);
+  await expect(getContentInput(stalePage)).toHaveValue(initialPrompt.content);
+
+  await getTitleInput(stalePage).fill('두 번째 탭의 오래된 제목');
+  await getContentInput(stalePage).fill('두 번째 탭의 오래된 본문');
+  await getPromptSubmitButton(stalePage, '프롬프트 수정').click();
+
+  await expect(
+    stalePage
+      .getByRole('alert')
+      .filter({ hasText: '다른 창의 변경이 먼저 저장되었습니다.' }),
+  ).toBeVisible();
+  await expect(
+    getPromptEditor(stalePage).getByRole('status').filter({ hasText: '충돌 감지됨' }),
+  ).toBeVisible();
+  await expect(getOptionsToast(stalePage)).toHaveCount(0);
+  await expect(getTitleInput(stalePage)).toHaveValue('첫 번째 탭의 최신 제목');
+  await expect(getContentInput(stalePage)).toHaveValue('첫 번째 탭의 최신 본문');
+  expect(await extension.getPromptRecords()).toEqual(recordsAfterPrimarySave);
+});
+
+test('routes dirty title and body saves through the atomic prompt record runtime request', async ({
   extension,
 }) => {
   const initialPrompt = createPromptRecord({

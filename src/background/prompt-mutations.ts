@@ -250,7 +250,7 @@ async function handleUpdatePromptBodyRequest(
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
-        result.currentRecord ?? undefined,
+        result.currentRecord,
         UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
@@ -283,7 +283,7 @@ async function handleUpdatePromptRecordRequest(
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
-        result.currentRecord ?? undefined,
+        result.currentRecord,
         UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }

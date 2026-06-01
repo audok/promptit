@@ -229,7 +229,7 @@ export type PromptMetaConflictResponse<T extends PromptMetaConflictMessageType> 
 
 export type PromptRecordConflictResponse<T extends PromptRecordConflictMessageType> =
   PromptConflictBaseResponse<T> & {
-    currentRecord?: PromptRecord;
+    currentRecord: PromptRecord;
   };
 
 export type PromptConflictResponse<T extends PromptConflictMessageType> =

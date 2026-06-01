@@ -464,12 +464,9 @@ function parseRecordConflictResponse<T extends PromptRecordConflictMessageType>(
     return null;
   }
 
-  const currentRecord =
-    typeof value.currentRecord === 'undefined'
-      ? undefined
-      : parsePromptRecord(value.currentRecord);
+  const currentRecord = parsePromptRecord(value.currentRecord);
 
-  if (currentRecord === null) {
+  if (!currentRecord) {
     return null;
   }
 

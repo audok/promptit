@@ -293,10 +293,10 @@ export function buildPromptRecordConflictResponse<
   id: string,
   currentMeta: PromptMeta,
   message: string,
-  currentRecord?: PromptRecord,
+  currentRecord: PromptRecord,
   messageDescriptor?: RuntimeMessageDescriptor,
 ): PromptRecordConflictResponse<T> {
-  const response: PromptRecordConflictResponse<T> = {
+  return {
     type,
     ok: false,
     status: 'conflict',
@@ -304,13 +304,8 @@ export function buildPromptRecordConflictResponse<
     message,
     messageDescriptor,
     currentMeta,
+    currentRecord,
   };
-
-  if (typeof currentRecord !== 'undefined') {
-    response.currentRecord = currentRecord;
-  }
-
-  return response;
 }
 
 export function buildPromptConflictResponse<T extends PromptMetaConflictMessageType>(
@@ -333,7 +328,7 @@ export function buildPromptConflictResponse<T extends PromptRecordConflictMessag
   id: string,
   currentMeta: PromptMeta,
   message: string,
-  currentRecord?: PromptRecord,
+  currentRecord: PromptRecord,
   messageDescriptor?: RuntimeMessageDescriptor,
 ): PromptRecordConflictResponse<T>;
 export function buildPromptConflictResponse(
@@ -360,16 +355,19 @@ export function buildPromptConflictResponse(
     );
   }
 
-  const currentRecord = isRuntimeMessageDescriptorValue(currentRecordOrDescriptor)
-    ? undefined
-    : currentRecordOrDescriptor;
+  if (
+    isRuntimeMessageDescriptorValue(currentRecordOrDescriptor) ||
+    typeof currentRecordOrDescriptor === 'undefined'
+  ) {
+    throw new Error('Record conflict responses require currentRecord.');
+  }
 
   return buildPromptRecordConflictResponse(
     type,
     id,
     currentMeta,
     message,
-    currentRecord,
+    currentRecordOrDescriptor,
     descriptor,
   );
 }
