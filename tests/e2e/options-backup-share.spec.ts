@@ -95,6 +95,7 @@ test('downloads backup JSON with prompt records and language and theme settings'
   );
   expect(storageSnapshot).toHaveProperty('promptit:promptsRevision');
 
+  const manifestVersion = await extension.getManifestVersion();
   const page = await openOptionsPage(extension);
   const modal = await openBackupShareModal(page);
   const download = await readDownloadedJson<Record<string, unknown>>(
@@ -108,7 +109,7 @@ test('downloads backup JSON with prompt records and language and theme settings'
   expectNoInternalBackupKeys(download.raw);
   expectExactKeys(download.value, ['type', 'appVersion', 'exportedAt', 'data']);
   expect(download.value.type).toBe('promptit.backup');
-  expect(download.value.appVersion).toBe('0.9.0');
+  expect(download.value.appVersion).toBe(manifestVersion);
   expectValidIsoTimestamp(download.value.exportedAt);
 
   const data = download.value.data;
@@ -149,6 +150,7 @@ test('downloads shared prompts JSON with title and content only', async ({
     'dark',
   );
 
+  const manifestVersion = await extension.getManifestVersion();
   const page = await openOptionsPage(extension);
   const modal = await openBackupShareModal(page);
   const download = await readDownloadedJson<Record<string, unknown>>(
@@ -162,7 +164,7 @@ test('downloads shared prompts JSON with title and content only', async ({
   expectNoInternalBackupKeys(download.raw);
   expectExactKeys(download.value, ['type', 'appVersion', 'exportedAt', 'data']);
   expect(download.value.type).toBe('promptit.prompts');
-  expect(download.value.appVersion).toBe('0.9.0');
+  expect(download.value.appVersion).toBe(manifestVersion);
   expectValidIsoTimestamp(download.value.exportedAt);
 
   const data = download.value.data;
@@ -759,6 +761,7 @@ test('malformed restore and import runtime messages are not accepted', async ({
 
   await extension.setPromptRecords([currentPrompt]);
   await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
 
   await expectRawRuntimeMessageNotAccepted(extension, {
     type: RESTORE_BACKUP_MESSAGE,
@@ -805,6 +808,7 @@ test('malformed restore and import runtime messages are not accepted', async ({
     },
   });
   expect(await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
 
   await expectRawRuntimeMessageNotAccepted(extension, {
     type: IMPORT_PROMPTS_MESSAGE,
@@ -824,6 +828,7 @@ test('malformed restore and import runtime messages are not accepted', async ({
     },
   });
   expect(await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
 
   expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
 });

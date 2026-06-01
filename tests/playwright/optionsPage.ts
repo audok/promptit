@@ -39,9 +39,13 @@ export const test = base.extend<{
 }>({
   extension: async ({}, use) => {
     const extension = await launchExtension();
-    await extension.setLanguagePreference('ko');
-    await use(extension);
-    await extension.close();
+
+    try {
+      await extension.setLanguagePreference('ko');
+      await use(extension);
+    } finally {
+      await extension.close();
+    }
   },
 });
 
@@ -750,6 +754,8 @@ export async function expectRawRuntimeMessageNotAccepted(
   message: unknown,
 ): Promise<void> {
   const beforeRecords = await extension.getPromptRecords();
+  const beforeLanguagePreference = await extension.getLanguagePreference();
+  const beforeThemePreference = await extension.getThemePreference();
   const result = await sendRawRuntimeMessageResult(extension, message);
 
   if (result.status === 'resolved') {
@@ -757,6 +763,8 @@ export async function expectRawRuntimeMessageNotAccepted(
   }
 
   expect(await extension.getPromptRecords()).toEqual(beforeRecords);
+  expect(await extension.getLanguagePreference()).toBe(beforeLanguagePreference);
+  expect(await extension.getThemePreference()).toBe(beforeThemePreference);
 }
 
 export function expectExactKeys(

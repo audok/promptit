@@ -19,7 +19,53 @@ import {
   expect,
   createPromptRecord,
   MOVE_PROMPT_MESSAGE,
+  UPDATE_PROMPT_META_MESSAGE,
 } from '../playwright/optionsPage';
+import type { Page } from '../playwright/optionsPage';
+
+async function preventExternalPromptStorageSubscription(
+  page: Page,
+): Promise<void> {
+  await page.addInitScript(() => {
+    const storageEventArea = chrome.storage.onChanged as typeof chrome.storage.onChanged & {
+      addListener: typeof chrome.storage.onChanged.addListener;
+    };
+
+    storageEventArea.addListener = () => {};
+  });
+}
+
+async function recordRuntimeMessageTypes(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const runtime = chrome.runtime as typeof chrome.runtime & {
+      sendMessage: (...args: unknown[]) => Promise<unknown>;
+    };
+    const originalSendMessage = runtime.sendMessage.bind(runtime);
+    const requestTypes: string[] = [];
+
+    (window as Window & {
+      __promptitRuntimeMessageTypes?: string[];
+    }).__promptitRuntimeMessageTypes = requestTypes;
+
+    runtime.sendMessage = async (...args: unknown[]) => {
+      const [request] = args;
+
+      if (typeof request === 'object' && request !== null) {
+        requestTypes.push(String((request as { type?: unknown }).type));
+      }
+
+      return await originalSendMessage(...args);
+    };
+  });
+}
+
+async function getRecordedRuntimeMessageTypes(page: Page): Promise<string[]> {
+  return await page.evaluate(() =>
+    (window as Window & {
+      __promptitRuntimeMessageTypes?: string[];
+    }).__promptitRuntimeMessageTypes ?? [],
+  );
+}
 
 test('orders prompts with matching normalOrder by createdAt and id tie-breaks', async ({
   extension,
@@ -582,7 +628,7 @@ test('keeps storage unchanged when pointer drag would cross prompt groups', asyn
   await expectPromptListToHideInternalOrderFields(page);
 });
 
-test('does not announce reorder success or mutate storage when move prompt conflicts', async ({
+test('renders a mocked move conflict response as an inline conflict without success feedback', async ({
   extension,
 }) => {
   await extension.setPromptRecords([
@@ -650,6 +696,109 @@ test('does not announce reorder success or mutate storage when move prompt confl
   expect(await extension.getPromptRecords()).toEqual(beforeRecords);
 });
 
+test('rejects a stale keyboard reorder through the real move prompt runtime path', async ({
+  extension,
+}) => {
+  const firstPrompt = createPromptRecord({
+    id: 'real-move-conflict-first',
+    title: '실제 충돌 첫 번째',
+    content: '실제 충돌 첫 번째 본문',
+    normalOrder: 1,
+  });
+  const movingPrompt = createPromptRecord({
+    id: 'real-move-conflict-second',
+    title: '실제 충돌 두 번째',
+    content: '실제 충돌 두 번째 본문',
+    normalOrder: 2,
+  });
+  const thirdPrompt = createPromptRecord({
+    id: 'real-move-conflict-third',
+    title: '실제 충돌 세 번째',
+    content: '실제 충돌 세 번째 본문',
+    normalOrder: 3,
+  });
+
+  await extension.setPromptRecords([
+    firstPrompt,
+    movingPrompt,
+    thirdPrompt,
+  ]);
+
+  const stalePage = await openOptionsPage(
+    extension,
+    preventExternalPromptStorageSubscription,
+  );
+
+  await expectVisiblePromptOrder(stalePage, [
+    firstPrompt.title,
+    movingPrompt.title,
+    thirdPrompt.title,
+  ]);
+
+  const externalTitle = '실제 충돌 두 번째 최신';
+  const externalUpdateResponse = await extension.sendRuntimeMessage({
+    type: UPDATE_PROMPT_META_MESSAGE,
+    id: movingPrompt.id,
+    draft: { title: externalTitle },
+    expectedUpdatedAt: movingPrompt.updatedAt,
+  });
+
+  expect(externalUpdateResponse).toEqual(
+    expect.objectContaining({
+      type: UPDATE_PROMPT_META_MESSAGE,
+      ok: true,
+      status: 'success',
+    }),
+  );
+
+  const recordsAfterExternalUpdate = await extension.getPromptRecords();
+  expect(recordsAfterExternalUpdate).toEqual([
+    expect.objectContaining({
+      id: firstPrompt.id,
+      title: firstPrompt.title,
+      content: firstPrompt.content,
+    }),
+    expect.objectContaining({
+      id: movingPrompt.id,
+      title: externalTitle,
+      content: movingPrompt.content,
+    }),
+    expect.objectContaining({
+      id: thirdPrompt.id,
+      title: thirdPrompt.title,
+      content: thirdPrompt.content,
+    }),
+  ]);
+
+  await expectVisiblePromptOrder(stalePage, [
+    firstPrompt.title,
+    movingPrompt.title,
+    thirdPrompt.title,
+  ]);
+  await recordRuntimeMessageTypes(stalePage);
+
+  await pressPromptHandleKey(stalePage, movingPrompt.title, 'ArrowUp');
+
+  await expect(
+    stalePage.getByRole('alert').filter({
+      hasText: '다른 창의 변경이 먼저 저장되었습니다.',
+    }),
+  ).toBeVisible();
+  await expect(
+    stalePage.locator('body'),
+  ).not.toContainText(`${movingPrompt.title} 순서를 변경했습니다.`);
+  await expect(getOptionsToast(stalePage)).toHaveCount(0);
+  expect(await getRecordedRuntimeMessageTypes(stalePage)).toContain(
+    MOVE_PROMPT_MESSAGE,
+  );
+  await expectVisiblePromptOrder(stalePage, [
+    firstPrompt.title,
+    externalTitle,
+    thirdPrompt.title,
+  ]);
+  expect(await extension.getPromptRecords()).toEqual(recordsAfterExternalUpdate);
+});
+
 test('shows a generic reorder error in the options toast when move prompt rejects', async ({
   extension,
 }) => {
@@ -710,20 +859,20 @@ test('shows a generic reorder error in the options toast when move prompt reject
   expect(await extension.getPromptRecords()).toEqual(beforeRecords);
 });
 
-test('shows the approved reorder fallback when the prompt list move handler rejects', async ({
+test('renders a mocked move error response as a generic reorder toast without mutating storage', async ({
   extension,
 }) => {
   const firstPrompt = createPromptRecord({
-    id: 'move-handler-error-first',
-    title: '핸들러 오류 첫 번째',
-    content: '핸들러 오류 첫 번째 본문',
+    id: 'move-response-error-first',
+    title: '응답 오류 첫 번째',
+    content: '응답 오류 첫 번째 본문',
     normalOrder: 1,
     createdAt: '2026-03-29T04:00:00.000Z',
   });
   const secondPrompt = createPromptRecord({
-    id: 'move-handler-error-second',
-    title: '핸들러 오류 두 번째',
-    content: '핸들러 오류 두 번째 본문',
+    id: 'move-response-error-second',
+    title: '응답 오류 두 번째',
+    content: '응답 오류 두 번째 본문',
     normalOrder: 1,
     createdAt: '2026-03-29T04:01:00.000Z',
   });
@@ -733,63 +882,30 @@ test('shows the approved reorder fallback when the prompt list move handler reje
   const page = await openOptionsPage(extension);
   const beforeRecords = await extension.getPromptRecords();
 
-  await page.evaluate(() => {
-    const originalLocaleCompare = String.prototype.localeCompare;
-
-    (window as Window & {
-      __promptitRestoreLocaleCompare?: () => void;
-    }).__promptitRestoreLocaleCompare = () => {
-      String.prototype.localeCompare = originalLocaleCompare;
-    };
-
-    String.prototype.localeCompare = function (
-      compareString: string,
-      locales?: string | string[],
-      options?: Intl.CollatorOptions,
-    ): number {
-      const leftValue = String(this);
-      const rightValue = String(compareString);
-      const isPromptMovePlanTimestampCompare =
-        (leftValue === '2026-03-29T04:00:00.000Z' &&
-          rightValue === '2026-03-29T04:01:00.000Z') ||
-        (leftValue === '2026-03-29T04:01:00.000Z' &&
-          rightValue === '2026-03-29T04:00:00.000Z');
-
-      if (isPromptMovePlanTimestampCompare) {
-        throw new Error('mock prompt list move handler failure');
-      }
-
-      return originalLocaleCompare.call(this, compareString, locales, options);
-    };
+  await patchRuntimeMessageResponse(page, [MOVE_PROMPT_MESSAGE], {
+    type: MOVE_PROMPT_MESSAGE,
+    ok: false,
+    status: 'error',
+    code: 'storage-failed',
+    message: 'mock move response failure',
   });
 
-  try {
-    await pressPromptHandleKey(page, secondPrompt.title, 'ArrowUp');
+  await pressPromptHandleKey(page, secondPrompt.title, 'ArrowUp');
 
-    await expect(getOptionsToast(page)).toContainText(
-      '프롬프트 순서 변경 중 오류가 발생했습니다.',
-    );
-    await expect(getOptionsToast(page).getByRole('alert')).toHaveAttribute(
-      'aria-live',
-      'assertive',
-    );
-    await expect(
-      getPromptEditor(page)
-        .getByRole('alert')
-        .filter({ hasText: '프롬프트 순서 변경 중 오류가 발생했습니다.' }),
-    ).toHaveCount(0);
-    await expectVisiblePromptOrder(page, [
-      firstPrompt.title,
-      secondPrompt.title,
-    ]);
-    expect(await extension.getPromptRecords()).toEqual(beforeRecords);
-  } finally {
-    await page.evaluate(() => {
-      (window as Window & {
-        __promptitRestoreLocaleCompare?: () => void;
-      }).__promptitRestoreLocaleCompare?.();
-    });
-  }
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트 순서 변경 중 오류가 발생했습니다.',
+  );
+  await expect(getOptionsToast(page).getByRole('alert')).toHaveAttribute(
+    'aria-live',
+    'assertive',
+  );
+  await expect(
+    getPromptEditor(page)
+      .getByRole('alert')
+      .filter({ hasText: '프롬프트 순서 변경 중 오류가 발생했습니다.' }),
+  ).toHaveCount(0);
+  await expectVisiblePromptOrder(page, [firstPrompt.title, secondPrompt.title]);
+  expect(await extension.getPromptRecords()).toEqual(beforeRecords);
 });
 
 test('rejects stale reorder boundary requests without moving to an edge', async ({

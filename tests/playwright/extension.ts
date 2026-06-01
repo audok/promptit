@@ -71,6 +71,7 @@ export type LoadedExtension = {
   setThemePreference: (preference: ThemePreference) => Promise<void>;
   clearThemePreference: () => Promise<void>;
   setChromeStorageLocalValue: (key: string, value: unknown) => Promise<void>;
+  getManifestVersion: () => Promise<string>;
   getBrowserUiLanguage: () => Promise<string>;
   getPromptStorageRevision: () => Promise<unknown>;
   getChromeStorageLocalSnapshot: () => Promise<Record<string, unknown>>;
@@ -761,6 +762,13 @@ export async function launchExtension(
         storageKey: key,
         storageValue: value,
       });
+    },
+    async getManifestVersion() {
+      const serviceWorker = await getServiceWorker();
+
+      return await serviceWorker.evaluate(
+        () => chrome.runtime.getManifest().version,
+      );
     },
     async getBrowserUiLanguage() {
       const serviceWorker = await getServiceWorker();
