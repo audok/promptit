@@ -334,6 +334,35 @@ test('copies the selected prompt and clears the trigger text', async ({
   ).toBe('회의록으로 정리해줘.');
 });
 
+test('copy cleanup failure closes the popup after clipboard success', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords(basePrompts);
+  await grantFixtureClipboardPermissions(extension.context);
+
+  const page = await extension.context.newPage();
+  await openFixturePage(page, TEXTAREA_FIXTURE_URL);
+
+  await openPromptPopup(page);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowRight');
+  await expect(await getActivePopupCellLabel(page)).toBe(
+    'Copy prompt: 회의록',
+  );
+
+  await replaceComposerTextWithoutInputEvent(page, 'x');
+  await page.keyboard.press('Enter');
+  await waitForPromptPopupToClose(page);
+
+  await expect(await getComposerText(page)).toBe('x');
+  await expect(
+    await page.evaluate(() => navigator.clipboard.readText()),
+  ).toBe('회의록으로 정리해줘.');
+  await expect
+    .poll(async () => await getToastText(page))
+    .toBe('Prompt copied.');
+});
+
 test('fetches the latest prompt body when copying from an already-open popup', async ({
   extension,
 }) => {

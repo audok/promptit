@@ -34,6 +34,7 @@ import { shouldFailClipboardWriteForTest } from './testControls';
 
 export type ClosePopupOptions = {
   reopenOnCleanupFailure?: boolean;
+  showCleanupFailureToast?: boolean;
 };
 
 export async function handleSelection(
@@ -144,7 +145,10 @@ export async function handleCopy(
       return;
     }
 
-    const didClose = await closePopup(context, 'copy', true);
+    const didClose = await closePopup(context, 'copy', true, {
+      reopenOnCleanupFailure: false,
+      showCleanupFailureToast: false,
+    });
 
     if (!didClose) {
       return;
@@ -326,10 +330,12 @@ export async function closePopup(
       );
     } catch (error) {
       console.error('[promptit] Failed to clean up trigger text.', error);
-      showToast(
-        translate(context.getLocale(), 'content.toast.cleanupFailed'),
-        'error',
-      );
+      if (options.showCleanupFailureToast !== false) {
+        showToast(
+          translate(context.getLocale(), 'content.toast.cleanupFailed'),
+          'error',
+        );
+      }
       if (options.reopenOnCleanupFailure !== false) {
         if (activeInput.isConnected) {
           adapter.focusInput(activeInput);
