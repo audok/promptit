@@ -37,7 +37,7 @@ const browserCachePath =
   process.env.PLAYWRIGHT_BROWSERS_PATH ||
   path.join(originalHomePath, '.cache', 'ms-playwright');
 const isHeaded = process.env.PLAYWRIGHT_EXTENSION_HEADED !== '0';
-const tempRootPath = process.env.TMPDIR || '/tmp';
+const tempRootPath = process.env.TMPDIR || os.tmpdir();
 const browserEnvironmentKeys = [
   'HOME',
   'XDG_CONFIG_HOME',

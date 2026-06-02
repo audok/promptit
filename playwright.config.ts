@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   outputDir: 'test-results',
   webServer: {
-    command: 'python3 -m http.server 4173 --directory tests/fixtures',
+    command: 'node scripts/serve-fixtures.mjs --port 4173 --directory tests/fixtures',
     url: 'http://127.0.0.1:4173/chatgpt-contenteditable.html',
     reuseExistingServer: false,
   },
