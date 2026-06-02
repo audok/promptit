@@ -1,17 +1,13 @@
 # promptit Testing Guide
-
 이 문서는 promptit의 테스트 실행 순서와 수동 테스트 절차를 정리한 운영 가이드입니다.
 무엇을 커버하는지는 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)에서 관리합니다.
 
 ## 문서 역할
-
 - `TESTING.md`: 어떤 명령을 언제 실행하는지 정리한다.
 - `TEST_CHECKLIST.md`: 어떤 동작이 자동화, live smoke, 수동 테스트로 커버되는지 추적한다.
 
 ## 테스트 명령
-
 ### 기본 게이트
-
 ```bash
 pnpm test
 ```
@@ -22,7 +18,6 @@ pnpm test
 - 실제 ChatGPT/Gemini smoke는 외부 사이트 상태에 의존하므로 포함하지 않는다.
 
 ### 결정적 E2E
-
 ```bash
 pnpm test:e2e
 ```
@@ -48,7 +43,6 @@ PROMPTIT_EXTENSION_PATH=dist-test pnpm exec playwright test tests/e2e/slash-popu
 - 로컬 fixture server는 port `4173`의 기존 프로세스를 재사용하지 않는다. 이미 `4173`이 사용 중이면 Playwright가 바로 실패한다. 이때는 `lsof -nP -iTCP:4173 -sTCP:LISTEN` 등으로 점유 프로세스를 확인하고, 이전 fixture server처럼 출처가 분명한 프로세스만 종료한 뒤 다시 실행한다. 알 수 없는 사용자 프로세스는 임의로 종료하지 않는다.
 
 ### 실사이트 Smoke: test-mode bundle
-
 ```bash
 pnpm test:e2e:live
 ```
@@ -61,7 +55,6 @@ pnpm test:e2e:live
 - insert 흐름은 prompt text가 composer 안에 계속 보이는지 자동 확인한다. prefix-preserving insert는 기존 prefix가 prompt text 앞에 남고, 그 사이에 `/ ` trigger가 남지 않았는지도 검증한다. 제출된 메시지를 안정적으로 읽는 selector는 아직 없으므로, 의도치 않은 submit이 없었다는 신뢰는 로그인된 수동 live checklist에서 확인한다.
 
 ### 실사이트 Smoke: production bundle
-
 ```bash
 pnpm test:e2e:live:prod
 ```
@@ -73,7 +66,6 @@ pnpm test:e2e:live:prod
 - 외부 사이트 상태나 fresh profile 제약으로 실패할 수 있다. 실패 시 deterministic fixture 회귀를 약화하지 말고 artifact와 live site 상태를 기록한다.
 
 ### 보조 명령
-
 ```bash
 pnpm typecheck
 pnpm build
@@ -87,21 +79,17 @@ pnpm build:test
 - `build:test`: localhost fixture match가 포함된 test-mode bundle을 `dist-test/`에 만든다.
 
 ## 권장 실행 순서
-
 ### 구현 중
-
 - 빠른 확인: 관련 spec 또는 `pnpm test:e2e`
 - 타입/번들 경계 확인: `pnpm typecheck`, `pnpm build`, `pnpm check:manifest`
 - 변경 범위가 크거나 release gate에 가까우면 `pnpm test`
 
 ### PR 전
-
 ```bash
 pnpm test
 ```
 
 ### 릴리스 전
-
 ```bash
 pnpm test
 pnpm test:e2e:live
@@ -111,7 +99,6 @@ pnpm test:e2e:live:prod
 그 다음 맨 아래의 수동 테스트 3개를 실행한다: 툴바 아이콘 클릭, 로그인된 ChatGPT/Gemini 전체 흐름, 실제 다운로드/파일 선택.
 
 ## build output 주의사항
-
 - Production build output은 `dist/`이고 test-mode E2E build output은 `dist-test/`다.
 - `pnpm build`는 `env -u VITE_PROMPTIT_TEST_MODE vite build`로 실행되어 ambient test-mode 환경변수를 release build에 반영하지 않는다.
 - `pnpm build:test`, `pnpm test:e2e`, `pnpm test:e2e:headed`, `pnpm test:e2e:ui`, `pnpm test:e2e:live`는 `dist-test/`를 만든 뒤 `PROMPTIT_EXTENSION_PATH=dist-test`로 Playwright를 실행한다.
@@ -120,7 +107,6 @@ pnpm test:e2e:live:prod
 - 확장을 수동 로드하거나 패키징할 때는 production `pnpm build`와 `pnpm check:manifest`를 완료한 `dist/`를 사용한다.
 
 ## 브라우저 프로세스 정리
-
 브라우저/DevTools/Playwright를 사용한 뒤에는 호스트 프로세스 기준으로 테스트용 브라우저가 남았는지 확인한다.
 
 ```bash
@@ -130,7 +116,6 @@ pgrep -af '[c]hrome-devtools-mcp|[p]uppeteer_dev_chrome_profile|/opt/google/[c]h
 테스트용 프로세스가 남아 있으면 일반 사용자 Chrome이나 다른 작업의 MCP가 아닌지 확인한 뒤 종료한다.
 
 ## 빠른 체크리스트
-
 - [ ] `pnpm test`
 - [ ] `pnpm test:e2e:live`
 - [ ] `pnpm test:e2e:live:prod`
@@ -138,9 +123,7 @@ pgrep -af '[c]hrome-devtools-mcp|[p]uppeteer_dev_chrome_profile|/opt/google/[c]h
 - [ ] 수동 테스트 3개 확인
 
 ## 수동 테스트
-
 ### 브라우저 툴바 아이콘 클릭
-
 1. promptit 확장을 로드한 브라우저를 연다.
 2. 브라우저 툴바에서 promptit 확장 아이콘을 클릭한다.
 3. 옵션 페이지가 새 탭으로 열리거나 이미 열린 옵션 탭으로 포커스되는지 확인한다.
@@ -149,7 +132,6 @@ pgrep -af '[c]hrome-devtools-mcp|[p]uppeteer_dev_chrome_profile|/opt/google/[c]h
 이 항목은 브라우저 툴바 UI를 Playwright가 안정적으로 제어하기 어렵기 때문에 수동으로 둔다.
 
 ### 로그인된 ChatGPT/Gemini 전체 흐름
-
 1. promptit 확장을 로드한 브라우저에서 로그인된 ChatGPT와 Gemini 세션을 각각 연다.
 2. 각 서비스의 composer에 포커스하고 `/ `를 입력한다.
 3. promptit popup이 열리는지 확인한다.
@@ -159,7 +141,6 @@ pgrep -af '[c]hrome-devtools-mcp|[p]uppeteer_dev_chrome_profile|/opt/google/[c]h
 이 항목은 계정 상태, 쿠키, 사이트 UI 변경, A/B 테스트의 영향을 받아 반복 가능한 release gate로 고정하기 어렵다.
 
 ### 백업/공유 실제 다운로드와 파일 선택
-
 1. promptit 확장을 로드한 브라우저에서 옵션 페이지를 연다.
 2. `백업/공유`에서 `백업`과 `프롬프트 전체 공유`가 실제 다운로드 폴더에 JSON 파일을 만드는지 확인한다.
 3. 백업 JSON을 `복원`에 다시 선택했을 때 preview가 먼저 표시되고 confirm 후 데이터가 교체되는지 확인한다.
