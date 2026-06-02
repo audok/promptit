@@ -30,17 +30,16 @@ pnpm test:e2e
 - fixture 테스트 목록은 필요할 때 `pnpm exec playwright test --list`로 확인한다.
 - 실행 후 확장을 수동 로드하거나 패키징하려면 production `pnpm build && pnpm check:manifest` 또는 `pnpm test`를 다시 실행한다.
 
-개별 fixture spec을 직접 실행할 때는 script가 대신 해 주는 준비를 수동으로 맞춘다.
+개별 fixture spec도 npm script forwarding으로 실행한다.
 
 ```bash
-pnpm build:test
-PROMPTIT_EXTENSION_PATH=dist-test pnpm exec playwright test tests/e2e/slash-popup-ui.spec.ts
+pnpm test:e2e -- tests/e2e/slash-popup-ui.spec.ts
 ```
 
-- `pnpm test:e2e`, `pnpm test:e2e:headed`, `pnpm test:e2e:ui`를 쓰면 위 준비가 script에 포함된다.
+- `pnpm test:e2e`, `pnpm test:e2e:headed`, `pnpm test:e2e:ui`는 test-mode build 변수와 `PROMPTIT_EXTENSION_PATH=dist-test`, headed extension 실행 환경을 script에서 설정한다.
 - 직접 `pnpm exec playwright test ...`만 실행하면 직전에 만든 production `dist/`를 잘못 로드하거나 localhost fixture match가 없는 manifest로 실패할 수 있다.
-- `xvfb-run`을 붙여 focused browser spec을 script와 같은 조건으로 실행할 때도 먼저 `pnpm build:test`를 실행하고 `PROMPTIT_EXTENSION_PATH=dist-test`를 지정한다. 예: `xvfb-run -a env -u NO_COLOR TMPDIR=/tmp PLAYWRIGHT_EXTENSION_HEADED=1 PROMPTIT_EXTENSION_PATH=dist-test pnpm exec playwright test tests/e2e/options-ordering.spec.ts`
-- 로컬 fixture server는 port `4173`의 기존 프로세스를 재사용하지 않는다. 이미 `4173`이 사용 중이면 Playwright가 바로 실패한다. 이때는 `lsof -nP -iTCP:4173 -sTCP:LISTEN` 등으로 점유 프로세스를 확인하고, 이전 fixture server처럼 출처가 분명한 프로세스만 종료한 뒤 다시 실행한다. 알 수 없는 사용자 프로세스는 임의로 종료하지 않는다.
+- test 이름과 project 목록만 확인할 때는 `pnpm exec playwright test --list`를 그대로 사용할 수 있다. 이 목록 조회는 extension bundle을 로드하지 않는다.
+- 로컬 fixture server는 port `4173`의 기존 프로세스를 재사용하지 않는다. 이미 `4173`이 사용 중이면 Playwright가 바로 실패한다. 이때는 OS별 프로세스 도구로 점유 프로세스를 확인하고, 이전 fixture server처럼 출처가 분명한 프로세스만 종료한 뒤 다시 실행한다. 알 수 없는 사용자 프로세스는 임의로 종료하지 않는다.
 
 ### 실사이트 Smoke: test-mode bundle
 ```bash
@@ -100,9 +99,10 @@ pnpm test:e2e:live:prod
 
 ## build output 주의사항
 - Production build output은 `dist/`이고 test-mode E2E build output은 `dist-test/`다.
-- `pnpm build`는 `env -u VITE_PROMPTIT_TEST_MODE vite build`로 실행되어 ambient test-mode 환경변수를 release build에 반영하지 않는다.
+- `pnpm build`는 wrapper script로 ambient `VITE_PROMPTIT_TEST_MODE`를 unset해서 release build에 반영하지 않는다.
 - `pnpm build:test`, `pnpm test:e2e`, `pnpm test:e2e:headed`, `pnpm test:e2e:ui`, `pnpm test:e2e:live`는 `dist-test/`를 만든 뒤 `PROMPTIT_EXTENSION_PATH=dist-test`로 Playwright를 실행한다.
 - `pnpm test:e2e:live:prod`는 production `dist/`를 만들고 `PROMPTIT_EXTENSION_PATH=dist`로 production-compatible live smoke만 실행한다.
+- 자동 테스트 npm script는 Node wrapper를 통해 환경변수 설정과 display-less Linux의 headed browser 보조 처리를 맡는다. 개발자가 자동 테스트 실행을 위해 OS별 shell env 문법을 복사할 필요는 없다.
 - 같은 작업트리에서 production build와 E2E build를 병렬 실행하면 output directory는 분리되어 있지만, 의존성 설치나 Playwright artifact 같은 다른 공유 리소스 때문에 결과를 해석하기 어려울 수 있으므로 순차 실행을 권장한다.
 - 확장을 수동 로드하거나 패키징할 때는 production `pnpm build`와 `pnpm check:manifest`를 완료한 `dist/`를 사용한다.
 
@@ -110,16 +110,16 @@ pnpm test:e2e:live:prod
 브라우저/DevTools/Playwright를 사용한 뒤에는 호스트 프로세스 기준으로 테스트용 브라우저가 남았는지 확인한다.
 
 ```bash
-pgrep -af '[c]hrome-devtools-mcp|[p]uppeteer_dev_chrome_profile|/opt/google/[c]hrome/chrome|[p]romptit-playwright|[X]vfb'
+pnpm check:test-browsers
 ```
 
-테스트용 프로세스가 남아 있으면 일반 사용자 Chrome이나 다른 작업의 MCP가 아닌지 확인한 뒤 종료한다.
+출력에 잠재적인 테스트용 프로세스가 남아 있으면 일반 사용자 Chrome이나 다른 작업의 MCP가 아닌지 확인한 뒤 종료한다. `Xvfb`는 command line에 promptit 경로가 없어도 display-less Linux E2E helper일 수 있으므로 실제 소유자를 먼저 확인한다.
 
 ## 빠른 체크리스트
 - [ ] `pnpm test`
 - [ ] `pnpm test:e2e:live`
 - [ ] `pnpm test:e2e:live:prod`
-- [ ] 테스트용 Chrome/MCP 프로세스 정리 확인
+- [ ] `pnpm check:test-browsers`
 - [ ] 수동 테스트 3개 확인
 
 ## 수동 테스트
