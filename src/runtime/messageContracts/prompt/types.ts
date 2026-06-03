@@ -144,6 +144,10 @@ export type PromptMutationRequest =
 
 export type PromptErrorCode = 'storage-failed';
 
+export type PromptMutationSideEffects = {
+  promptRevisionPublished: boolean;
+};
+
 export type ListPromptMetasSuccessResponse = {
   type: typeof LIST_PROMPT_METAS_MESSAGE;
   ok: true;
@@ -170,6 +174,7 @@ export type CreatePromptSuccessResponse = {
   ok: true;
   status: 'success';
   prompt: PromptRecord;
+  sideEffects: PromptMutationSideEffects;
 };
 
 export type PromptMetaSuccessResponse<
@@ -182,6 +187,7 @@ export type PromptMetaSuccessResponse<
   ok: true;
   status: 'success';
   meta: PromptMeta;
+  sideEffects: PromptMutationSideEffects;
 };
 
 export type UpdatePromptBodySuccessResponse = {
@@ -189,6 +195,7 @@ export type UpdatePromptBodySuccessResponse = {
   ok: true;
   status: 'success';
   prompt: PromptRecord;
+  sideEffects: PromptMutationSideEffects;
 };
 
 export type UpdatePromptRecordSuccessResponse = {
@@ -196,6 +203,7 @@ export type UpdatePromptRecordSuccessResponse = {
   ok: true;
   status: 'success';
   prompt: PromptRecord;
+  sideEffects: PromptMutationSideEffects;
 };
 
 export type DeletePromptSuccessResponse = {
@@ -203,6 +211,7 @@ export type DeletePromptSuccessResponse = {
   ok: true;
   status: 'success';
   id: string;
+  sideEffects: PromptMutationSideEffects;
 };
 
 export type PromptNotFoundResponse<T extends ExistingPromptMessageType> = {

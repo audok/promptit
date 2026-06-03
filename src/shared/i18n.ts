@@ -35,7 +35,11 @@ const koMessages = {
   'content.toast.insertFailed': '프롬프트 처리 중 오류가 발생했습니다.',
   'content.toast.copySuccess': '프롬프트를 복사했습니다.',
   'content.toast.copyFailed': '프롬프트 복사에 실패했습니다.',
+  'content.toast.copyCleanupFailed':
+    '프롬프트를 복사했지만 입력창을 정리하지 못했습니다.',
   'content.toast.cleanupFailed': '입력창 정리에 실패했습니다.',
+  'content.toast.promptRevisionPublishFailed':
+    '프롬프트를 저장했지만 다른 열린 탭은 새로고침이 필요할 수 있습니다.',
   'content.toast.pinSuccess': '프롬프트를 고정했습니다.',
   'content.toast.unpinSuccess': '프롬프트 고정을 해제했습니다.',
   'content.toast.pinConflict':
@@ -141,6 +145,8 @@ const koMessages = {
   'options.toast.promptDeleted': '프롬프트를 삭제했습니다.',
   'options.toast.promptPinned': '프롬프트를 고정했습니다.',
   'options.toast.promptUnpinned': '프롬프트 고정을 해제했습니다.',
+  'options.toast.promptRevisionPublishFailed':
+    '프롬프트는 저장됐지만 다른 열린 탭은 새로고침이 필요할 수 있습니다.',
   'options.backupShare.title': '백업/공유',
   'options.backupShare.description':
     'promptit의 설정, 저장된 프롬프트 등 모든 데이터를 백업 또는 복원합니다.\n또는 저장된 프롬프트만 공유하거나 가져옵니다.',
@@ -172,10 +178,14 @@ const koMessages = {
   'options.toast.promptsImported':
     '{count}개의 프롬프트를 가져왔습니다.',
   'options.toast.promptsImportFailed': '프롬프트 가져오기에 실패했습니다.',
+  'options.toast.promptsImportRollbackFailed':
+    '프롬프트 가져오기에 실패했습니다. 프롬프트 목록이 일부 변경되었을 수 있으니 현재 데이터를 확인해주세요.',
   'options.toast.backupRestored':
     '{fileName}로부터 데이터를 복원했습니다.',
   'options.toast.backupRestoreFailed':
     '복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.',
+  'options.toast.backupRestoreRollbackFailed':
+    '복원에 실패했습니다. 현재 데이터 상태가 불확실하니 프롬프트와 설정을 확인해주세요.',
   'options.error.loadPrompts':
     '저장된 프롬프트를 읽지 못했습니다. 확장 프로그램을 다시 열어 확인해보세요.',
   'options.error.loadPromptBody':
@@ -238,7 +248,11 @@ const enMessages: Record<I18nKey, string> = {
   'content.toast.insertFailed': 'Could not insert the prompt.',
   'content.toast.copySuccess': 'Prompt copied.',
   'content.toast.copyFailed': 'Could not copy the prompt.',
+  'content.toast.copyCleanupFailed':
+    'Prompt copied, but could not clean up the input field.',
   'content.toast.cleanupFailed': 'Could not clean up the input field.',
+  'content.toast.promptRevisionPublishFailed':
+    'Prompt saved, but other open tabs may need to be refreshed.',
   'content.toast.pinSuccess': 'Prompt pinned.',
   'content.toast.unpinSuccess': 'Prompt unpinned.',
   'content.toast.pinConflict':
@@ -344,6 +358,8 @@ const enMessages: Record<I18nKey, string> = {
   'options.toast.promptDeleted': 'Prompt deleted.',
   'options.toast.promptPinned': 'Prompt pinned.',
   'options.toast.promptUnpinned': 'Prompt unpinned.',
+  'options.toast.promptRevisionPublishFailed':
+    'Prompt saved, but other open tabs may need to be refreshed.',
   'options.backupShare.title': 'Backup/share',
   'options.backupShare.description':
     'Back up or restore all promptit data, including settings and saved prompts.\nOr share and import only saved prompts.',
@@ -374,10 +390,14 @@ const enMessages: Record<I18nKey, string> = {
   'options.toast.promptsShareFailed': 'Could not create a prompt share file.',
   'options.toast.promptsImported': 'Imported {count} prompts.',
   'options.toast.promptsImportFailed': 'Could not import prompts.',
+  'options.toast.promptsImportRollbackFailed':
+    'Import failed. The prompt list may have partially changed, so check the current data.',
   'options.toast.backupRestored':
     'Restored data from {fileName}.',
   'options.toast.backupRestoreFailed':
     'Restore failed. Current data was not changed.',
+  'options.toast.backupRestoreRollbackFailed':
+    'Restore failed. Data state is uncertain, so check prompts and settings.',
   'options.error.loadPrompts':
     'Could not read saved prompts. Reopen the extension and check again.',
   'options.error.loadPromptBody':

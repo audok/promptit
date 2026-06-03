@@ -39,6 +39,7 @@ import type {
   PromptMetaConflictMessageType,
   PromptMetaConflictResponse,
   PromptMetaSuccessResponse,
+  PromptMutationSideEffects,
   PromptNotFoundResponse,
   PromptRecordConflictMessageType,
   PromptRecordConflictResponse,
@@ -194,12 +195,14 @@ export function buildGetPromptRecordSuccessResponse(
 
 export function buildCreatePromptSuccessResponse(
   prompt: PromptRecord,
+  sideEffects: PromptMutationSideEffects,
 ): CreatePromptSuccessResponse {
   return {
     type: CREATE_PROMPT_MESSAGE,
     ok: true,
     status: 'success',
     prompt,
+    sideEffects,
   };
 }
 
@@ -208,45 +211,56 @@ export function buildPromptMetaSuccessResponse<
     | typeof UPDATE_PROMPT_META_MESSAGE
     | typeof MOVE_PROMPT_MESSAGE
     | typeof SET_PROMPT_PINNED_MESSAGE,
->(type: T, meta: PromptMeta): PromptMetaSuccessResponse<T> {
+>(
+  type: T,
+  meta: PromptMeta,
+  sideEffects: PromptMutationSideEffects,
+): PromptMetaSuccessResponse<T> {
   return {
     type,
     ok: true,
     status: 'success',
     meta,
+    sideEffects,
   };
 }
 
 export function buildUpdatePromptBodySuccessResponse(
   prompt: PromptRecord,
+  sideEffects: PromptMutationSideEffects,
 ): UpdatePromptBodySuccessResponse {
   return {
     type: UPDATE_PROMPT_BODY_MESSAGE,
     ok: true,
     status: 'success',
     prompt,
+    sideEffects,
   };
 }
 
 export function buildUpdatePromptRecordSuccessResponse(
   prompt: PromptRecord,
+  sideEffects: PromptMutationSideEffects,
 ): UpdatePromptRecordSuccessResponse {
   return {
     type: UPDATE_PROMPT_RECORD_MESSAGE,
     ok: true,
     status: 'success',
     prompt,
+    sideEffects,
   };
 }
 
 export function buildDeletePromptSuccessResponse(
   id: string,
+  sideEffects: PromptMutationSideEffects,
 ): DeletePromptSuccessResponse {
   return {
     type: DELETE_PROMPT_MESSAGE,
     ok: true,
     status: 'success',
     id,
+    sideEffects,
   };
 }
 

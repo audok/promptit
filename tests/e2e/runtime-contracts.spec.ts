@@ -69,9 +69,11 @@ import { getContentRuntimeResponseToastMessage } from '../../src/content/runtime
 import {
   PROMPTIT_PORTABILITY_MAX_FILE_BYTES,
   PROMPTIT_PORTABILITY_MAX_PROMPTS,
+  PROMPTIT_PORTABILITY_UI_MAX_FILE_BYTES,
   PROMPTIT_BACKUP_FILE_TYPE,
   PROMPTIT_SHARED_PROMPTS_FILE_TYPE,
   isPromptitPortabilityFileSizeAllowed,
+  isPromptitPortabilityUiFileSizeAllowed,
   isPromptitPortabilityPromptCountAllowed,
   type PromptitBackupFile,
   type PromptitSharedPromptsFile,
@@ -182,6 +184,9 @@ const literalPromptMetaDraft = {
 const literalUpdateConflictDescriptor = {
   key: 'runtime.prompt.updateConflict',
 };
+const literalPromptMutationSideEffects = {
+  promptRevisionPublished: true,
+};
 const literalBackup = {
   type: 'promptit.backup',
   appVersion: '0.9.0',
@@ -236,6 +241,7 @@ const SHARED_PROMPTS_KEYS = ['type', 'appVersion', 'exportedAt', 'data'];
 const SHARED_PROMPTS_DATA_KEYS = ['prompts'];
 const SHARED_PROMPT_KEYS = ['title', 'content'];
 const MESSAGE_DESCRIPTOR_KEYS = ['key'];
+const PROMPT_MUTATION_SIDE_EFFECT_KEYS = ['promptRevisionPublished'];
 
 type MetaOnlyConflictResponse =
   | UpdatePromptMetaResponse
@@ -648,6 +654,12 @@ test('portability limit helpers reject over-limit counts and sizes', () => {
   expect(isPromptitPortabilityFileSizeAllowed({
     size: PROMPTIT_PORTABILITY_MAX_FILE_BYTES + 1,
   })).toBe(false);
+  expect(isPromptitPortabilityUiFileSizeAllowed({
+    size: PROMPTIT_PORTABILITY_UI_MAX_FILE_BYTES,
+  })).toBe(true);
+  expect(isPromptitPortabilityUiFileSizeAllowed({
+    size: PROMPTIT_PORTABILITY_UI_MAX_FILE_BYTES + 1,
+  })).toBe(false);
   expect(isPromptitPortabilityPromptCountAllowed(
     PROMPTIT_PORTABILITY_MAX_PROMPTS,
   )).toBe(true);
@@ -785,9 +797,16 @@ test('runtime contract parses literal response wire fixtures with exact required
         ok: true,
         status: 'success',
         prompt: literalPromptRecord,
+        sideEffects: literalPromptMutationSideEffects,
       },
-      keys: ['type', 'ok', 'status', 'prompt'],
-      nested: [{ value: literalPromptRecord, keys: PROMPT_RECORD_KEYS }],
+      keys: ['type', 'ok', 'status', 'prompt', 'sideEffects'],
+      nested: [
+        { value: literalPromptRecord, keys: PROMPT_RECORD_KEYS },
+        {
+          value: literalPromptMutationSideEffects,
+          keys: PROMPT_MUTATION_SIDE_EFFECT_KEYS,
+        },
+      ],
     },
     {
       name: 'update meta success',
@@ -796,9 +815,16 @@ test('runtime contract parses literal response wire fixtures with exact required
         ok: true,
         status: 'success',
         meta: literalPromptMeta,
+        sideEffects: literalPromptMutationSideEffects,
       },
-      keys: ['type', 'ok', 'status', 'meta'],
-      nested: [{ value: literalPromptMeta, keys: PROMPT_META_KEYS }],
+      keys: ['type', 'ok', 'status', 'meta', 'sideEffects'],
+      nested: [
+        { value: literalPromptMeta, keys: PROMPT_META_KEYS },
+        {
+          value: literalPromptMutationSideEffects,
+          keys: PROMPT_MUTATION_SIDE_EFFECT_KEYS,
+        },
+      ],
     },
     {
       name: 'update body success',
@@ -807,9 +833,16 @@ test('runtime contract parses literal response wire fixtures with exact required
         ok: true,
         status: 'success',
         prompt: literalPromptRecord,
+        sideEffects: literalPromptMutationSideEffects,
       },
-      keys: ['type', 'ok', 'status', 'prompt'],
-      nested: [{ value: literalPromptRecord, keys: PROMPT_RECORD_KEYS }],
+      keys: ['type', 'ok', 'status', 'prompt', 'sideEffects'],
+      nested: [
+        { value: literalPromptRecord, keys: PROMPT_RECORD_KEYS },
+        {
+          value: literalPromptMutationSideEffects,
+          keys: PROMPT_MUTATION_SIDE_EFFECT_KEYS,
+        },
+      ],
     },
     {
       name: 'update record success',
@@ -818,9 +851,16 @@ test('runtime contract parses literal response wire fixtures with exact required
         ok: true,
         status: 'success',
         prompt: literalPromptRecord,
+        sideEffects: literalPromptMutationSideEffects,
       },
-      keys: ['type', 'ok', 'status', 'prompt'],
-      nested: [{ value: literalPromptRecord, keys: PROMPT_RECORD_KEYS }],
+      keys: ['type', 'ok', 'status', 'prompt', 'sideEffects'],
+      nested: [
+        { value: literalPromptRecord, keys: PROMPT_RECORD_KEYS },
+        {
+          value: literalPromptMutationSideEffects,
+          keys: PROMPT_MUTATION_SIDE_EFFECT_KEYS,
+        },
+      ],
     },
     {
       name: 'delete success',
@@ -829,8 +869,15 @@ test('runtime contract parses literal response wire fixtures with exact required
         ok: true,
         status: 'success',
         id: literalPromptMeta.id,
+        sideEffects: literalPromptMutationSideEffects,
       },
-      keys: ['type', 'ok', 'status', 'id'],
+      keys: ['type', 'ok', 'status', 'id', 'sideEffects'],
+      nested: [
+        {
+          value: literalPromptMutationSideEffects,
+          keys: PROMPT_MUTATION_SIDE_EFFECT_KEYS,
+        },
+      ],
     },
     {
       name: 'move success',
@@ -839,9 +886,16 @@ test('runtime contract parses literal response wire fixtures with exact required
         ok: true,
         status: 'success',
         meta: literalPromptMeta,
+        sideEffects: literalPromptMutationSideEffects,
       },
-      keys: ['type', 'ok', 'status', 'meta'],
-      nested: [{ value: literalPromptMeta, keys: PROMPT_META_KEYS }],
+      keys: ['type', 'ok', 'status', 'meta', 'sideEffects'],
+      nested: [
+        { value: literalPromptMeta, keys: PROMPT_META_KEYS },
+        {
+          value: literalPromptMutationSideEffects,
+          keys: PROMPT_MUTATION_SIDE_EFFECT_KEYS,
+        },
+      ],
     },
     {
       name: 'set pinned success',
@@ -850,9 +904,16 @@ test('runtime contract parses literal response wire fixtures with exact required
         ok: true,
         status: 'success',
         meta: literalPromptMeta,
+        sideEffects: literalPromptMutationSideEffects,
       },
-      keys: ['type', 'ok', 'status', 'meta'],
-      nested: [{ value: literalPromptMeta, keys: PROMPT_META_KEYS }],
+      keys: ['type', 'ok', 'status', 'meta', 'sideEffects'],
+      nested: [
+        { value: literalPromptMeta, keys: PROMPT_META_KEYS },
+        {
+          value: literalPromptMutationSideEffects,
+          keys: PROMPT_MUTATION_SIDE_EFFECT_KEYS,
+        },
+      ],
     },
     {
       name: 'export backup success',
@@ -990,11 +1051,24 @@ test('runtime contract parses every valid response builder output', () => {
     buildListPromptMetasSuccessResponse([meta]),
     buildGetPromptBodySuccessResponse(body),
     buildGetPromptRecordSuccessResponse(prompt),
-    buildCreatePromptSuccessResponse(prompt),
-    buildPromptMetaSuccessResponse(UPDATE_PROMPT_META_MESSAGE, meta),
-    buildUpdatePromptBodySuccessResponse(prompt),
-    buildUpdatePromptRecordSuccessResponse(prompt),
-    buildDeletePromptSuccessResponse(prompt.id),
+    buildCreatePromptSuccessResponse(prompt, literalPromptMutationSideEffects),
+    buildPromptMetaSuccessResponse(
+      UPDATE_PROMPT_META_MESSAGE,
+      meta,
+      literalPromptMutationSideEffects,
+    ),
+    buildUpdatePromptBodySuccessResponse(
+      prompt,
+      literalPromptMutationSideEffects,
+    ),
+    buildUpdatePromptRecordSuccessResponse(
+      prompt,
+      literalPromptMutationSideEffects,
+    ),
+    buildDeletePromptSuccessResponse(
+      prompt.id,
+      literalPromptMutationSideEffects,
+    ),
     buildPromptNotFoundResponse(
       GET_PROMPT_BODY_MESSAGE,
       prompt.id,
@@ -1039,6 +1113,12 @@ test('runtime contract parses every valid response builder output', () => {
       'Export failed',
       'data-portability-failed',
       { key: 'options.toast.promptsShareFailed' },
+    ),
+    buildDataPortabilityErrorResponse(
+      RESTORE_BACKUP_MESSAGE,
+      'Rollback failed',
+      'data-portability-rollback-failed',
+      { key: 'runtime.request.failed' },
     ),
   ];
 
@@ -1104,6 +1184,16 @@ test('runtime contract rejects literal responses with omitted required keys', ()
         type: 'promptit/create-prompt',
         ok: true,
         status: 'success',
+        sideEffects: literalPromptMutationSideEffects,
+      },
+    },
+    {
+      name: 'create success missing sideEffects',
+      value: {
+        type: 'promptit/create-prompt',
+        ok: true,
+        status: 'success',
+        prompt: literalPromptRecord,
       },
     },
     {
@@ -1112,6 +1202,16 @@ test('runtime contract rejects literal responses with omitted required keys', ()
         type: 'promptit/update-prompt-meta',
         ok: true,
         status: 'success',
+        sideEffects: literalPromptMutationSideEffects,
+      },
+    },
+    {
+      name: 'update meta success missing sideEffects',
+      value: {
+        type: 'promptit/update-prompt-meta',
+        ok: true,
+        status: 'success',
+        meta: literalPromptMeta,
       },
     },
     {
@@ -1136,6 +1236,16 @@ test('runtime contract rejects literal responses with omitted required keys', ()
         type: 'promptit/delete-prompt',
         ok: true,
         status: 'success',
+        sideEffects: literalPromptMutationSideEffects,
+      },
+    },
+    {
+      name: 'delete success missing sideEffects',
+      value: {
+        type: 'promptit/delete-prompt',
+        ok: true,
+        status: 'success',
+        id: literalPromptMeta.id,
       },
     },
     {
@@ -1273,6 +1383,13 @@ test('runtime contract rejects malformed response payloads', () => {
     },
     { type: CREATE_PROMPT_MESSAGE, ok: true, status: 'error', prompt },
     {
+      type: CREATE_PROMPT_MESSAGE,
+      ok: true,
+      status: 'success',
+      prompt,
+      sideEffects: { promptRevisionPublished: 'yes' },
+    },
+    {
       type: UPDATE_PROMPT_META_MESSAGE,
       ok: false,
       status: 'conflict',
@@ -1311,6 +1428,7 @@ test('runtime contract rejects malformed response payloads', () => {
       ok: true,
       status: 'success',
       id: '',
+      sideEffects: literalPromptMutationSideEffects,
     },
     {
       type: LIST_PROMPT_METAS_MESSAGE,

@@ -42,6 +42,9 @@ export const PROMPT_PINNED_MESSAGE = describeMessage(
 export const PROMPT_UNPINNED_MESSAGE = describeMessage(
   'options.toast.promptUnpinned',
 );
+export const PROMPT_REVISION_PUBLISH_FAILED_MESSAGE = describeMessage(
+  'options.toast.promptRevisionPublishFailed',
+);
 export const UPDATE_NOT_FOUND_MESSAGE = describeMessage(
   'options.alert.updateNotFoundCreateMode',
 );

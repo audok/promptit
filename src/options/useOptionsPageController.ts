@@ -9,6 +9,7 @@ import {
   exportBackup,
   exportSharedPrompts,
   importSharedPrompts,
+  PromptitDataPortabilityError,
   restoreBackup,
 } from '../backup/runtimeClient';
 import {
@@ -64,6 +65,7 @@ const ERROR_TOAST_ALERT_KEYS = new Set<I18nKey>([
   'runtime.prompt.saveFailed',
   'runtime.prompt.deleteFailed',
   'runtime.prompt.pinFailed',
+  'options.toast.promptRevisionPublishFailed',
 ]);
 
 type OptionsPageEditorState = {
@@ -193,6 +195,13 @@ function downloadJson(payload: unknown, filename: string): void {
   window.setTimeout(() => {
     URL.revokeObjectURL(objectUrl);
   }, 0);
+}
+
+function isDataPortabilityRollbackFailure(error: unknown): boolean {
+  return (
+    error instanceof PromptitDataPortabilityError &&
+    error.code === 'data-portability-rollback-failed'
+  );
 }
 
 export function useOptionsPageController(): OptionsPageController {
@@ -463,7 +472,14 @@ export function useOptionsPageController(): OptionsPageController {
       return true;
     } catch (error) {
       console.error('[promptit] Failed to restore backup.', error);
-      showOptionsToast(t('options.toast.backupRestoreFailed'), 'error');
+      showOptionsToast(
+        t(
+          isDataPortabilityRollbackFailure(error)
+            ? 'options.toast.backupRestoreRollbackFailed'
+            : 'options.toast.backupRestoreFailed',
+        ),
+        'error',
+      );
       return false;
     } finally {
       setIsBackupShareBusy(false);
@@ -486,7 +502,14 @@ export function useOptionsPageController(): OptionsPageController {
       setIsBackupShareModalOpen(false);
     } catch (error) {
       console.error('[promptit] Failed to import shared prompts.', error);
-      showOptionsToast(t('options.toast.promptsImportFailed'), 'error');
+      showOptionsToast(
+        t(
+          isDataPortabilityRollbackFailure(error)
+            ? 'options.toast.promptsImportRollbackFailed'
+            : 'options.toast.promptsImportFailed',
+        ),
+        'error',
+      );
     } finally {
       setIsBackupShareBusy(false);
     }

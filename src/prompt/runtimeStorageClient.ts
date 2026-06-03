@@ -26,6 +26,7 @@ import {
   sendPromptitRuntimeRequest,
   type DeletePromptResponse as RuntimeDeletePromptResponse,
   type MovePromptResponse,
+  type PromptMutationSideEffects,
   type SetPromptPinnedResponse,
   type UpdatePromptBodyResponse,
   type UpdatePromptMetaResponse,
@@ -65,6 +66,11 @@ export type SetPromptPinnedOptions = {
 };
 
 export type DeletePromptResponse = RuntimeDeletePromptResponse;
+
+export type CreatePromptResult = {
+  prompt: PromptRecord;
+  sideEffects: PromptMutationSideEffects;
+};
 
 type RuntimeFailureResponse = {
   message: string;
@@ -145,7 +151,7 @@ export async function getPromptRecord(id: string): Promise<PromptRecord> {
 
 export async function createPrompt(
   draft: PromptDraft,
-): Promise<PromptRecord> {
+): Promise<CreatePromptResult> {
   const validatedDraft = getValidatedDraft(draft);
   const response = await sendRuntimeRequest(
     buildCreatePromptRequest(validatedDraft),
@@ -159,7 +165,10 @@ export async function createPrompt(
     throwRuntimeResponseError(response);
   }
 
-  return response.prompt;
+  return {
+    prompt: response.prompt,
+    sideEffects: response.sideEffects,
+  };
 }
 
 export async function updatePromptMeta(

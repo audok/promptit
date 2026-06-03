@@ -13,6 +13,7 @@ export {
   updatePromptRecord,
 } from './runtimeStorageClient';
 export type {
+  CreatePromptResult,
   DeletePromptOptions,
   DeletePromptResponse,
   MovePromptOptions,

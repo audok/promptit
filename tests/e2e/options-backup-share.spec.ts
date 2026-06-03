@@ -1,8 +1,10 @@
 import {
+  PROMPTIT_PORTABILITY_UI_MAX_FILE_BYTES,
   PROMPTIT_PORTABILITY_MAX_PROMPTS,
   PROMPTIT_SHARED_PROMPTS_FILE_TYPE,
   PROMPTIT_BACKUP_FILE_TYPE,
 } from '../../src/backup/schema';
+import { writeFile } from 'node:fs/promises';
 import {
   test,
   openOptionsPage,
@@ -609,7 +611,7 @@ test('restore files missing or carrying invalid theme settings preserve current 
   }
 });
 
-test('restore persistence failure rolls back prompt replacement and preserves settings', async ({
+test('restore language rollback failure reports uncertain data state', async ({
   extension,
 }, testInfo) => {
   const currentPrompt = createPromptRecord({
@@ -651,7 +653,7 @@ test('restore persistence failure rolls back prompt replacement and preserves se
   await modal.getByTestId('backup-restore-confirm-button').click();
 
   await expect(getOptionsToast(page)).toContainText(
-    '복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.',
+    '복원에 실패했습니다. 현재 데이터 상태가 불확실하니 프롬프트와 설정을 확인해주세요.',
   );
   await expect.poll(async () => await extension.getPromptRecords()).toEqual([
     currentPrompt,
@@ -660,7 +662,7 @@ test('restore persistence failure rolls back prompt replacement and preserves se
   expect(await extension.getThemePreference()).toBe('light');
 });
 
-test('restore theme persistence failure rolls back prompts and language and preserves theme', async ({
+test('restore theme rollback failure reports uncertain data state', async ({
   extension,
 }, testInfo) => {
   const currentPrompt = createPromptRecord({
@@ -706,13 +708,60 @@ test('restore theme persistence failure rolls back prompts and language and pres
   await modal.getByTestId('backup-restore-confirm-button').click();
 
   await expect(getOptionsToast(page)).toContainText(
-    '복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.',
+    '복원에 실패했습니다. 현재 데이터 상태가 불확실하니 프롬프트와 설정을 확인해주세요.',
   );
   await expect.poll(async () => await extension.getPromptRecords()).toEqual([
     currentPrompt,
   ]);
   await expect.poll(async () => await extension.getLanguagePreference()).toBe('ko');
   expect(await extension.getThemePreference()).toBe('light');
+});
+
+test('restore rollback failure response uses rollback-specific code', async ({
+  extension,
+}) => {
+  const currentPrompt = createPromptRecord({
+    id: 'restore-rollback-code-current',
+    title: '롤백 코드 현재',
+    content: '롤백 코드 현재 본문',
+    normalOrder: 1,
+  });
+  const restoredPrompt = createPromptRecord({
+    id: 'restore-rollback-code-backup',
+    title: '롤백 코드 백업',
+    content: '롤백 코드 백업 본문',
+    normalOrder: 2,
+  });
+
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
+  await extension.failThemePreferenceWrites();
+
+  const response = await extension.sendRuntimeMessage({
+    type: RESTORE_BACKUP_MESSAGE,
+    backup: {
+      type: PROMPTIT_BACKUP_FILE_TYPE,
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-08T00:00:00.000Z',
+      data: {
+        prompts: [restoredPrompt],
+        settings: {
+          languagePreference: 'en',
+          themePreference: 'dark',
+        },
+      },
+    },
+  });
+
+  expect(response).toEqual(
+    expect.objectContaining({
+      type: RESTORE_BACKUP_MESSAGE,
+      ok: false,
+      status: 'error',
+      code: 'data-portability-rollback-failed',
+    }),
+  );
 });
 
 test('prompt import appends new prompt records without overwriting existing prompts', async ({
@@ -801,6 +850,89 @@ test('prompt import appends new prompt records without overwriting existing prom
   expect(await extension.getPromptStorageRevision()).not.toEqual(beforeRevision);
 });
 
+test('prompt import rollback failure reports partial-change risk', async ({
+  extension,
+}, testInfo) => {
+  const currentPrompt = createPromptRecord({
+    id: 'import-rollback-failure-current',
+    title: '가져오기 롤백 전',
+    content: '가져오기 롤백 전 본문',
+    normalOrder: 1,
+  });
+  const filePath = await writeJsonFixture(
+    testInfo,
+    'import-rollback-failure.json',
+    {
+      type: PROMPTIT_SHARED_PROMPTS_FILE_TYPE,
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-08T00:00:00.000Z',
+      data: {
+        prompts: [
+          {
+            title: '롤백 실패 가져오기',
+            content: '리비전 저장 실패로 롤백도 실패해야 한다.',
+          },
+        ],
+      },
+    },
+  );
+
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.failPromptStorageRevisionWrites();
+
+  const page = await openOptionsPage(extension);
+  const modal = await openBackupShareModal(page);
+
+  await modal.getByTestId('prompts-import-file-input').setInputFiles(filePath);
+
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트 가져오기에 실패했습니다. 프롬프트 목록이 일부 변경되었을 수 있으니 현재 데이터를 확인해주세요.',
+  );
+  await expect.poll(async () => await extension.getPromptRecords()).toEqual([
+    currentPrompt,
+  ]);
+});
+
+test('prompt import rollback failure response uses rollback-specific code', async ({
+  extension,
+}) => {
+  const currentPrompt = createPromptRecord({
+    id: 'import-rollback-code-current',
+    title: '가져오기 롤백 코드 전',
+    content: '가져오기 롤백 코드 전 본문',
+    normalOrder: 1,
+  });
+
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.failPromptStorageRevisionWrites();
+
+  const response = await extension.sendRuntimeMessage({
+    type: IMPORT_PROMPTS_MESSAGE,
+    prompts: {
+      type: PROMPTIT_SHARED_PROMPTS_FILE_TYPE,
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-08T01:00:00.000Z',
+      data: {
+        prompts: [
+          {
+            title: '롤백 코드 가져오기',
+            content: '가져오기 런타임 롤백 코드 확인 본문',
+          },
+        ],
+      },
+    },
+  });
+
+  expect(response).toEqual(
+    expect.objectContaining({
+      type: IMPORT_PROMPTS_MESSAGE,
+      ok: false,
+      status: 'error',
+      code: 'data-portability-rollback-failed',
+    }),
+  );
+});
+
 test('invalid prompt import files preserve current data', async ({
   extension,
 }, testInfo) => {
@@ -835,6 +967,73 @@ test('invalid prompt import files preserve current data', async ({
   await expect(getOptionsToast(page)).toContainText(
     '프롬프트 가져오기에 실패했습니다.',
   );
+  expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
+});
+
+test('over UI-cap selected files are rejected before file text is read', async ({
+  extension,
+}, testInfo) => {
+  const currentPrompt = createPromptRecord({
+    id: 'over-ui-cap-current',
+    title: 'UI 한도 검사 전 프롬프트',
+    content: 'UI 한도 초과 파일 뒤에도 유지되어야 한다.',
+    normalOrder: 1,
+  });
+  const filePath = testInfo.outputPath('over-ui-cap.json');
+
+  await writeFile(
+    filePath,
+    'x'.repeat(PROMPTIT_PORTABILITY_UI_MAX_FILE_BYTES + 1),
+    'utf8',
+  );
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
+
+  const page = await openOptionsPage(extension, async (nextPage) => {
+    await nextPage.addInitScript(() => {
+      const originalText = File.prototype.text;
+
+      (window as Window & {
+        __promptitFileTextCalled?: boolean;
+      }).__promptitFileTextCalled = false;
+
+      File.prototype.text = function text() {
+        (window as Window & {
+          __promptitFileTextCalled?: boolean;
+        }).__promptitFileTextCalled = true;
+
+        return originalText.call(this);
+      };
+    });
+  });
+  const modal = await openBackupShareModal(page);
+
+  await modal.getByTestId('backup-restore-file-input').setInputFiles(filePath);
+
+  await expect(getOptionsToast(page)).toContainText(
+    '복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.',
+  );
+  await expect(modal.getByRole('heading', { name: '복원할 백업 확인' })).toHaveCount(0);
+  expect(await page.evaluate(() => {
+    return (window as Window & {
+      __promptitFileTextCalled?: boolean;
+    }).__promptitFileTextCalled;
+  })).toBe(false);
+  expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
+  expect(await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
+
+  await modal.getByTestId('prompts-import-file-input').setInputFiles(filePath);
+
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트 가져오기에 실패했습니다.',
+  );
+  expect(await page.evaluate(() => {
+    return (window as Window & {
+      __promptitFileTextCalled?: boolean;
+    }).__promptitFileTextCalled;
+  })).toBe(false);
   expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
 });
 

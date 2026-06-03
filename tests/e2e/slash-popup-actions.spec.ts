@@ -360,7 +360,7 @@ test('copy cleanup failure closes the popup after clipboard success', async ({
   ).toBe('회의록으로 정리해줘.');
   await expect
     .poll(async () => await getToastText(page))
-    .toBe('Prompt copied.');
+    .toBe('Prompt copied, but could not clean up the input field.');
 });
 
 test('fetches the latest prompt body when copying from an already-open popup', async ({

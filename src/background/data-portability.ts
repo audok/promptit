@@ -48,9 +48,24 @@ import { enqueueStorageRequest } from './storage-queue';
 
 const DATA_PORTABILITY_FAILED_MESSAGE =
   '데이터를 백업하거나 가져오는 중 오류가 발생했습니다.';
+const DATA_PORTABILITY_ROLLBACK_FAILED_MESSAGE =
+  '데이터 변경을 되돌리는 중 오류가 발생했습니다.';
 const DATA_PORTABILITY_FAILED_DESCRIPTOR = {
   key: 'runtime.request.failed',
 } satisfies RuntimeMessageDescriptor;
+
+class DataPortabilityRollbackFailedError extends Error {
+  readonly originalError: unknown;
+  readonly rollbackError: unknown;
+
+  constructor(originalError: unknown, rollbackError: unknown) {
+    super(DATA_PORTABILITY_ROLLBACK_FAILED_MESSAGE);
+    this.name = 'DataPortabilityRollbackFailedError';
+    this.originalError = originalError;
+    this.rollbackError = rollbackError;
+    Object.setPrototypeOf(this, DataPortabilityRollbackFailedError.prototype);
+  }
+}
 
 export function handleDataPortabilityRequest(
   request: DataPortabilityRequest,
@@ -74,10 +89,19 @@ async function executeDataPortabilityRequest(
     }
   } catch (error) {
     console.error('[promptit] Data portability request failed.', error);
+    const rollbackFailed = error instanceof DataPortabilityRollbackFailedError;
+
     return buildDataPortabilityErrorResponse(
       request.type,
-      getErrorMessage(error, DATA_PORTABILITY_FAILED_MESSAGE),
-      'data-portability-failed',
+      getErrorMessage(
+        error,
+        rollbackFailed
+          ? DATA_PORTABILITY_ROLLBACK_FAILED_MESSAGE
+          : DATA_PORTABILITY_FAILED_MESSAGE,
+      ),
+      rollbackFailed
+        ? 'data-portability-rollback-failed'
+        : 'data-portability-failed',
       DATA_PORTABILITY_FAILED_DESCRIPTOR,
     );
   }
@@ -197,6 +221,10 @@ async function rollbackRestoreSnapshot(
         rollbackError,
       },
     );
+    throw new DataPortabilityRollbackFailedError(
+      originalError,
+      rollbackError,
+    );
   }
 }
 
@@ -214,6 +242,10 @@ async function rollbackImportedPrompts(
         originalError,
         rollbackError,
       },
+    );
+    throw new DataPortabilityRollbackFailedError(
+      originalError,
+      rollbackError,
     );
   }
 }

@@ -11,6 +11,7 @@ import {
   PROMPT_CREATED_MESSAGE,
   PROMPT_DELETED_MESSAGE,
   PROMPT_PINNED_MESSAGE,
+  PROMPT_REVISION_PUBLISH_FAILED_MESSAGE,
   PROMPT_UNPINNED_MESSAGE,
   PROMPT_UPDATED_MESSAGE,
   UPDATE_NOT_FOUND_MESSAGE,
@@ -100,6 +101,7 @@ export type PromptEditorAction =
     }
   | { type: 'save-started' }
   | { type: 'save-finished' }
+  | { type: 'mutation-side-effect-warning' }
   | {
       type: 'save-failed';
       message: LocalizedMessageDescriptor;
@@ -390,6 +392,13 @@ export function promptEditorReducer(
       return {
         ...state,
         alertMessage: action.message,
+      };
+
+    case 'mutation-side-effect-warning':
+      return {
+        ...state,
+        notice: null,
+        alertMessage: PROMPT_REVISION_PUBLISH_FAILED_MESSAGE,
       };
 
     case 'editing-prompt-missing-on-save':

@@ -4,6 +4,7 @@ import {
   buildImportPromptsRequest,
   buildRestoreBackupRequest,
   sendPromptitRuntimeRequest,
+  type DataPortabilityErrorCode,
   type DataPortabilityRequest,
   type DataPortabilityResponse,
 } from '../runtime/messages';
@@ -18,19 +19,23 @@ import type {
 } from './schema';
 
 type RuntimeFailureResponse = {
+  code: DataPortabilityErrorCode;
   message: string;
   messageDescriptor?: RuntimeMessageDescriptor;
 };
 
 export class PromptitDataPortabilityError extends Error {
+  readonly code: DataPortabilityErrorCode;
   readonly messageDescriptor?: RuntimeMessageDescriptor;
 
   constructor(
+    code: DataPortabilityErrorCode,
     message: string,
     messageDescriptor?: RuntimeMessageDescriptor,
   ) {
     super(message);
     this.name = 'PromptitDataPortabilityError';
+    this.code = code;
     this.messageDescriptor = messageDescriptor;
     Object.setPrototypeOf(this, PromptitDataPortabilityError.prototype);
   }
@@ -125,6 +130,7 @@ function sendRuntimeRequest(
 
 function throwRuntimeResponseError(response: RuntimeFailureResponse): never {
   throw new PromptitDataPortabilityError(
+    response.code,
     response.message,
     response.messageDescriptor,
   );

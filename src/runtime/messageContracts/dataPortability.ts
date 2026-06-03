@@ -50,7 +50,9 @@ export type DataPortabilityRequest =
   | ExportPromptsRequest
   | ImportPromptsRequest;
 
-export type DataPortabilityErrorCode = 'data-portability-failed';
+export type DataPortabilityErrorCode =
+  | 'data-portability-failed'
+  | 'data-portability-rollback-failed';
 
 export type ExportBackupSuccessResponse = {
   type: typeof EXPORT_BACKUP_MESSAGE;
@@ -336,7 +338,7 @@ function parseDataPortabilityErrorResponse<
   if (
     value.ok === false &&
     value.status === 'error' &&
-    value.code === 'data-portability-failed' &&
+    isDataPortabilityErrorCode(value.code) &&
     typeof value.message === 'string'
   ) {
     return buildDataPortabilityErrorResponse(
@@ -348,4 +350,13 @@ function parseDataPortabilityErrorResponse<
   }
 
   return null;
+}
+
+function isDataPortabilityErrorCode(
+  value: unknown,
+): value is DataPortabilityErrorCode {
+  return (
+    value === 'data-portability-failed' ||
+    value === 'data-portability-rollback-failed'
+  );
 }

@@ -66,6 +66,7 @@ export type {
   MovePromptRequest,
   MovePromptResponse,
   PromptErrorCode,
+  PromptMutationSideEffects,
   PromptMetaSuccessResponse,
   PromptMutationRequest,
   PromptMutationResponse,

@@ -60,6 +60,7 @@ import type {
   PromptMetaConflictMessageType,
   PromptMetaConflictResponse,
   PromptMetaSuccessResponse,
+  PromptMutationSideEffects,
   PromptNotFoundResponse,
   PromptRecordConflictMessageType,
   PromptRecordConflictResponse,
@@ -327,7 +328,10 @@ function parseCreatePromptResponse(
 ): CreatePromptResponse | null {
   if (value.ok === true && value.status === 'success') {
     const prompt = parsePromptRecord(value.prompt);
-    return prompt ? buildCreatePromptSuccessResponse(prompt) : null;
+    const sideEffects = parsePromptMutationSideEffects(value.sideEffects);
+    return prompt && sideEffects
+      ? buildCreatePromptSuccessResponse(prompt, sideEffects)
+      : null;
   }
 
   return parsePromptErrorResponse(value, CREATE_PROMPT_MESSAGE);
@@ -346,7 +350,10 @@ function parsePromptMetaResponse<
   | null {
   if (value.ok === true && value.status === 'success') {
     const meta = parsePromptMeta(value.meta);
-    return meta ? buildPromptMetaSuccessResponse(type, meta) : null;
+    const sideEffects = parsePromptMutationSideEffects(value.sideEffects);
+    return meta && sideEffects
+      ? buildPromptMetaSuccessResponse(type, meta, sideEffects)
+      : null;
   }
 
   return (
@@ -361,7 +368,10 @@ function parseUpdatePromptBodyResponse(
 ): UpdatePromptBodyResponse | null {
   if (value.ok === true && value.status === 'success') {
     const prompt = parsePromptRecord(value.prompt);
-    return prompt ? buildUpdatePromptBodySuccessResponse(prompt) : null;
+    const sideEffects = parsePromptMutationSideEffects(value.sideEffects);
+    return prompt && sideEffects
+      ? buildUpdatePromptBodySuccessResponse(prompt, sideEffects)
+      : null;
   }
 
   return (
@@ -376,7 +386,10 @@ function parseUpdatePromptRecordResponse(
 ): UpdatePromptRecordResponse | null {
   if (value.ok === true && value.status === 'success') {
     const prompt = parsePromptRecord(value.prompt);
-    return prompt ? buildUpdatePromptRecordSuccessResponse(prompt) : null;
+    const sideEffects = parsePromptMutationSideEffects(value.sideEffects);
+    return prompt && sideEffects
+      ? buildUpdatePromptRecordSuccessResponse(prompt, sideEffects)
+      : null;
   }
 
   return (
@@ -392,7 +405,8 @@ function parseDeletePromptResponse(
   const id = parsePromptId(value.id);
 
   if (value.ok === true && value.status === 'success' && id) {
-    return buildDeletePromptSuccessResponse(id);
+    const sideEffects = parsePromptMutationSideEffects(value.sideEffects);
+    return sideEffects ? buildDeletePromptSuccessResponse(id, sideEffects) : null;
   }
 
   return (
@@ -400,6 +414,25 @@ function parseDeletePromptResponse(
     parseMetaConflictResponse(value, DELETE_PROMPT_MESSAGE) ??
     parsePromptErrorResponse(value, DELETE_PROMPT_MESSAGE)
   );
+}
+
+function parsePromptMutationSideEffects(
+  value: unknown,
+): PromptMutationSideEffects | null {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    typeof (value as { promptRevisionPublished?: unknown })
+      .promptRevisionPublished !== 'boolean'
+  ) {
+    return null;
+  }
+
+  return {
+    promptRevisionPublished: (value as {
+      promptRevisionPublished: boolean;
+    }).promptRevisionPublished,
+  };
 }
 
 function parseNotFoundResponse<T extends ExistingPromptMessageType>(

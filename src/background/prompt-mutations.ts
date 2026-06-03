@@ -47,6 +47,7 @@ import {
   type ListPromptMetasResponse,
   type MovePromptRequest,
   type MovePromptResponse,
+  type PromptMutationSideEffects,
   type PromptRequest,
   type PromptResponse,
   type SetPromptPinnedRequest,
@@ -186,9 +187,9 @@ async function handleCreatePromptRequest(
   request: CreatePromptRequest,
 ): Promise<CreatePromptResponse> {
   const prompt = await createPrompt(request.draft);
+  const sideEffects = await publishPromptStorageSideEffects();
 
-  await publishPromptStorageSideEffectsBestEffort();
-  return buildCreatePromptSuccessResponse(prompt);
+  return buildCreatePromptSuccessResponse(prompt, sideEffects);
 }
 
 async function handleUpdatePromptMetaRequest(
@@ -199,12 +200,14 @@ async function handleUpdatePromptMetaRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
       return buildPromptMetaSuccessResponse(
         UPDATE_PROMPT_META_MESSAGE,
         result.value,
+        sideEffects,
       );
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         UPDATE_PROMPT_META_MESSAGE,
@@ -234,9 +237,10 @@ async function handleUpdatePromptBodyRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
-      return buildUpdatePromptBodySuccessResponse(result.value);
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildUpdatePromptBodySuccessResponse(result.value, sideEffects);
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         UPDATE_PROMPT_BODY_MESSAGE,
@@ -267,9 +271,10 @@ async function handleUpdatePromptRecordRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
-      return buildUpdatePromptRecordSuccessResponse(result.value);
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildUpdatePromptRecordSuccessResponse(result.value, sideEffects);
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         UPDATE_PROMPT_RECORD_MESSAGE,
@@ -300,9 +305,10 @@ async function handleDeletePromptRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
-      return buildDeletePromptSuccessResponse(result.value);
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildDeletePromptSuccessResponse(result.value, sideEffects);
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         DELETE_PROMPT_MESSAGE,
@@ -334,9 +340,14 @@ async function handleMovePromptRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
-      return buildPromptMetaSuccessResponse(MOVE_PROMPT_MESSAGE, result.value);
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildPromptMetaSuccessResponse(
+        MOVE_PROMPT_MESSAGE,
+        result.value,
+        sideEffects,
+      );
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         MOVE_PROMPT_MESSAGE,
@@ -365,12 +376,14 @@ async function handleSetPromptPinnedRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
       return buildPromptMetaSuccessResponse(
         SET_PROMPT_PINNED_MESSAGE,
         result.value,
+        sideEffects,
       );
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         SET_PROMPT_PINNED_MESSAGE,
@@ -403,11 +416,13 @@ function buildRequestErrorResponse(
   );
 }
 
-async function publishPromptStorageSideEffectsBestEffort(): Promise<void> {
+async function publishPromptStorageSideEffects(): Promise<PromptMutationSideEffects> {
   try {
     await publishPromptRevision();
+    return { promptRevisionPublished: true };
   } catch (error) {
     console.error('[promptit] Failed to publish prompt revision.', error);
+    return { promptRevisionPublished: false };
   }
 }
 

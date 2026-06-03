@@ -11,6 +11,7 @@ import {
 
 import {
   isPromptitPortabilityFileSizeAllowed,
+  isPromptitPortabilityUiFileSizeAllowed,
   parsePromptitBackupFile,
   parsePromptitSharedPromptsFile,
   type PromptitBackupFile,
@@ -139,6 +140,10 @@ export function BackupShareModal(props: BackupShareModalProps) {
         throw new Error('Promptit backup file is too large.');
       }
 
+      if (!isPromptitPortabilityUiFileSizeAllowed(selectedFile)) {
+        throw new Error('Promptit backup file is too large to parse in the UI.');
+      }
+
       const parsedJson = JSON.parse(await selectedFile.text()) as unknown;
       const backupFile = parsePromptitBackupFile(parsedJson, {
         enforceSizeLimits: true,
@@ -171,6 +176,12 @@ export function BackupShareModal(props: BackupShareModalProps) {
     try {
       if (!isPromptitPortabilityFileSizeAllowed(selectedFile)) {
         throw new Error('Promptit shared prompts file is too large.');
+      }
+
+      if (!isPromptitPortabilityUiFileSizeAllowed(selectedFile)) {
+        throw new Error(
+          'Promptit shared prompts file is too large to parse in the UI.',
+        );
       }
 
       const parsedJson = JSON.parse(await selectedFile.text()) as unknown;

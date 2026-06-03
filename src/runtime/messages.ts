@@ -60,6 +60,7 @@ export type {
   SetPromptPinnedRequest,
   PromptRequest,
   PromptMutationRequest,
+  PromptMutationSideEffects,
   PromptErrorCode,
   ListPromptMetasSuccessResponse,
   GetPromptBodySuccessResponse,

@@ -299,6 +299,9 @@ test('runtime create commits when prompt revision publication fails', async ({
       type: CREATE_PROMPT_MESSAGE,
       ok: true,
       status: 'success',
+      sideEffects: {
+        promptRevisionPublished: false,
+      },
     }),
   );
 
@@ -331,6 +334,9 @@ test('runtime create commits when prompt revision publication fails', async ({
       type: UPDATE_PROMPT_META_MESSAGE,
       ok: true,
       status: 'success',
+      sideEffects: {
+        promptRevisionPublished: false,
+      },
     }),
   );
 
@@ -357,6 +363,9 @@ test('runtime create commits when prompt revision publication fails', async ({
       type: UPDATE_PROMPT_BODY_MESSAGE,
       ok: true,
       status: 'success',
+      sideEffects: {
+        promptRevisionPublished: false,
+      },
     }),
   );
 
@@ -382,9 +391,45 @@ test('runtime create commits when prompt revision publication fails', async ({
       ok: true,
       status: 'success',
       id: createdPrompt.id,
+      sideEffects: {
+        promptRevisionPublished: false,
+      },
     }),
   );
   await expect.poll(async () => await extension.getPromptRecords()).toEqual([]);
+});
+
+test('options create refreshes current page and warns when prompt revision publication fails', async ({
+  extension,
+}) => {
+  await extension.setPromptRecords([]);
+  await extension.failPromptStorageRevisionWrites();
+
+  const page = await openOptionsPage(extension);
+
+  await createPromptFromOptions(
+    page,
+    '리비전 실패 UI 생성',
+    '현재 설정 페이지에는 즉시 보여야 한다.',
+  );
+
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트는 저장됐지만 다른 열린 탭은 새로고침이 필요할 수 있습니다.',
+  );
+  await expect(getPromptCard(page, '리비전 실패 UI 생성')).toBeVisible();
+  await expect
+    .poll(async () =>
+      (await extension.getPromptRecords()).map((prompt) => ({
+        title: prompt.title,
+        content: prompt.content,
+      })),
+    )
+    .toEqual([
+      {
+        title: '리비전 실패 UI 생성',
+        content: '현재 설정 페이지에는 즉시 보여야 한다.',
+      },
+    ]);
 });
 
 test('runtime create accepts drafts without conflict timestamps', async ({

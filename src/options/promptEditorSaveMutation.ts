@@ -1,6 +1,7 @@
 import { PromptitRuntimeError } from '../prompt/storage';
 import type * as promptStorage from '../prompt/storage';
 import type { PromptMeta, PromptRecord } from '../prompt/schema';
+import type { PromptMutationSideEffects } from '../runtime/messages';
 import { type LocalizedMessageDescriptor } from '../shared/i18n';
 import {
   getConflictRetryAlertMessage,
@@ -20,6 +21,7 @@ export type SaveExistingPromptResult =
       status: 'saved';
       prompts: PromptMeta[];
       record: PromptRecord;
+      sideEffects: PromptMutationSideEffects;
     }
   | {
       status: 'conflict';
@@ -69,6 +71,7 @@ export async function saveExistingPrompt(input: {
       status: 'saved',
       prompts: upsertPromptMeta(prompts, result.prompt),
       record: result.prompt,
+      sideEffects: result.sideEffects,
     };
   }
 

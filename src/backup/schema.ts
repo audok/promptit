@@ -22,6 +22,7 @@ export const PROMPTIT_PORTABILITY_METADATA_FILE_BYTES = 20 * 1024 * 1024;
 export const PROMPTIT_PORTABILITY_MAX_FILE_BYTES =
   PROMPTIT_PORTABILITY_MAX_PROMPTS * PROMPT_BODY_MAX_BYTES +
   PROMPTIT_PORTABILITY_METADATA_FILE_BYTES;
+export const PROMPTIT_PORTABILITY_UI_MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 type PromptitPortabilityParseOptions = {
   enforceSizeLimits?: boolean;
@@ -218,6 +219,16 @@ export function isPromptitPortabilityFileSizeAllowed(file: {
     Number.isFinite(file.size) &&
     file.size >= 0 &&
     file.size <= PROMPTIT_PORTABILITY_MAX_FILE_BYTES
+  );
+}
+
+export function isPromptitPortabilityUiFileSizeAllowed(file: {
+  size: number;
+}): boolean {
+  return (
+    Number.isFinite(file.size) &&
+    file.size >= 0 &&
+    file.size <= PROMPTIT_PORTABILITY_UI_MAX_FILE_BYTES
   );
 }
 

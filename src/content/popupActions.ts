@@ -37,6 +37,11 @@ export type ClosePopupOptions = {
   showCleanupFailureToast?: boolean;
 };
 
+export type ClosePopupResult = {
+  closed: boolean;
+  cleanupFailed: boolean;
+};
+
 export async function handleSelection(
   context: ContentControllerContext,
   item: LauncherItem,
@@ -145,16 +150,21 @@ export async function handleCopy(
       return;
     }
 
-    const didClose = await closePopup(context, 'copy', true, {
+    const closeResult = await closePopup(context, 'copy', true, {
       reopenOnCleanupFailure: false,
       showCleanupFailureToast: false,
     });
 
-    if (!didClose) {
+    if (!closeResult.closed) {
       return;
     }
 
-    showToast(translate(context.getLocale(), 'content.toast.copySuccess'));
+    showToast(
+      closeResult.cleanupFailed
+        ? translate(context.getLocale(), 'content.toast.copyCleanupFailed')
+        : translate(context.getLocale(), 'content.toast.copySuccess'),
+      closeResult.cleanupFailed ? 'error' : 'success',
+    );
   } catch (error) {
     if (!isCurrentPopupActionToken(session, actionToken)) {
       return;
@@ -207,9 +217,15 @@ export async function handleTogglePinned(
           mergePromptMeta(session.items, response.meta),
         );
         showToast(
-          response.meta.pinned
-            ? translate(context.getLocale(), 'content.toast.pinSuccess')
-            : translate(context.getLocale(), 'content.toast.unpinSuccess'),
+          response.sideEffects.promptRevisionPublished
+            ? response.meta.pinned
+              ? translate(context.getLocale(), 'content.toast.pinSuccess')
+              : translate(context.getLocale(), 'content.toast.unpinSuccess')
+            : translate(
+                context.getLocale(),
+                'content.toast.promptRevisionPublishFailed',
+              ),
+          response.sideEffects.promptRevisionPublished ? 'success' : 'error',
         );
         break;
       case 'conflict':
@@ -297,11 +313,11 @@ export async function closePopup(
   reason: CloseReason,
   cleanupTrigger: boolean,
   options: ClosePopupOptions = {},
-): Promise<boolean> {
+): Promise<ClosePopupResult> {
   const { adapter, popup, session } = context;
 
   if (session.status === 'idle') {
-    return false;
+    return { closed: false, cleanupFailed: false };
   }
 
   clearTriggerArm(session);
@@ -313,6 +329,7 @@ export async function closePopup(
   const triggerContext = session.triggerContext
     ? cloneTriggerContext(session.triggerContext)
     : null;
+  let cleanupFailed = false;
 
   if (cleanupTrigger && activeInput && triggerContext) {
     session.isBusy = true;
@@ -329,6 +346,7 @@ export async function closePopup(
         `clean up trigger text after ${reason}`,
       );
     } catch (error) {
+      cleanupFailed = true;
       console.error('[promptit] Failed to clean up trigger text.', error);
       if (options.showCleanupFailureToast !== false) {
         showToast(
@@ -344,7 +362,7 @@ export async function closePopup(
         popup.setBusy(false);
         session.status = 'open';
         session.closeReason = null;
-        return false;
+        return { closed: false, cleanupFailed };
       }
     } finally {
       queueMicrotask(() => {
@@ -356,7 +374,7 @@ export async function closePopup(
   popup.destroy();
   session.disconnectInputObserver?.();
   resetSessionState(session);
-  return true;
+  return { closed: true, cleanupFailed };
 }
 
 async function performOpenOptionsAction(
@@ -383,7 +401,7 @@ async function performOpenOptionsAction(
       return false;
     }
 
-    return await closePopup(
+    const closeResult = await closePopup(
       context,
       'open-options',
       Boolean(activeInput && triggerContext),
@@ -391,6 +409,7 @@ async function performOpenOptionsAction(
         reopenOnCleanupFailure: false,
       },
     );
+    return closeResult.closed;
   } catch (error) {
     if (!isCurrentPopupActionToken(session, actionToken)) {
       return false;

@@ -4,6 +4,7 @@ import {
   type PromptMeta,
   type PromptRecord,
 } from '../prompt/schema';
+import type { PromptMutationSideEffects } from '../runtime/messages';
 import {
   PromptitRuntimeError,
   createPrompt,
@@ -214,6 +215,27 @@ export function usePromptEditor(): UsePromptEditorResult {
     }
   }
 
+  async function handlePromptMutationSideEffects(
+    sideEffects: PromptMutationSideEffects,
+  ): Promise<void> {
+    if (sideEffects.promptRevisionPublished) {
+      return;
+    }
+
+    dispatch({ type: 'mutation-side-effect-warning' });
+
+    try {
+      applyIncomingPrompts(await getPromptMetas());
+    } catch (error) {
+      console.error(
+        '[promptit] Failed to refresh prompts after prompt revision publish failure.',
+        error,
+      );
+    } finally {
+      dispatch({ type: 'mutation-side-effect-warning' });
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -384,16 +406,21 @@ export function usePromptEditor(): UsePromptEditorResult {
           updatedAt: saveResult.record.updatedAt,
           bodyUpdatedAt: saveResult.record.bodyUpdatedAt,
         };
+        await handlePromptMutationSideEffects(saveResult.sideEffects);
         savingPromptIdRef.current = null;
         return;
       }
 
-      const createdPrompt = await createPrompt(buildCreateDraft(parsedForm.form));
+      const createResult = await createPrompt(buildCreateDraft(parsedForm.form));
 
       startTransition(() => {
         bodyLoadRequestIdRef.current += 1;
-        dispatch({ type: 'prompt-create-succeeded', prompt: createdPrompt });
+        dispatch({
+          type: 'prompt-create-succeeded',
+          prompt: createResult.prompt,
+        });
       });
+      await handlePromptMutationSideEffects(createResult.sideEffects);
     } catch (error) {
       console.error('[promptit] Failed to save prompt.', error);
       dispatch({
@@ -446,6 +473,7 @@ export function usePromptEditor(): UsePromptEditorResult {
             activeMode: currentMode,
           });
         });
+        await handlePromptMutationSideEffects(result.sideEffects);
         return true;
       }
 
@@ -532,6 +560,7 @@ export function usePromptEditor(): UsePromptEditorResult {
           meta: result.meta,
           activeMode: currentMode,
         });
+        await handlePromptMutationSideEffects(result.sideEffects);
         return true;
       }
 
@@ -626,6 +655,7 @@ export function usePromptEditor(): UsePromptEditorResult {
             activeMode: currentMode,
           });
         });
+        await handlePromptMutationSideEffects(result.sideEffects);
         return;
       }
 
