@@ -14,7 +14,7 @@ export default defineManifest({
   manifest_version: 3,
   default_locale: 'ko',
   name: '__MSG_appName__',
-  version: '0.9.0',
+  version: '1.0.0',
   description: '__MSG_extensionDescription__',
   icons: {
     16: 'icons/icon16.png',

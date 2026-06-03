@@ -1,6 +1,6 @@
 {
   "name": "promptit",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "description": "Slash-command prompt launcher for ChatGPT and Gemini",
   "main": "index.js",
   "scripts": {
