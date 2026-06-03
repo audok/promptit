@@ -1,4 +1,7 @@
+<p align="right"><a href="README.md">English</a> | 한국어</p>
+
 # promptit
+
 promptit은 ChatGPT와 Gemini 입력창에서 `/ `를 입력해 저장해 둔 프롬프트를 바로 불러오는 Chromium 브라우저 확장 프로그램입니다.
 
 자주 쓰는 프롬프트를 옵션 페이지에 저장해 두고, [ChatGPT](https://chatgpt.com/), [Gemini](https://gemini.google.com/) 사이트에서 프롬프트를 바로 삽입하거나 복사할 수 있습니다.

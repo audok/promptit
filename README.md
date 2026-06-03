@@ -1,4 +1,7 @@
+<p align="right">English | <a href="README.ko.md">한국어</a></p>
+
 # promptit
+
 promptit is a Chromium browser extension that lets you quickly open saved prompts by typing `/ ` in ChatGPT and Gemini input fields.
 
 Save frequently used prompts on the options page, then insert or copy them directly on [ChatGPT](https://chatgpt.com/) and [Gemini](https://gemini.google.com/).
