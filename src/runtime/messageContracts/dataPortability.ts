@@ -246,7 +246,9 @@ export function parseDataPortabilityRuntimeResponse(
 function parseRestoreBackupRequest(
   value: Record<string, unknown>,
 ): RestoreBackupRequest | null {
-  const backup = parsePromptitBackupFile(value.backup);
+  const backup = parsePromptitBackupFile(value.backup, {
+    enforceSizeLimits: true,
+  });
 
   return backup ? buildRestoreBackupRequest(backup) : null;
 }
@@ -254,7 +256,9 @@ function parseRestoreBackupRequest(
 function parseImportPromptsRequest(
   value: Record<string, unknown>,
 ): ImportPromptsRequest | null {
-  const prompts = parsePromptitSharedPromptsFile(value.prompts);
+  const prompts = parsePromptitSharedPromptsFile(value.prompts, {
+    enforceSizeLimits: true,
+  });
 
   return prompts ? buildImportPromptsRequest(prompts) : null;
 }
@@ -263,7 +267,9 @@ function parseExportBackupResponse(
   value: Record<string, unknown>,
 ): ExportBackupResponse | null {
   if (value.ok === true && value.status === 'success') {
-    const backup = parsePromptitBackupFile(value.backup);
+    const backup = parsePromptitBackupFile(value.backup, {
+      enforceSizeLimits: false,
+    });
     return backup ? buildExportBackupSuccessResponse(backup) : null;
   }
 
@@ -296,7 +302,9 @@ function parseExportPromptsResponse(
   value: Record<string, unknown>,
 ): ExportPromptsResponse | null {
   if (value.ok === true && value.status === 'success') {
-    const prompts = parsePromptitSharedPromptsFile(value.prompts);
+    const prompts = parsePromptitSharedPromptsFile(value.prompts, {
+      enforceSizeLimits: false,
+    });
     return prompts ? buildExportPromptsSuccessResponse(prompts) : null;
   }
 

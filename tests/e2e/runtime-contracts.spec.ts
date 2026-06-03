@@ -60,14 +60,19 @@ import {
   type UpdatePromptRecordResponse,
 } from '../../src/runtime/messages';
 import {
+  PROMPT_BODY_MAX_BYTES,
   type PromptBody,
   type PromptMeta,
   type PromptRecord,
 } from '../../src/prompt/schema';
 import { getContentRuntimeResponseToastMessage } from '../../src/content/runtimeFeedback';
 import {
+  PROMPTIT_PORTABILITY_MAX_FILE_BYTES,
+  PROMPTIT_PORTABILITY_MAX_PROMPTS,
   PROMPTIT_BACKUP_FILE_TYPE,
   PROMPTIT_SHARED_PROMPTS_FILE_TYPE,
+  isPromptitPortabilityFileSizeAllowed,
+  isPromptitPortabilityPromptCountAllowed,
   type PromptitBackupFile,
   type PromptitSharedPromptsFile,
 } from '../../src/backup/schema';
@@ -501,6 +506,24 @@ test('runtime contract parses every valid request builder output', () => {
 });
 
 test('runtime contract rejects malformed requests for every message family', () => {
+  const oversizedPromptContent = 'a'.repeat(PROMPT_BODY_MAX_BYTES + 1);
+  const tooManyPromptRecords = Array.from(
+    { length: PROMPTIT_PORTABILITY_MAX_PROMPTS + 1 },
+    (_, index) =>
+      createPromptRecord({
+        id: `over-limit-runtime-backup-${index}`,
+        title: `Runtime backup ${index}`,
+        content: 'Backup body',
+        normalOrder: index + 1,
+      }),
+  );
+  const tooManySharedPrompts = Array.from(
+    { length: PROMPTIT_PORTABILITY_MAX_PROMPTS + 1 },
+    (_, index) => ({
+      title: `Runtime shared ${index}`,
+      content: 'Shared body',
+    }),
+  );
   const malformedRequests = [
     { type: 'promptit/unknown' },
     { type: GET_PROMPT_BODY_MESSAGE },
@@ -545,12 +568,92 @@ test('runtime contract rejects malformed requests for every message family', () 
       expectedUpdatedAt: timestamp,
     },
     { type: RESTORE_BACKUP_MESSAGE, backup: { ...backup, exportedAt: 'bad' } },
+    {
+      type: RESTORE_BACKUP_MESSAGE,
+      backup: {
+        ...backup,
+        data: {
+          ...backup.data,
+          prompts: [
+            {
+              ...prompt,
+              content: oversizedPromptContent,
+              charCount: oversizedPromptContent.length,
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: RESTORE_BACKUP_MESSAGE,
+      backup: {
+        ...backup,
+        data: {
+          ...backup.data,
+          prompts: tooManyPromptRecords,
+        },
+      },
+    },
     { type: IMPORT_PROMPTS_MESSAGE, prompts: { ...sharedPrompts, data: {} } },
+    {
+      type: IMPORT_PROMPTS_MESSAGE,
+      prompts: {
+        ...sharedPrompts,
+        data: {
+          prompts: [
+            {
+              title: 'Oversized shared prompt',
+              content: oversizedPromptContent,
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: IMPORT_PROMPTS_MESSAGE,
+      prompts: {
+        ...sharedPrompts,
+        data: {
+          prompts: tooManySharedPrompts,
+        },
+      },
+    },
   ];
 
   for (const request of malformedRequests) {
     expect(parsePromptitRuntimeRequest(request)).toBeNull();
   }
+});
+
+test('portability limit helpers reject over-limit counts and sizes', () => {
+  const exactLimitContent = 'a'.repeat(PROMPT_BODY_MAX_BYTES);
+  const exactLimitImportRequest = buildImportPromptsRequest({
+    ...sharedPrompts,
+    data: {
+      prompts: [
+        {
+          title: 'Exact limit shared prompt',
+          content: exactLimitContent,
+        },
+      ],
+    },
+  });
+
+  expect(parsePromptitRuntimeRequest(exactLimitImportRequest)).toEqual(
+    exactLimitImportRequest,
+  );
+  expect(isPromptitPortabilityFileSizeAllowed({
+    size: PROMPTIT_PORTABILITY_MAX_FILE_BYTES,
+  })).toBe(true);
+  expect(isPromptitPortabilityFileSizeAllowed({
+    size: PROMPTIT_PORTABILITY_MAX_FILE_BYTES + 1,
+  })).toBe(false);
+  expect(isPromptitPortabilityPromptCountAllowed(
+    PROMPTIT_PORTABILITY_MAX_PROMPTS,
+  )).toBe(true);
+  expect(isPromptitPortabilityPromptCountAllowed(
+    PROMPTIT_PORTABILITY_MAX_PROMPTS + 1,
+  )).toBe(false);
 });
 
 test('runtime contract rejects literal requests with omitted required keys', () => {

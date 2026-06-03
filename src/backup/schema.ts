@@ -1,4 +1,5 @@
 import {
+  PROMPT_BODY_MAX_BYTES,
   getPromptCharCount,
   parsePromptRecord,
   validatePromptDraft,
@@ -16,6 +17,15 @@ import {
 
 export const PROMPTIT_BACKUP_FILE_TYPE = 'promptit.backup';
 export const PROMPTIT_SHARED_PROMPTS_FILE_TYPE = 'promptit.prompts';
+export const PROMPTIT_PORTABILITY_MAX_PROMPTS = 2_000;
+export const PROMPTIT_PORTABILITY_METADATA_FILE_BYTES = 20 * 1024 * 1024;
+export const PROMPTIT_PORTABILITY_MAX_FILE_BYTES =
+  PROMPTIT_PORTABILITY_MAX_PROMPTS * PROMPT_BODY_MAX_BYTES +
+  PROMPTIT_PORTABILITY_METADATA_FILE_BYTES;
+
+type PromptitPortabilityParseOptions = {
+  enforceSizeLimits?: boolean;
+};
 
 export type PromptitBackupSettings = {
   languagePreference: LanguagePreference;
@@ -48,6 +58,7 @@ export type PromptitSharedPromptsFile = {
 
 export function parsePromptitBackupFile(
   value: unknown,
+  options: PromptitPortabilityParseOptions = {},
 ): PromptitBackupFile | null {
   if (!isObjectRecord(value) || !hasExactKeys(value, [
     'type',
@@ -73,6 +84,13 @@ export function parsePromptitBackupFile(
   const settings = parseBackupSettings(value.data.settings);
 
   if (!settings) {
+    return null;
+  }
+
+  if (
+    shouldEnforceSizeLimits(options) &&
+    !isPromptitPortabilityPromptCountAllowed(value.data.prompts.length)
+  ) {
     return null;
   }
 
@@ -103,6 +121,7 @@ export function parsePromptitBackupFile(
 
 export function parsePromptitSharedPromptsFile(
   value: unknown,
+  options: PromptitPortabilityParseOptions = {},
 ): PromptitSharedPromptsFile | null {
   if (!isObjectRecord(value) || !hasExactKeys(value, [
     'type',
@@ -121,6 +140,13 @@ export function parsePromptitSharedPromptsFile(
     !isObjectRecord(value.data) ||
     !hasExactKeys(value.data, ['prompts']) ||
     !Array.isArray(value.data.prompts)
+  ) {
+    return null;
+  }
+
+  if (
+    shouldEnforceSizeLimits(options) &&
+    !isPromptitPortabilityPromptCountAllowed(value.data.prompts.length)
   ) {
     return null;
   }
@@ -150,7 +176,9 @@ export function parsePromptitSharedPromptsFile(
 export function parsePromptitBackupFileOrThrow(
   value: unknown,
 ): PromptitBackupFile {
-  const parsed = parsePromptitBackupFile(value);
+  const parsed = parsePromptitBackupFile(value, {
+    enforceSizeLimits: true,
+  });
 
   if (!parsed) {
     throw new Error('Invalid promptit backup file.');
@@ -162,7 +190,9 @@ export function parsePromptitBackupFileOrThrow(
 export function parsePromptitSharedPromptsFileOrThrow(
   value: unknown,
 ): PromptitSharedPromptsFile {
-  const parsed = parsePromptitSharedPromptsFile(value);
+  const parsed = parsePromptitSharedPromptsFile(value, {
+    enforceSizeLimits: true,
+  });
 
   if (!parsed) {
     throw new Error('Invalid promptit shared prompts file.');
@@ -179,6 +209,32 @@ export function sharedPromptsToDrafts(
     content: prompt.content,
     pinned: false,
   }));
+}
+
+export function isPromptitPortabilityFileSizeAllowed(file: {
+  size: number;
+}): boolean {
+  return (
+    Number.isFinite(file.size) &&
+    file.size >= 0 &&
+    file.size <= PROMPTIT_PORTABILITY_MAX_FILE_BYTES
+  );
+}
+
+export function isPromptitPortabilityPromptCountAllowed(
+  promptCount: number,
+): boolean {
+  return (
+    Number.isInteger(promptCount) &&
+    promptCount >= 0 &&
+    promptCount <= PROMPTIT_PORTABILITY_MAX_PROMPTS
+  );
+}
+
+function shouldEnforceSizeLimits(
+  options: PromptitPortabilityParseOptions,
+): boolean {
+  return options.enforceSizeLimits === true;
 }
 
 function parseBackupSettings(value: unknown): PromptitBackupSettings | null {

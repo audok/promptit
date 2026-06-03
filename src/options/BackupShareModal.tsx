@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import {
+  isPromptitPortabilityFileSizeAllowed,
   parsePromptitBackupFile,
   parsePromptitSharedPromptsFile,
   type PromptitBackupFile,
@@ -134,8 +135,14 @@ export function BackupShareModal(props: BackupShareModalProps) {
     }
 
     try {
+      if (!isPromptitPortabilityFileSizeAllowed(selectedFile)) {
+        throw new Error('Promptit backup file is too large.');
+      }
+
       const parsedJson = JSON.parse(await selectedFile.text()) as unknown;
-      const backupFile = parsePromptitBackupFile(parsedJson);
+      const backupFile = parsePromptitBackupFile(parsedJson, {
+        enforceSizeLimits: true,
+      });
 
       if (!backupFile) {
         throw new Error('Invalid promptit backup file.');
@@ -162,8 +169,14 @@ export function BackupShareModal(props: BackupShareModalProps) {
     }
 
     try {
+      if (!isPromptitPortabilityFileSizeAllowed(selectedFile)) {
+        throw new Error('Promptit shared prompts file is too large.');
+      }
+
       const parsedJson = JSON.parse(await selectedFile.text()) as unknown;
-      const sharedPromptsFile = parsePromptitSharedPromptsFile(parsedJson);
+      const sharedPromptsFile = parsePromptitSharedPromptsFile(parsedJson, {
+        enforceSizeLimits: true,
+      });
 
       if (!sharedPromptsFile) {
         throw new Error('Invalid promptit shared prompts file.');

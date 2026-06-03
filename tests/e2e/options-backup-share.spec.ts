@@ -1,4 +1,9 @@
 import {
+  PROMPTIT_PORTABILITY_MAX_PROMPTS,
+  PROMPTIT_SHARED_PROMPTS_FILE_TYPE,
+  PROMPTIT_BACKUP_FILE_TYPE,
+} from '../../src/backup/schema';
+import {
   test,
   openOptionsPage,
   getPromptList,
@@ -826,6 +831,89 @@ test('invalid prompt import files preserve current data', async ({
   const modal = await openBackupShareModal(page);
 
   await modal.getByTestId('prompts-import-file-input').setInputFiles(filePath);
+
+  await expect(getOptionsToast(page)).toContainText(
+    '프롬프트 가져오기에 실패했습니다.',
+  );
+  expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
+});
+
+test('over-limit restore and import files preserve current data', async ({
+  extension,
+}, testInfo) => {
+  const currentPrompt = createPromptRecord({
+    id: 'over-limit-portability-current',
+    title: '한도 검사 전 프롬프트',
+    content: '한도 초과 파일 뒤에도 유지되어야 한다.',
+    normalOrder: 1,
+  });
+  const tooManyBackupPrompts = Array.from(
+    { length: PROMPTIT_PORTABILITY_MAX_PROMPTS + 1 },
+    (_, index) =>
+      createPromptRecord({
+        id: `over-limit-restore-${index}`,
+        title: `복원 한도 ${index}`,
+        content: '복원 한도 초과 본문',
+        normalOrder: index + 1,
+      }),
+  );
+  const tooManySharedPrompts = Array.from(
+    { length: PROMPTIT_PORTABILITY_MAX_PROMPTS + 1 },
+    (_, index) => ({
+      title: `가져오기 한도 ${index}`,
+      content: '가져오기 한도 초과 본문',
+    }),
+  );
+  const restoreFilePath = await writeJsonFixture(
+    testInfo,
+    'over-limit-restore.json',
+    {
+      type: PROMPTIT_BACKUP_FILE_TYPE,
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-09T00:00:00.000Z',
+      data: {
+        prompts: tooManyBackupPrompts,
+        settings: {
+          languagePreference: 'en',
+          themePreference: 'dark',
+        },
+      },
+    },
+  );
+  const importFilePath = await writeJsonFixture(
+    testInfo,
+    'over-limit-import.json',
+    {
+      type: PROMPTIT_SHARED_PROMPTS_FILE_TYPE,
+      appVersion: '0.9.0',
+      exportedAt: '2026-05-09T00:00:00.000Z',
+      data: {
+        prompts: tooManySharedPrompts,
+      },
+    },
+  );
+
+  await extension.setPromptRecords([currentPrompt]);
+  await extension.setLanguagePreference('ko');
+  await extension.setThemePreference('light');
+
+  const page = await openOptionsPage(extension);
+  const modal = await openBackupShareModal(page);
+
+  await modal.getByTestId('backup-restore-file-input').setInputFiles(
+    restoreFilePath,
+  );
+
+  await expect(getOptionsToast(page)).toContainText(
+    '복원에 실패했습니다. 현재 데이터는 변경되지 않았습니다.',
+  );
+  expect(await extension.getPromptRecords()).toEqual([currentPrompt]);
+  expect(await extension.getLanguagePreference()).toBe('ko');
+  expect(await extension.getThemePreference()).toBe('light');
+
+  await modal.getByTestId('prompts-import-file-input').setInputFiles(
+    importFilePath,
+  );
 
   await expect(getOptionsToast(page)).toContainText(
     '프롬프트 가져오기에 실패했습니다.',
