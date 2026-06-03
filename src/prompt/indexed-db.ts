@@ -53,6 +53,7 @@ export function openPromptDatabase(): Promise<IDBDatabase> {
       };
 
       request.onblocked = () => {
+        databasePromise = null;
         reject(new Error('Prompt database upgrade is blocked.'));
       };
     });
