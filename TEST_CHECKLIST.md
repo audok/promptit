@@ -1,67 +1,67 @@
 # promptit Test Checklist
-이 문서는 promptit에서 검증해야 하는 동작과 현재 커버 상태를 추적하는 coverage ledger입니다.
-실행 순서와 명령은 [TESTING.md](TESTING.md)를 기준으로 봅니다.
+This document tracks the behaviors that must be verified in promptit and the current coverage status.
+Use [TESTING.md](TESTING.md) for run order and commands.
 
-## 상태 기준
-- `Automated`: 로컬 Playwright fixture 또는 정적 검사로 반복 가능하게 검증됨
-- `Live smoke`: 실제 `chatgpt.com` 또는 `gemini.google.com/app`에서 test-mode `dist-test` bundle로 smoke 검증됨
-- `Production live smoke`: 실제 `chatgpt.com` 또는 `gemini.google.com/app`에서 production `dist` bundle로 smoke 검증됨
-- `Manual`: 사람이 release 전에 직접 확인해야 함
-- `Gap`: 구현은 있지만 아직 자동화 또는 수동 테스트로 관리되지 않음
+## Status Criteria
+- `Automated`: repeatably verified by a local Playwright fixture or static check
+- `Live smoke`: smoke-verified on real `chatgpt.com` or `gemini.google.com/app` with the test-mode `dist-test` bundle
+- `Production live smoke`: smoke-verified on real `chatgpt.com` or `gemini.google.com/app` with the production `dist` bundle
+- `Manual`: must be checked directly by a person before release
+- `Gap`: implemented but not yet managed by automated or manual tests
 
-## 1. 플랫폼과 초기화
-- [x] 지원 URL, 미지원 URL, test-mode localhost match 경계를 검증한다. `Automated` via `tests/e2e/platform.spec.ts`
-- [x] content script runtime message로 옵션 페이지를 열고 malformed runtime message는 무시한다. `Automated` via `tests/e2e/platform.spec.ts`
-- [x] runtime request/response public contract, literal wire-shape fixture의 exact key, omitted required key rejection, incompatible conflict-shape rejection을 검증한다. `Automated` via `tests/e2e/runtime-contracts.spec.ts`
-- [x] same-page navigation, composer replacement, content script 재주입에서도 중복 listener 없이 동작한다. `Automated` via `tests/e2e/platform.spec.ts`, `tests/e2e/host-fixture-matrix.spec.ts`
-- [x] production/test manifest i18n packaging invariants와 release manifest policy를 검증한다. `Automated` via `scripts/check-production-manifest.mjs`, `tests/e2e/platform.spec.ts`
-- [ ] 브라우저 툴바 promptit 아이콘 클릭으로 옵션 페이지가 열린다. `Manual`
+## 1. Platform and Initialization
+- [x] Verifies supported URLs, unsupported URLs, and test-mode localhost match boundaries. `Automated` via `tests/e2e/platform.spec.ts`
+- [x] Opens the options page through a content script runtime message and ignores malformed runtime messages. `Automated` via `tests/e2e/platform.spec.ts`
+- [x] Verifies the runtime request/response public contract, exact keys in literal wire-shape fixtures, omitted required key rejection, and incompatible conflict-shape rejection. `Automated` via `tests/e2e/runtime-contracts.spec.ts`
+- [x] Works after same-page navigation, composer replacement, and content script reinjection without duplicate listeners. `Automated` via `tests/e2e/platform.spec.ts`, `tests/e2e/host-fixture-matrix.spec.ts`
+- [x] Verifies production/test manifest i18n packaging invariants and release manifest policy. `Automated` via `scripts/check-production-manifest.mjs`, `tests/e2e/platform.spec.ts`
+- [ ] Browser toolbar promptit icon click opens the options page. `Manual`
 
-## 2. 입력 감지와 Trigger
-- [x] ChatGPT/Gemini fixture의 supported composer selector matrix에서 `/ ` trigger와 insert가 동작한다. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
-- [x] `contenteditable`, `textarea`, Gemini Quill composer, child-node event bubbling을 안정적으로 resolve한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
-- [x] `/` 단독, non-collapsed selection, NBSP, readonly/disabled textarea, contenteditable block boundary, detached/stale composer 경계를 검증한다. contenteditable selection 없음/비정상 selection 직접 호출은 host popup behavior가 아니라 adapter-level branch coverage로 관리한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
-- [x] IME 조합 중에는 popup open과 popup keyboard command를 실행하지 않는다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
-- [x] close paths가 trigger text를 정리하거나 입력을 보존한다: Escape, Backspace, outside click, blur, resize, 일반 typing, composer detach. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
-- [x] popup placement, scroll reposition, long-list active row visibility, ChatGPT/Gemini wrapper anchoring을 검증한다. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/slash-popup-ui.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
+## 2. Input Detection and Trigger
+- [x] `/ ` trigger and insert work across the supported composer selector matrix in ChatGPT/Gemini fixtures. `Automated` via `tests/e2e/host-fixture-matrix.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] Stable resolution for `contenteditable`, `textarea`, Gemini Quill composer, and child-node event bubbling. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
+- [x] Verifies `/` alone, non-collapsed selection, NBSP, readonly/disabled textarea, contenteditable block boundary, and detached/stale composer boundaries. No selection/invalid selection direct calls for contenteditable are managed as adapter-level branch coverage, not host popup behavior. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
+- [x] Does not open the popup or execute popup keyboard commands during IME composition. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
+- [x] Close paths either clean up trigger text or preserve input: Escape, Backspace, outside click, blur, resize, normal typing, and composer detach. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`
+- [x] Verifies popup placement, scroll repositioning, long-list active row visibility, and ChatGPT/Gemini wrapper anchoring. `Automated` via `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/slash-popup-ui.spec.ts`, `tests/e2e/gemini-slash-popup.spec.ts`
 
-## 3. 팝업 상호작용과 실패 복구
-- [x] 팝업은 metadata-only 목록을 열고, 선택 시점의 최신 body로 insert/copy한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
-- [x] click, hover, keyboard navigation, Arrow key edge behavior, Tab behavior로 insert/copy/pin/open-options를 실행한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/slash-popup-ui.spec.ts`
-- [x] pin/unpin은 popup을 유지하고 persisted pinned state, ordering, active visual state를 갱신한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/slash-popup-ui.spec.ts`
-- [x] busy body read, stale popup action, storage refresh, 150-prompt scale에서도 popup state가 복구 가능하다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/responsive-and-scale.spec.ts`
-- [x] empty state에서 옵션 페이지를 열 수 있다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`; `Live smoke` via `tests/live/live-chatgpt.spec.ts`, `tests/live/live-gemini.spec.ts`
-- [x] list/body read failure, insert/copy/open-options failure, cleanup failure, stale pin conflict를 locale별 toast와 함께 검증한다. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/runtime-contracts.spec.ts`
-- [x] malformed IndexedDB metadata/body row와 missing body row에서도 popup/options failure UI가 반복 가능하게 검증된다. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
+## 3. Popup Interactions and Failure Recovery
+- [x] Popup opens from a metadata-only list, then reads the latest body at selection time for insert/copy. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`
+- [x] Executes insert/copy/pin/open-options through click, hover, keyboard navigation, Arrow key edge behavior, and Tab behavior. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/slash-popup-ui.spec.ts`
+- [x] Pin/unpin keeps the popup open and updates persisted pinned state, ordering, and active visual state. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/slash-popup-ui.spec.ts`
+- [x] Popup state is recoverable during busy body reads, stale popup actions, storage refreshes, and 150-prompt scale. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/responsive-and-scale.spec.ts`
+- [x] Empty state can open the options page. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`; `Live smoke` via `tests/live/live-chatgpt.spec.ts`, `tests/live/live-gemini.spec.ts`
+- [x] Verifies list/body read failure, insert/copy/open-options failure, cleanup failure, and stale pin conflict with localized toasts. `Automated` via `tests/e2e/slash-popup-actions.spec.ts`, `tests/e2e/slash-popup-triggering.spec.ts`, `tests/e2e/runtime-contracts.spec.ts`
+- [x] Malformed IndexedDB metadata/body rows and missing body rows produce repeatable popup/options failure UI. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
 
-## 4. 옵션 페이지와 스토리지
-- [x] options open, language/theme preference, Korean/English localization, fixed literal 보존을 검증한다. `Automated` via `tests/e2e/options-preferences.spec.ts`
-- [x] prompt create/edit/delete, validation, dirty draft 보존, selected body load failure, save/delete/storage failure를 검증한다. `Automated` via `tests/e2e/options-prompts.spec.ts`, `tests/e2e/options-editor-conflicts.spec.ts`
-- [x] editor reducer의 external change, save echo, delete recovery, conflict state 전이를 검증한다. `Automated` via `tests/e2e/promptEditorReducer.spec.ts`
-- [x] prompt body는 IndexedDB `promptBodies`에 저장되고 `chrome.storage.local`에는 저장되지 않는다. `Automated` via `tests/e2e/options-prompts.spec.ts`
-- [x] body size limit, metadata-only save, body save timestamp/char count, stale body conflict를 검증한다. `Automated` via `tests/e2e/options-prompts.spec.ts`, `tests/e2e/options-editor-conflicts.spec.ts`
-- [x] pinned/normal ordering, hidden internal order fields, list pin toggle, drag/keyboard reorder, tie-break, move conflict fallback을 검증한다. `Automated` via `tests/e2e/options-ordering.spec.ts`
-- [x] backup/share export JSON shape, restore preview/confirm/rollback, malformed restore, import append/no-overwrite, stale editor refresh를 검증한다. `Automated` via `tests/e2e/options-backup-share.spec.ts`
-- [x] malformed IndexedDB metadata/body row가 options load/body failure UI로 이어지는지 검증한다. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
-- [x] HTML-looking prompt title/body는 popup, options, composer에서 실행되지 않고 text로 처리된다. `Automated` via `tests/e2e/security-rendering.spec.ts`
-- [x] mobile/narrow overflow와 150-prompt options/popup/backup scale을 검증한다. `Automated` via `tests/e2e/responsive-and-scale.spec.ts`
+## 4. Options Page and Storage
+- [x] Verifies options open, language/theme preferences, Korean/English localization, and fixed literal preservation. `Automated` via `tests/e2e/options-preferences.spec.ts`
+- [x] Verifies prompt create/edit/delete, validation, dirty draft preservation, selected body load failure, and save/delete/storage failure. `Automated` via `tests/e2e/options-prompts.spec.ts`, `tests/e2e/options-editor-conflicts.spec.ts`
+- [x] Verifies editor reducer transitions for external change, save echo, delete recovery, and conflict state. `Automated` via `tests/e2e/promptEditorReducer.spec.ts`
+- [x] Prompt bodies are stored in IndexedDB `promptBodies` and not in `chrome.storage.local`. `Automated` via `tests/e2e/options-prompts.spec.ts`
+- [x] Verifies body size limit, metadata-only save, body save timestamp/char count, and stale body conflict. `Automated` via `tests/e2e/options-prompts.spec.ts`, `tests/e2e/options-editor-conflicts.spec.ts`
+- [x] Verifies pinned/normal ordering, hidden internal order fields, list pin toggle, drag/keyboard reorder, tie-breaks, and move conflict fallback. `Automated` via `tests/e2e/options-ordering.spec.ts`
+- [x] Verifies backup/share export JSON shape, restore preview/confirm/rollback, malformed restore, import append/no-overwrite, and stale editor refresh. `Automated` via `tests/e2e/options-backup-share.spec.ts`
+- [x] Malformed IndexedDB metadata/body rows lead to options load/body failure UI. `Automated` via `tests/e2e/prompt-storage-corruption.spec.ts`
+- [x] HTML-looking prompt titles/bodies are treated as text and do not execute in popup, options, or composer. `Automated` via `tests/e2e/security-rendering.spec.ts`
+- [x] Verifies mobile/narrow overflow and 150-prompt options/popup/backup scale. `Automated` via `tests/e2e/responsive-and-scale.spec.ts`
 
-## 5. 실사이트 Smoke
-- [x] 실제 `chatgpt.com`에서 popup open, prompt text가 composer에 보이는 insert, copy, pin toggle, empty state -> options를 검증한다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [x] 실제 `chatgpt.com`에서 Escape trigger cleanup, prefix-preserving insert의 prefix-before-prompt order와 `/ ` trigger cleanup, multiline prompt text가 composer에 보이는 insert, pinned order after reopen, non-empty popup -> options를 검증한다. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
-- [x] 실제 `gemini.google.com/app`에서 popup open, prompt text가 composer에 보이는 insert, copy, pin toggle, empty state -> options를 검증한다. `Live smoke` via `tests/live/live-gemini.spec.ts`
-- [x] 실제 `gemini.google.com/app`에서 Escape trigger cleanup, prefix-preserving insert의 prefix-before-prompt order와 `/ ` trigger cleanup, multiline prompt text가 composer에 보이는 insert, pinned order after reopen, non-empty popup -> options를 검증한다. `Live smoke` via `tests/live/live-gemini.spec.ts`
-- [x] production `dist` bundle로 실제 ChatGPT/Gemini composer에서 `/ ` insert 후 prompt text가 composer에 보이고 popup host가 dismissal되는지 검증한다. `Production live smoke` via `tests/live/live-prod-insert.spec.ts`
-- [ ] 로그인된 ChatGPT/Gemini 세션에서 같은 흐름과 no unintended submit을 반복 확인한다. `Manual`
+## 5. Real-Site Smoke
+- [x] Verifies popup open, prompt text visible in composer after insert, copy, pin toggle, and empty state -> options on real `chatgpt.com`. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [x] Verifies Escape trigger cleanup, prefix-preserving insert with prefix-before-prompt order and `/ ` trigger cleanup, multiline prompt text visible in composer after insert, pinned order after reopen, and non-empty popup -> options on real `chatgpt.com`. `Live smoke` via `tests/live/live-chatgpt.spec.ts`
+- [x] Verifies popup open, prompt text visible in composer after insert, copy, pin toggle, and empty state -> options on real `gemini.google.com/app`. `Live smoke` via `tests/live/live-gemini.spec.ts`
+- [x] Verifies Escape trigger cleanup, prefix-preserving insert with prefix-before-prompt order and `/ ` trigger cleanup, multiline prompt text visible in composer after insert, pinned order after reopen, and non-empty popup -> options on real `gemini.google.com/app`. `Live smoke` via `tests/live/live-gemini.spec.ts`
+- [x] Verifies that after `/ ` insert with the production `dist` bundle on real ChatGPT/Gemini composers, prompt text is visible in the composer and the popup host is dismissed. `Production live smoke` via `tests/live/live-prod-insert.spec.ts`
+- [ ] Recheck the same flows and no unintended submit in logged-in ChatGPT/Gemini sessions. `Manual`
 
-## 6. 현재 남은 제한
-- 브라우저 툴바 UI는 Playwright fixture로 안정적으로 제어하지 않는다.
-- fixture host 테스트는 selector/DOM 호환성과 promptit의 삽입 경로를 통제된 페이지에서 검증한다. 실제 ChatGPT ProseMirror, Gemini Quill, 또는 향후 Lexical 같은 third-party editor의 내부 state synchronization까지 보장하지는 않는다.
-- 로그인된 실제 ChatGPT/Gemini 세션은 계정 상태, 쿠키, A/B 테스트 영향을 받아 수동 테스트로 둔다.
-- live smoke는 prompt text가 composer에 보이는지 확인하지만, 제출된 메시지를 안정적으로 읽는 selector가 없어 no-submit을 자동 보증하지 않는다. 제품 회귀, 외부 사이트 DOM/동작 변경, 외부 환경 문제도 자동 분류하지 않는다.
-- 실제 다운로드 위치와 OS 파일 선택기는 fixture E2E와 별도로 release 전에 수동 확인한다.
+## 6. Current Remaining Limits
+- Browser toolbar UI is not controlled reliably through Playwright fixtures.
+- Fixture host tests verify selector/DOM compatibility and promptit's insertion paths on controlled pages. They do not guarantee internal state synchronization for real third-party editors such as ChatGPT ProseMirror, Gemini Quill, or a future Lexical editor.
+- Logged-in real ChatGPT/Gemini sessions remain manual because they are affected by account state, cookies, and A/B tests.
+- Live smoke verifies that prompt text is visible in the composer, but it cannot automatically guarantee no-submit because there is no selector that reliably reads submitted messages. It also does not automatically classify product regressions, external site DOM/behavior changes, or external environment issues.
+- Real download locations and OS file pickers are checked manually before release, separately from fixture E2E.
 
-## 7. 수동 테스트
-- [ ] 브라우저 툴바 promptit 아이콘 클릭이 옵션 페이지를 열거나 기존 옵션 탭에 포커스하고, 제목이 `promptit Settings`인지 확인한다. `Manual`
-- [ ] 로그인된 ChatGPT와 Gemini에서 `/ ` popup, insert, copy, pin/unpin, trigger cleanup, no unintended submit을 확인한다. `Manual`
-- [ ] 실제 다운로드 폴더와 OS 파일 선택기로 backup/share export, restore, import 흐름을 확인한다. `Manual`
+## 7. Manual Tests
+- [ ] Confirm that clicking the browser toolbar promptit icon opens the options page or focuses an existing options tab, and that the title is `promptit Settings`. `Manual`
+- [ ] Confirm `/ ` popup, insert, copy, pin/unpin, trigger cleanup, and no unintended submit in logged-in ChatGPT and Gemini. `Manual`
+- [ ] Confirm backup/share export, restore, and import flows with the actual downloads folder and OS file picker. `Manual`
