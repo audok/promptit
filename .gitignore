@@ -146,6 +146,7 @@ _codex/
 .agent/
 
 # Playwright outputs
+output/
 playwright-report/
 test-results/
 test-results-live/
