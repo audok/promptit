@@ -19,7 +19,7 @@ promptit은 ChatGPT와 Gemini 입력창에서 `/ `를 입력해 저장해 둔 �
 ### 방법 1. GitHub Releases에서 파일 다운로드
 개발 환경을 준비하지 않아도 되는 방법입니다.
 
-1. [이곳](https://github.com/audok/promptit/releases)에서 가장 최신 릴리즈의 `promptit.zip` 파일을 다운로드합니다.
+1. [이곳](https://github.com/audok/promptit/releases)에서 `promptit_v1.0.0.zip` 파일을 다운로드합니다.
 
 2. 다운로드한 zip 파일의 압축을 풉니다.
 

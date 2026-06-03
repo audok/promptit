@@ -19,7 +19,7 @@ Save frequently used prompts on the options page, then insert or copy them direc
 ### Method 1. Download from GitHub Releases
 Use this method if you do not want to set up a development environment.
 
-1. Download `promptit.zip` from the latest release [here](https://github.com/audok/promptit/releases).
+1. Download `promptit_v1.0.0.zip` [here](https://github.com/audok/promptit/releases).
 
 2. Extract the downloaded zip file.
 
