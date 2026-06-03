@@ -93,12 +93,6 @@ export function createAdapterMutationFailure(
   };
 }
 
-export function isAdapterMutationSuccess(
-  result: AdapterMutationResult,
-): result is AdapterMutationSuccess {
-  return result.ok;
-}
-
 export function dispatchInputEvent(
   target: HTMLElement,
   inputType: string,

@@ -3,7 +3,6 @@ import { defineManifest } from '@crxjs/vite-plugin';
 const isTestMode = process.env.VITE_PROMPTIT_TEST_MODE === '1';
 const defaultMatches = [
   'https://chatgpt.com/*',
-  'https://chat.openai.com/*',
   'https://gemini.google.com/*',
 ];
 const testMatches = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];
@@ -13,10 +12,10 @@ const contentScriptMatches = isTestMode
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Promptit',
-  version: '0.9.0',
-  description:
-    'Promptit is a browser extension for ChatGPT and Gemini. Use slash+space to quickly access and insert saved prompts.',
+  default_locale: 'ko',
+  name: '__MSG_appName__',
+  version: '1.0.0',
+  description: '__MSG_extensionDescription__',
   icons: {
     16: 'icons/icon16.png',
     32: 'icons/icon32.png',
@@ -31,7 +30,7 @@ export default defineManifest({
     },
   ],
   action: {
-    default_title: 'Promptit',
+    default_title: '__MSG_appName__',
     default_icon: {
       16: 'icons/icon16.png',
       24: 'icons/icon24.png',

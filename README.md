@@ -1,89 +1,84 @@
-# Promptit
-Promptit은 ChatGPT와 Gemini 입력창에서 `/ `를 입력해 저장해 둔 프롬프트를 바로 불러오는 Chromium 브라우저 확장입니다.
+<p align="right">English | <a href="README.ko.md">한국어</a></p>
 
-자주 쓰는 프롬프트를 옵션 페이지에 저장해 두고, 지원되는 AI 사이트의 입력 흐름 안에서 삽입하거나 복사할 수 있습니다.
+# promptit
 
-## 지원 사이트
+promptit is a Chromium browser extension that lets you quickly open saved prompts by typing `/ ` in ChatGPT and Gemini input fields.
+
+Save frequently used prompts on the options page, then insert or copy them directly on [ChatGPT](https://chatgpt.com/) and [Gemini](https://gemini.google.com/).
+
+## Supported Sites
 - [ChatGPT](https://chatgpt.com/)
 - [Gemini](https://gemini.google.com/)
 
-## 주요 기능
-- `/` `space` 트리거(`slash` + `space`)로 저장된 프롬프트 목록 열기
-- 선택한 프롬프트를 현재 입력창에 삽입
-- 선택한 프롬프트를 클립보드에 복사
+## Features
+- Open the saved prompt list with the `/` `space` trigger (`slash` + `space`)
+- Insert the selected prompt into the current input field
+- Copy the selected prompt to the clipboard
 
-## 수동 설치
-### 방법 1. GitHub Releases에서 빌드 파일 다운로드
+## Installation
+### Method 1. Download from GitHub Releases
+Use this method if you do not want to set up a development environment.
 
-개발 환경을 준비하지 않아도 되는 방법입니다.
+1. Download `promptit_v1.0.0.zip` [here](https://github.com/audok/promptit/releases).
 
-1. [이곳](https://github.com/audok/promptit/releases)에서 가장 최신 버전의 `promptit.zip` 파일을 다운로드합니다.
-2. 다운로드한 zip 파일의 압축을 풉니다.
-3. Chrome 또는 Chromium 기반 브라우저에서 확장 관리 페이지를 엽니다.
-   ```text
-   chrome://extensions
-   ```
+2. Extract the downloaded zip file.
 
-4. 개발자 모드를 켭니다.
-5. `Load unpacked` 또는 `압축해제된 확장 프로그램을 로드합니다`를 클릭합니다.
-6. 압축을 푼 폴더를 선택합니다.
+3. Open the extensions management page in Chrome or a Chromium-based browser.
 
-새 버전으로 업데이트하려면 최신 zip 파일을 다시 다운로드하고 압축을 푼 뒤, 5~6번 과정을 다시 진행합니다.
+4. Turn on Developer mode.
 
-### 방법 2. 저장소를 직접 빌드해서 설치
+5. Click `Load unpacked`.
 
-소스 코드를 직접 확인하거나 수정해서 사용하려는 경우 이 방법을 사용합니다.
+6. Select the extracted folder.
 
-이 프로젝트는 `pnpm@10.33.0`을 사용합니다.
+> To update to a new version, repeat the steps above.
 
-1. 저장소를 클론합니다.
+### Method 2. Build It Yourself
+This project uses `pnpm@10.33.0`.
+
+1. Clone the repository.
    ```bash
    git clone https://github.com/audok/promptit.git
    cd promptit
    ```
 
-2. 의존성을 설치합니다.
+2. Install dependencies.
    ```bash
    pnpm install
    ```
 
-3. 확장을 빌드합니다.
+3. Build the extension.
    ```bash
    pnpm build
    ```
 
-4. Chrome 또는 Chromium 기반 브라우저에서 확장 관리 페이지를 엽니다.
-   ```text
-   chrome://extensions
-   ```
+4. Open the extensions management page in Chrome or a Chromium-based browser.
 
-5. 개발자 모드를 켭니다.
-6. `Load unpacked` 또는 `압축해제된 확장 프로그램을 로드합니다`를 클릭합니다.
-7. 빌드 결과물인 `dist/` 폴더를 선택합니다.
+5. Turn on Developer mode.
 
-수동 설치한 확장은 자동 업데이트되지 않습니다. 새 버전이 나오면 GitHub Releases에서 최신 파일을 다시 받거나, 저장소를 최신 상태로 갱신한 뒤 다시 빌드해야 합니다.
+6. Click `Load unpacked`.
 
-## 사용법
-1. 브라우저 툴바에서 Promptit 확장 아이콘을 클릭해 옵션 페이지를 엽니다.
-2. 제목과 본문을 입력해 프롬프트를 저장합니다.
-3. ChatGPT 또는 Gemini 입력창에 포커스합니다.
-4. `/` `space`를 입력하면 Promptit 팝업이 열립니다.
-5. 원하는 프롬프트를 선택해 입력창에 삽입하거나 복사합니다.
+7. Select the generated `dist/` folder.
 
-팝업에서는 방향키로 항목과 액션을 이동하고 `Enter`로 실행할 수 있습니다. `Esc` 또는 `Backspace`를 누르면 팝업이 닫히고 입력한 `/ ` 트리거가 제거됩니다.
+> To update to a new version, repeat the steps above.
 
-저장된 프롬프트가 없으면 팝업에서 옵션 페이지로 이동해 첫 프롬프트를 추가할 수 있습니다.
+## Usage
+1. Click the promptit extension icon in the browser toolbar to open the options page.
+2. Enter a title and body to save a prompt.
+3. Type `/` `space` in a ChatGPT or Gemini input field to open the promptit popup.
+4. Select a prompt to insert it into the input field or copy it.
 
-## 프롬프트 저장 규칙
-- 제목은 1자 이상 40자 이하입니다.
-- 본문은 비워 둘 수 없습니다.
+You can use the popup with a mouse, or with the arrow keys and `Enter`.
+Press `Esc` or `Backspace` to close the popup and remove the `/ ` trigger you typed.
 
-## 문제 해결
-팝업이 열리지 않으면 아래 항목을 확인하세요.
-- 현재 페이지가 지원 사이트인지 확인합니다.
-- 확장이 브라우저에 로드되어 있는지 확인합니다.
-- 입력창에 `/`만 입력한 것이 아니라 `/` `space`처럼 슬래시 뒤에 공백까지 입력했는지 확인합니다.
-- 프롬프트가 없다면 옵션 페이지에서 먼저 프롬프트를 추가합니다.
+If you do not have any saved prompts, you can open the options page from the popup and add your first prompt.
 
-## LICENSE
+## Troubleshooting
+If the popup does not open, check the following:
+1. Make sure the current page is a supported site.
+2. Make sure you typed `/` `space`, including `space` after the slash, instead of only `/`.
+3. If you do not have any prompts, add one from the options page first.
+4. Make sure the extension is loaded in your browser.
+
+## License
 [GPL-3.0](LICENSE)

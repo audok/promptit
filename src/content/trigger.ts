@@ -4,7 +4,7 @@ import {
 } from './session';
 
 export const TRIGGER_SEQUENCE = '/ ';
-export const TRIGGER_DEBOUNCE_MS = 100;
+export const TRIGGER_DEBOUNCE_MS = 50;
 
 export function clearTriggerArm(session: PopupSessionState): void {
   if (session.armedTimer !== null) {

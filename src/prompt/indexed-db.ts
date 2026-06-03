@@ -53,6 +53,7 @@ export function openPromptDatabase(): Promise<IDBDatabase> {
       };
 
       request.onblocked = () => {
+        databasePromise = null;
         reject(new Error('Prompt database upgrade is blocked.'));
       };
     });
@@ -165,4 +166,12 @@ export function deleteRecordFromTransaction<TName extends PromptStoreName>(
 ): Promise<undefined> {
   const store = transaction.objectStore(storeName);
   return requestToPromise(store.delete(id));
+}
+
+export function clearStoreInTransaction<TName extends PromptStoreName>(
+  transaction: IDBTransaction,
+  storeName: TName,
+): Promise<undefined> {
+  const store = transaction.objectStore(storeName);
+  return requestToPromise(store.clear());
 }

@@ -31,6 +31,7 @@ const test = base.extend<{
 }>({
   extension: async ({}, use) => {
     const extension = await launchExtension();
+    await extension.setLanguagePreference('ko');
     await use(extension);
     await extension.close();
   },
@@ -38,7 +39,6 @@ const test = base.extend<{
 
 const SUPPORTED_PRODUCTION_MATCHES = [
   'https://chatgpt.com/*',
-  'https://chat.openai.com/*',
   'https://gemini.google.com/*',
 ];
 const TEST_ONLY_MATCHES = ['http://127.0.0.1:*/*', 'http://localhost:*/*'];
@@ -83,7 +83,7 @@ async function evaluateInPromptitContentScriptContext<T>(
 
   if (!context) {
     await cdpSession.detach();
-    throw new Error('Promptit content script execution context not found.');
+    throw new Error('promptit content script execution context not found.');
   }
 
   const result = await cdpSession.send('Runtime.evaluate', {
@@ -95,7 +95,7 @@ async function evaluateInPromptitContentScriptContext<T>(
   await cdpSession.detach();
 
   if (result.exceptionDetails) {
-    throw new Error('Promptit content script evaluation failed.');
+    throw new Error('promptit content script evaluation failed.');
   }
 
   return result.result.value as T;
@@ -138,6 +138,56 @@ test('manifest keeps supported-site injection policy without host permissions', 
       (entry) => entry.resources ?? [],
     ),
   ).toContain('fonts/PretendardVariable.woff2');
+  expect((manifest as { default_locale?: unknown }).default_locale).toBe('ko');
+  expect(manifest.name).toBe('promptit');
+  expect(manifest.action?.default_title).toBe('promptit');
+  expect(manifest.description).toEqual(expect.any(String));
+  expect(manifest.description).not.toBe('');
+
+  const rawManifest = await serviceWorker.evaluate(async () => {
+    const response = await fetch(chrome.runtime.getURL('manifest.json'));
+    return await response.json() as {
+      action?: { default_title?: unknown };
+      description?: unknown;
+      name?: unknown;
+    };
+  });
+
+  expect(rawManifest.name).toBe('__MSG_appName__');
+  expect(rawManifest.description).toBe('__MSG_extensionDescription__');
+  expect(rawManifest.action?.default_title).toBe('__MSG_appName__');
+
+  const localeMessages = await serviceWorker.evaluate(async () => {
+    const localeCodes = ['ko', 'en'] as const;
+    const entries = await Promise.all(
+      localeCodes.map(async (locale) => {
+        const response = await fetch(
+          chrome.runtime.getURL(`_locales/${locale}/messages.json`),
+        );
+
+        return [locale, await response.json()] as const;
+      }),
+    );
+
+    return Object.fromEntries(entries) as Record<
+      (typeof localeCodes)[number],
+      Record<string, { message?: unknown }>
+    >;
+  });
+
+  expect(Object.keys(localeMessages.ko).sort()).toEqual(
+    Object.keys(localeMessages.en).sort(),
+  );
+  expect(localeMessages.ko.appName?.message).toBe('promptit');
+  expect(localeMessages.en.appName?.message).toBe('promptit');
+  expect(localeMessages.ko.extensionDescription?.message).toEqual(
+    expect.any(String),
+  );
+  expect(localeMessages.en.extensionDescription?.message).toEqual(
+    expect.any(String),
+  );
+  expect(localeMessages.ko.extensionDescription?.message).not.toBe('');
+  expect(localeMessages.en.extensionDescription?.message).not.toBe('');
 });
 
 test('opens the options page when the content script sends the runtime message', async ({
@@ -157,8 +207,8 @@ test('opens the options page when the content script sends the runtime message',
   const optionsPage = await optionsPagePromise;
   await optionsPage.waitForLoadState('domcontentloaded');
 
-  await expect(optionsPage).toHaveTitle(/Promptit Settings/i);
-  await expect(optionsPage.getByText('Promptit')).toBeVisible();
+  await expect(optionsPage).toHaveTitle(/promptit Settings/i);
+  await expect(optionsPage.getByText('promptit')).toBeVisible();
   await expect(
     optionsPage.getByRole('heading', { name: '프롬프트를 저장하고 붙여 넣으세요.' }),
   ).toBeVisible();
@@ -198,7 +248,7 @@ test('ignores malformed runtime messages without opening the options page', asyn
   await expect(page.locator('[data-testid="promptit-popup"]')).toHaveCount(0);
 });
 
-test('does not initialize Promptit on unsupported URLs', async ({
+test('does not initialize promptit on unsupported URLs', async ({
   extension,
 }) => {
   const page = await extension.context.newPage();
@@ -255,7 +305,7 @@ test('does not register duplicate content script listeners on same-page reinject
           });
 
           if (!contentScriptResource) {
-            throw new Error('Promptit content script resource not found.');
+            throw new Error('promptit content script resource not found.');
           }
 
           const beforeReadyAttribute =
@@ -307,7 +357,7 @@ test('does not register duplicate content script listeners on same-page reinject
     });
 });
 
-test('does not initialize Promptit on unsupported localhost fixtures', async ({
+test('does not initialize promptit on unsupported localhost fixtures', async ({
   extension,
 }) => {
   const page = await extension.context.newPage();

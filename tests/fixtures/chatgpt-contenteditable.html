@@ -6,7 +6,8 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Promptit ChatGPT Contenteditable Fixture</title>
+    <link rel="icon" href="data:," />
+    <title>promptit ChatGPT Contenteditable Fixture</title>
     <style>
       :root {
         color-scheme: light;
@@ -144,7 +145,7 @@
       data-testid="outside-target"
     >
       <div>
-        <h1>Promptit Fixture</h1>
+        <h1>promptit Fixture</h1>
         <p>ChatGPT-like contenteditable composer with stable outside-click target.</p>
       </div>
       <button type="button">Outside Click Target</button>
@@ -153,7 +154,7 @@
     <main class="page-shell">
       <section class="transcript">
         <p>
-          This local fixture mirrors the DOM shape Promptit expects from ChatGPT:
+          This local fixture mirrors the DOM shape promptit expects from ChatGPT:
           a form wrapper, a ProseMirror contenteditable composer, and enough layout
           chrome to exercise popup anchoring and cleanup behavior.
         </p>
@@ -178,6 +179,29 @@
                 aria-multiline="true"
                 spellcheck="false"
               ></div>
+              <script>
+                (() => {
+                  const variant = new URLSearchParams(window.location.search)
+                    .get('variant');
+                  const composer = document.querySelector('#prompt-textarea');
+
+                  if (!(composer instanceof HTMLElement)) {
+                    return;
+                  }
+
+                  if (variant === 'role-selector') {
+                    composer.classList.remove('ProseMirror');
+                    composer.removeAttribute('data-lexical-editor');
+                    composer.removeAttribute('data-testid');
+                    return;
+                  }
+
+                  if (variant === 'lexical-testid') {
+                    composer.removeAttribute('id');
+                    composer.classList.remove('ProseMirror');
+                  }
+                })();
+              </script>
             </div>
           </section>
           <button

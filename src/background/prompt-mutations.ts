@@ -1,46 +1,53 @@
 import {
   createPrompt,
   deletePrompt,
-  ensureLegacyMigrationCompleteMarkerBestEffort,
   getPromptBody,
+  getPromptRecord,
   listPromptMetas,
   movePrompt,
   publishPromptRevision,
   setPromptPinned,
   updatePromptBody,
   updatePromptMeta,
+  updatePromptRecord,
 } from '../prompt/repository';
 import {
   CREATE_PROMPT_MESSAGE,
   DELETE_PROMPT_MESSAGE,
   GET_PROMPT_BODY_MESSAGE,
+  GET_PROMPT_RECORD_MESSAGE,
   LIST_PROMPT_METAS_MESSAGE,
   MOVE_PROMPT_MESSAGE,
   SET_PROMPT_PINNED_MESSAGE,
   UPDATE_PROMPT_BODY_MESSAGE,
   UPDATE_PROMPT_META_MESSAGE,
+  UPDATE_PROMPT_RECORD_MESSAGE,
   assertNever,
   buildCreatePromptSuccessResponse,
   buildDeletePromptSuccessResponse,
   buildGetPromptBodySuccessResponse,
+  buildGetPromptRecordSuccessResponse,
   buildListPromptMetasSuccessResponse,
-  buildPromptConflictResponse,
   buildPromptErrorResponse,
+  buildPromptMetaConflictResponse,
   buildPromptMetaSuccessResponse,
   buildPromptNotFoundResponse,
+  buildPromptRecordConflictResponse,
   buildUpdatePromptBodySuccessResponse,
+  buildUpdatePromptRecordSuccessResponse,
   type CreatePromptRequest,
   type CreatePromptResponse,
   type DeletePromptRequest,
   type DeletePromptResponse,
   type GetPromptBodyRequest,
   type GetPromptBodyResponse,
+  type GetPromptRecordRequest,
+  type GetPromptRecordResponse,
   type ListPromptMetasRequest,
   type ListPromptMetasResponse,
   type MovePromptRequest,
   type MovePromptResponse,
-  type PromptMutationRequest,
-  type PromptMutationResponse,
+  type PromptMutationSideEffects,
   type PromptRequest,
   type PromptResponse,
   type SetPromptPinnedRequest,
@@ -49,7 +56,11 @@ import {
   type UpdatePromptBodyResponse,
   type UpdatePromptMetaRequest,
   type UpdatePromptMetaResponse,
+  type UpdatePromptRecordRequest,
+  type UpdatePromptRecordResponse,
 } from '../runtime/messages';
+import type { RuntimeMessageDescriptor } from '../shared/i18n';
+import { enqueueStorageRequest } from './storage-queue';
 
 const UPDATE_PROMPT_CONFLICT_MESSAGE =
   '다른 창의 변경이 먼저 저장되었습니다. 최신 내용을 확인한 뒤 다시 시도해주세요.';
@@ -58,29 +69,44 @@ const DELETE_PROMPT_CONFLICT_MESSAGE =
   '다른 창의 변경이 먼저 저장되었습니다. 최신 내용을 확인한 뒤 다시 시도해주세요.';
 const DELETE_PROMPT_NOT_FOUND_MESSAGE = '삭제할 프롬프트를 찾지 못했습니다.';
 const READ_PROMPT_NOT_FOUND_MESSAGE = '프롬프트를 찾지 못했습니다.';
-
-let promptRequestQueue: Promise<void> = Promise.resolve();
+const UPDATE_PROMPT_CONFLICT_DESCRIPTOR = {
+  key: 'runtime.prompt.updateConflict',
+} satisfies RuntimeMessageDescriptor;
+const UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR = {
+  key: 'runtime.prompt.updateNotFound',
+} satisfies RuntimeMessageDescriptor;
+const DELETE_PROMPT_CONFLICT_DESCRIPTOR = {
+  key: 'runtime.prompt.deleteConflict',
+} satisfies RuntimeMessageDescriptor;
+const DELETE_PROMPT_NOT_FOUND_DESCRIPTOR = {
+  key: 'runtime.prompt.deleteNotFound',
+} satisfies RuntimeMessageDescriptor;
+const READ_PROMPT_NOT_FOUND_DESCRIPTOR = {
+  key: 'runtime.prompt.readNotFound',
+} satisfies RuntimeMessageDescriptor;
+const READ_PROMPT_ERROR_DESCRIPTOR = {
+  key: 'runtime.prompt.readFailed',
+} satisfies RuntimeMessageDescriptor;
+const SAVE_PROMPT_ERROR_DESCRIPTOR = {
+  key: 'runtime.prompt.saveFailed',
+} satisfies RuntimeMessageDescriptor;
+const DELETE_PROMPT_ERROR_DESCRIPTOR = {
+  key: 'runtime.prompt.deleteFailed',
+} satisfies RuntimeMessageDescriptor;
+const PIN_PROMPT_CONFLICT_DESCRIPTOR = {
+  key: 'runtime.prompt.pinConflict',
+} satisfies RuntimeMessageDescriptor;
+const PIN_PROMPT_NOT_FOUND_DESCRIPTOR = {
+  key: 'runtime.prompt.pinNotFound',
+} satisfies RuntimeMessageDescriptor;
+const PIN_PROMPT_ERROR_DESCRIPTOR = {
+  key: 'runtime.prompt.pinFailed',
+} satisfies RuntimeMessageDescriptor;
 
 export function handlePromptRequest(
   request: PromptRequest,
 ): Promise<PromptResponse> {
-  const nextRun = promptRequestQueue.then(
-    () => executePromptRequest(request),
-    () => executePromptRequest(request),
-  );
-
-  promptRequestQueue = nextRun.then(
-    () => undefined,
-    () => undefined,
-  );
-
-  return nextRun;
-}
-
-export function handlePromptMutationRequest(
-  request: PromptMutationRequest,
-): Promise<PromptMutationResponse> {
-  return handlePromptRequest(request) as Promise<PromptMutationResponse>;
+  return enqueueStorageRequest(() => executePromptRequest(request));
 }
 
 async function executePromptRequest(
@@ -92,12 +118,16 @@ async function executePromptRequest(
         return await handleListPromptMetasRequest(request);
       case GET_PROMPT_BODY_MESSAGE:
         return await handleGetPromptBodyRequest(request);
+      case GET_PROMPT_RECORD_MESSAGE:
+        return await handleGetPromptRecordRequest(request);
       case CREATE_PROMPT_MESSAGE:
         return await handleCreatePromptRequest(request);
       case UPDATE_PROMPT_META_MESSAGE:
         return await handleUpdatePromptMetaRequest(request);
       case UPDATE_PROMPT_BODY_MESSAGE:
         return await handleUpdatePromptBodyRequest(request);
+      case UPDATE_PROMPT_RECORD_MESSAGE:
+        return await handleUpdatePromptRecordRequest(request);
       case DELETE_PROMPT_MESSAGE:
         return await handleDeletePromptRequest(request);
       case MOVE_PROMPT_MESSAGE:
@@ -129,19 +159,37 @@ async function handleGetPromptBodyRequest(
       GET_PROMPT_BODY_MESSAGE,
       request.id,
       READ_PROMPT_NOT_FOUND_MESSAGE,
+      READ_PROMPT_NOT_FOUND_DESCRIPTOR,
     );
   }
 
   return buildGetPromptBodySuccessResponse(body);
 }
 
+async function handleGetPromptRecordRequest(
+  request: GetPromptRecordRequest,
+): Promise<GetPromptRecordResponse> {
+  const prompt = await getPromptRecord(request.id);
+
+  if (!prompt) {
+    return buildPromptNotFoundResponse(
+      GET_PROMPT_RECORD_MESSAGE,
+      request.id,
+      READ_PROMPT_NOT_FOUND_MESSAGE,
+      READ_PROMPT_NOT_FOUND_DESCRIPTOR,
+    );
+  }
+
+  return buildGetPromptRecordSuccessResponse(prompt);
+}
+
 async function handleCreatePromptRequest(
   request: CreatePromptRequest,
 ): Promise<CreatePromptResponse> {
   const prompt = await createPrompt(request.draft);
+  const sideEffects = await publishPromptStorageSideEffects();
 
-  await publishPromptStorageSideEffectsBestEffort();
-  return buildCreatePromptSuccessResponse(prompt);
+  return buildCreatePromptSuccessResponse(prompt, sideEffects);
 }
 
 async function handleUpdatePromptMetaRequest(
@@ -152,24 +200,28 @@ async function handleUpdatePromptMetaRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
       return buildPromptMetaSuccessResponse(
         UPDATE_PROMPT_META_MESSAGE,
         result.value,
+        sideEffects,
       );
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         UPDATE_PROMPT_META_MESSAGE,
         result.id,
         UPDATE_PROMPT_NOT_FOUND_MESSAGE,
+        UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         UPDATE_PROMPT_META_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
+        UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
 
@@ -180,26 +232,64 @@ async function handleUpdatePromptBodyRequest(
   request: UpdatePromptBodyRequest,
 ): Promise<UpdatePromptBodyResponse> {
   const result = await updatePromptBody(request.id, request.content, {
+    expectedUpdatedAt: request.expectedUpdatedAt,
     expectedBodyUpdatedAt: request.expectedBodyUpdatedAt,
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
-      return buildUpdatePromptBodySuccessResponse(result.value);
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildUpdatePromptBodySuccessResponse(result.value, sideEffects);
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         UPDATE_PROMPT_BODY_MESSAGE,
         result.id,
         UPDATE_PROMPT_NOT_FOUND_MESSAGE,
+        UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptRecordConflictResponse(
         UPDATE_PROMPT_BODY_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
-        result.currentRecord ?? undefined,
+        result.currentRecord,
+        UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
+      );
+  }
+
+  return assertNever(result);
+}
+
+async function handleUpdatePromptRecordRequest(
+  request: UpdatePromptRecordRequest,
+): Promise<UpdatePromptRecordResponse> {
+  const result = await updatePromptRecord(request.id, request.draft, {
+    expectedUpdatedAt: request.expectedUpdatedAt,
+    expectedBodyUpdatedAt: request.expectedBodyUpdatedAt,
+  });
+
+  switch (result.status) {
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildUpdatePromptRecordSuccessResponse(result.value, sideEffects);
+    }
+    case 'not-found':
+      return buildPromptNotFoundResponse(
+        UPDATE_PROMPT_RECORD_MESSAGE,
+        result.id,
+        UPDATE_PROMPT_NOT_FOUND_MESSAGE,
+        UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
+      );
+    case 'conflict':
+      return buildPromptRecordConflictResponse(
+        UPDATE_PROMPT_RECORD_MESSAGE,
+        result.id,
+        result.currentMeta,
+        UPDATE_PROMPT_CONFLICT_MESSAGE,
+        result.currentRecord,
+        UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
 
@@ -215,21 +305,24 @@ async function handleDeletePromptRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
-      return buildDeletePromptSuccessResponse(result.value);
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildDeletePromptSuccessResponse(result.value, sideEffects);
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         DELETE_PROMPT_MESSAGE,
         result.id,
         DELETE_PROMPT_NOT_FOUND_MESSAGE,
+        DELETE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         DELETE_PROMPT_MESSAGE,
         result.id,
         result.currentMeta,
         DELETE_PROMPT_CONFLICT_MESSAGE,
+        DELETE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
 
@@ -247,21 +340,28 @@ async function handleMovePromptRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
-      return buildPromptMetaSuccessResponse(MOVE_PROMPT_MESSAGE, result.value);
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
+      return buildPromptMetaSuccessResponse(
+        MOVE_PROMPT_MESSAGE,
+        result.value,
+        sideEffects,
+      );
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         MOVE_PROMPT_MESSAGE,
         result.id,
         UPDATE_PROMPT_NOT_FOUND_MESSAGE,
+        UPDATE_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         MOVE_PROMPT_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
+        UPDATE_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
 
@@ -276,24 +376,28 @@ async function handleSetPromptPinnedRequest(
   });
 
   switch (result.status) {
-    case 'success':
-      await publishPromptStorageSideEffectsBestEffort();
+    case 'success': {
+      const sideEffects = await publishPromptStorageSideEffects();
       return buildPromptMetaSuccessResponse(
         SET_PROMPT_PINNED_MESSAGE,
         result.value,
+        sideEffects,
       );
+    }
     case 'not-found':
       return buildPromptNotFoundResponse(
         SET_PROMPT_PINNED_MESSAGE,
         result.id,
         UPDATE_PROMPT_NOT_FOUND_MESSAGE,
+        PIN_PROMPT_NOT_FOUND_DESCRIPTOR,
       );
     case 'conflict':
-      return buildPromptConflictResponse(
+      return buildPromptMetaConflictResponse(
         SET_PROMPT_PINNED_MESSAGE,
         result.id,
         result.currentMeta,
         UPDATE_PROMPT_CONFLICT_MESSAGE,
+        PIN_PROMPT_CONFLICT_DESCRIPTOR,
       );
   }
 
@@ -307,16 +411,18 @@ function buildRequestErrorResponse(
   return buildPromptErrorResponse(
     request.type,
     getErrorMessage(error, getDefaultErrorMessage(request)),
+    'storage-failed',
+    getDefaultErrorDescriptor(request),
   );
 }
 
-async function publishPromptStorageSideEffectsBestEffort(): Promise<void> {
-  await ensureLegacyMigrationCompleteMarkerBestEffort();
-
+async function publishPromptStorageSideEffects(): Promise<PromptMutationSideEffects> {
   try {
     await publishPromptRevision();
+    return { promptRevisionPublished: true };
   } catch (error) {
     console.error('[promptit] Failed to publish prompt revision.', error);
+    return { promptRevisionPublished: false };
   }
 }
 
@@ -324,15 +430,40 @@ function getDefaultErrorMessage(request: PromptRequest): string {
   switch (request.type) {
     case LIST_PROMPT_METAS_MESSAGE:
     case GET_PROMPT_BODY_MESSAGE:
+    case GET_PROMPT_RECORD_MESSAGE:
       return '프롬프트를 읽는 중 오류가 발생했습니다.';
     case CREATE_PROMPT_MESSAGE:
     case UPDATE_PROMPT_META_MESSAGE:
     case UPDATE_PROMPT_BODY_MESSAGE:
+    case UPDATE_PROMPT_RECORD_MESSAGE:
     case MOVE_PROMPT_MESSAGE:
     case SET_PROMPT_PINNED_MESSAGE:
       return '프롬프트 저장 중 오류가 발생했습니다.';
     case DELETE_PROMPT_MESSAGE:
       return '프롬프트 삭제 중 오류가 발생했습니다.';
+  }
+
+  return assertNever(request);
+}
+
+function getDefaultErrorDescriptor(
+  request: PromptRequest,
+): RuntimeMessageDescriptor {
+  switch (request.type) {
+    case LIST_PROMPT_METAS_MESSAGE:
+    case GET_PROMPT_BODY_MESSAGE:
+    case GET_PROMPT_RECORD_MESSAGE:
+      return READ_PROMPT_ERROR_DESCRIPTOR;
+    case CREATE_PROMPT_MESSAGE:
+    case UPDATE_PROMPT_META_MESSAGE:
+    case UPDATE_PROMPT_BODY_MESSAGE:
+    case UPDATE_PROMPT_RECORD_MESSAGE:
+    case MOVE_PROMPT_MESSAGE:
+      return SAVE_PROMPT_ERROR_DESCRIPTOR;
+    case SET_PROMPT_PINNED_MESSAGE:
+      return PIN_PROMPT_ERROR_DESCRIPTOR;
+    case DELETE_PROMPT_MESSAGE:
+      return DELETE_PROMPT_ERROR_DESCRIPTOR;
   }
 
   return assertNever(request);

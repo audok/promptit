@@ -1,8 +1,8 @@
 @import "../shared/fonts.css";
+@import "../shared/theme.css";
 @import "tailwindcss";
 
 :root {
-  color-scheme: light;
   font-family: var(--promptit-font-family);
 }
 
@@ -14,7 +14,5 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.72), transparent 34%),
-    linear-gradient(180deg, #f5efeb 0%, #efe6e0 100%);
+  background: var(--promptit-options-body-background);
 }

@@ -1,4 +1,5 @@
 import {
+  clearStoreInTransaction,
   deleteRecordFromTransaction,
   getAllRecordsFromTransaction,
   getAllStoreRecords,
@@ -10,11 +11,8 @@ import {
   withPromptTransaction,
 } from './indexed-db';
 import {
-  LEGACY_PROMPTS_STORAGE_KEY,
   PROMPT_BODY_MAX_BYTES,
   PROMPT_ORDER_GAP,
-  PROMPT_REVISION_STORAGE_KEY,
-  decodeStoredPrompts,
   getPromptCharCount,
   getUtf8ByteLength,
   hasPromptDraftErrors,
@@ -22,6 +20,7 @@ import {
   normalizePromptDraft,
   parsePromptBody,
   parsePromptMeta,
+  parsePromptRecord,
   sortPromptMetas,
   toPromptRecord,
   validatePromptDraft,
@@ -33,23 +32,25 @@ import {
   type PromptRecord,
 } from './schema';
 import {
-  getInitialOrder,
-  getOrderBetween,
-  renumberPromptMetasForGroup,
+  hasMetaOrderChanged,
+  movePromptMetaInOrder,
+  resolvePromptCreateOrders,
+  resolvePromptPinnedMeta,
+  validatePromptMoveBoundaries,
 } from './order';
-
-const PROMPT_IDB_MIGRATION_STORAGE_KEY = 'promptit:idbMigration';
-
-type LegacyMigrationMarker = {
-  status: 'complete';
-  completedAt?: string;
-};
+export { publishPromptRevision } from './revision';
 
 export type PromptMutationOptions = {
   expectedUpdatedAt?: string;
 };
 
 export type PromptBodyMutationOptions = {
+  expectedUpdatedAt?: string;
+  expectedBodyUpdatedAt?: string;
+};
+
+export type PromptRecordMutationOptions = {
+  expectedUpdatedAt?: string;
   expectedBodyUpdatedAt?: string;
 };
 
@@ -58,8 +59,8 @@ export type PromptDeleteOptions = PromptMutationOptions &
 
 export type PromptMoveRequest = PromptMutationOptions & {
   group?: PromptOrderGroup;
-  previousId?: string | null;
-  nextId?: string | null;
+  previousId: string | null;
+  nextId: string | null;
 };
 
 export type PromptMutationResult<T> =
@@ -89,55 +90,183 @@ export type PromptBodyMutationResult =
   | {
       status: 'conflict';
       id: string;
-      currentRecord: PromptRecord | null;
+      currentRecord: PromptRecord;
       currentMeta: PromptMeta;
     };
 
-let storageReadyPromise: Promise<void> | null = null;
-
-export function ensurePromptStorageReady(): Promise<void> {
-  if (!storageReadyPromise) {
-    storageReadyPromise = runLegacyPromptMigration().catch((error) => {
-      storageReadyPromise = null;
-      throw error;
-    });
-  }
-
-  return storageReadyPromise;
-}
-
 export async function listPromptMetas(): Promise<PromptMeta[]> {
-  await ensurePromptStorageReady();
   const records = await getAllStoreRecords(PROMPT_METAS_STORE);
   return sortPromptMetas(records.map(assertPromptMeta));
 }
 
 export async function getPromptBody(id: string): Promise<PromptBody | null> {
-  await ensurePromptStorageReady();
   const body = await getStoreRecord(PROMPT_BODIES_STORE, id);
 
   return body ? assertPromptBody(body) : null;
 }
 
 export async function getPromptRecord(id: string): Promise<PromptRecord | null> {
-  await ensurePromptStorageReady();
-  const [meta, body] = await Promise.all([
-    getStoreRecord(PROMPT_METAS_STORE, id),
-    getStoreRecord(PROMPT_BODIES_STORE, id),
-  ]);
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readonly',
+    async (transaction) => {
+      const meta = await getRecordFromTransaction(
+        transaction,
+        PROMPT_METAS_STORE,
+        id,
+      );
+      const body = await getRecordFromTransaction(
+        transaction,
+        PROMPT_BODIES_STORE,
+        id,
+      );
 
-  if (!meta || !body) {
-    return null;
+      if (!meta || !body) {
+        return null;
+      }
+
+      return toPromptRecord(assertPromptMeta(meta), assertPromptBody(body));
+    },
+  );
+}
+
+export async function listPromptRecords(): Promise<PromptRecord[]> {
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readonly',
+    async (transaction) => {
+      const metas = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_METAS_STORE)
+      ).map(assertPromptMeta);
+      const bodies = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_BODIES_STORE)
+      ).map(assertPromptBody);
+      const bodiesById = new Map(bodies.map((body) => [body.id, body]));
+      const metaIds = new Set(metas.map((meta) => meta.id));
+      const records = metas.map((meta) => {
+        const body = bodiesById.get(meta.id);
+
+        if (!body) {
+          throw new Error('Stored prompt record is missing a body.');
+        }
+
+        return toPromptRecord(meta, body);
+      });
+
+      if (bodies.some((body) => !metaIds.has(body.id))) {
+        throw new Error('Stored prompt body is missing metadata.');
+      }
+
+      return sortPromptRecords(records);
+    },
+  );
+}
+
+export async function replacePromptRecords(
+  records: PromptRecord[],
+): Promise<PromptRecord[]> {
+  const validatedRecords = records.map(getValidatedPromptRecord);
+  const ids = new Set<string>();
+
+  for (const record of validatedRecords) {
+    if (ids.has(record.id)) {
+      throw new Error('Backup contains duplicate prompt ids.');
+    }
+
+    ids.add(record.id);
   }
 
-  return toPromptRecord(assertPromptMeta(meta), assertPromptBody(body));
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readwrite',
+    async (transaction) => {
+      await clearStoreInTransaction(transaction, PROMPT_BODIES_STORE);
+      await clearStoreInTransaction(transaction, PROMPT_METAS_STORE);
+
+      for (const record of validatedRecords) {
+        const { content, ...meta } = record;
+        const body: PromptBody = {
+          id: record.id,
+          content,
+          updatedAt: record.bodyUpdatedAt,
+        };
+
+        await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
+        await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
+      }
+
+      return sortPromptRecords(validatedRecords);
+    },
+  );
+}
+
+export async function appendPromptDrafts(
+  drafts: PromptDraft[],
+): Promise<PromptRecord[]> {
+  const validatedDrafts = drafts.map(getValidatedPromptDraft);
+
+  if (validatedDrafts.length === 0) {
+    return [];
+  }
+
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readwrite',
+    async (transaction) => {
+      const metas = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_METAS_STORE)
+      ).map(assertPromptMeta);
+      const existingIds = new Set(metas.map((meta) => meta.id));
+      const normalOrders = metas
+        .filter((meta) => !meta.pinned)
+        .map((meta) => meta.normalOrder);
+      const firstOrder =
+        normalOrders.length === 0
+          ? PROMPT_ORDER_GAP
+          : Math.max(...normalOrders) + PROMPT_ORDER_GAP;
+      const timestamp = new Date().toISOString();
+      const createdRecords = validatedDrafts.map((draft, index) => {
+        const id = createUniquePromptId(existingIds);
+        const meta: PromptMeta = {
+          id,
+          title: draft.title,
+          pinned: false,
+          normalOrder: firstOrder + index * PROMPT_ORDER_GAP,
+          pinnedOrder: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          bodyUpdatedAt: timestamp,
+          charCount: getPromptCharCount(draft.content),
+        };
+        const body: PromptBody = {
+          id,
+          content: draft.content,
+          updatedAt: timestamp,
+        };
+
+        return toPromptRecord(meta, body);
+      });
+
+      for (const record of createdRecords) {
+        const { content, ...meta } = record;
+        const body: PromptBody = {
+          id: record.id,
+          content,
+          updatedAt: record.bodyUpdatedAt,
+        };
+
+        await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
+        await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
+      }
+
+      return createdRecords;
+    },
+  );
 }
 
 export async function createPrompt(
   draft: PromptDraft,
 ): Promise<PromptRecord> {
-  await ensurePromptStorageReady();
-
   const validatedDraft = getValidatedPromptDraft(draft);
   const timestamp = new Date().toISOString();
   const id = createPromptId();
@@ -150,22 +279,11 @@ export async function createPrompt(
       const metas = (
         await getAllRecordsFromTransaction(transaction, PROMPT_METAS_STORE)
       ).map(assertPromptMeta);
-      const normalMetas = sortPromptMetas(metas).filter((meta) => !meta.pinned);
-      const pinnedMetas = sortPromptMetas(metas).filter((meta) => meta.pinned);
-      const fallbackNormalOrder = getNextGroupOrder(normalMetas);
-      const fallbackPinnedOrder = getNextGroupOrder(pinnedMetas);
-      const normalOrder =
-        typeof validatedDraft.normalOrder === 'number'
-          ? validatedDraft.normalOrder
-          : typeof validatedDraft.sortOrder === 'number'
-            ? validatedDraft.sortOrder
-            : fallbackNormalOrder;
-      const pinnedOrder =
-        pinned
-          ? typeof validatedDraft.pinnedOrder === 'number'
-            ? validatedDraft.pinnedOrder
-            : fallbackPinnedOrder
-          : null;
+      const { normalOrder, pinnedOrder } = resolvePromptCreateOrders(
+        metas,
+        validatedDraft,
+        pinned,
+      );
 
       if (typeof normalOrder !== 'number') {
         throw new Error('Could not allocate prompt order.');
@@ -200,8 +318,6 @@ export async function updatePromptMeta(
   draft: PromptMetaDraft,
   options: PromptMutationOptions = {},
 ): Promise<PromptMutationResult<PromptMeta>> {
-  await ensurePromptStorageReady();
-
   const nextTitle = validatePromptTitle(draft.title);
   validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
 
@@ -258,8 +374,8 @@ export async function updatePromptBody(
   content: string,
   options: PromptBodyMutationOptions = {},
 ): Promise<PromptBodyMutationResult> {
-  await ensurePromptStorageReady();
   const nextContent = validatePromptContent(content);
+  validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
   validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
 
   return withPromptTransaction(
@@ -288,8 +404,10 @@ export async function updatePromptBody(
       const currentBody = assertPromptBody(currentBodyRecord);
 
       if (
-        options.expectedBodyUpdatedAt &&
-        currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt
+        (options.expectedUpdatedAt &&
+          currentMeta.updatedAt !== options.expectedUpdatedAt) ||
+        (options.expectedBodyUpdatedAt &&
+          currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt)
       ) {
         return {
           status: 'conflict',
@@ -323,14 +441,105 @@ export async function updatePromptBody(
   );
 }
 
+export async function updatePromptRecord(
+  id: string,
+  draft: PromptDraft,
+  options: PromptRecordMutationOptions = {},
+): Promise<PromptBodyMutationResult> {
+  const validatedDraft = getValidatedPromptDraft(draft);
+  validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
+  validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
+
+  return withPromptTransaction(
+    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
+    'readwrite',
+    async (transaction) => {
+      const metas = (
+        await getAllRecordsFromTransaction(transaction, PROMPT_METAS_STORE)
+      ).map(assertPromptMeta);
+      const currentMeta = metas.find((meta) => meta.id === id) ?? null;
+      const currentBodyRecord = await getRecordFromTransaction(
+        transaction,
+        PROMPT_BODIES_STORE,
+        id,
+      );
+
+      if (!currentMeta || !currentBodyRecord) {
+        return {
+          status: 'not-found',
+          id,
+        };
+      }
+
+      const currentBody = assertPromptBody(currentBodyRecord);
+      const currentRecord = toPromptRecord(currentMeta, currentBody);
+
+      if (
+        (options.expectedUpdatedAt &&
+          currentMeta.updatedAt !== options.expectedUpdatedAt) ||
+        (options.expectedBodyUpdatedAt &&
+          currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt)
+      ) {
+        return {
+          status: 'conflict',
+          id,
+          currentMeta,
+          currentRecord,
+        };
+      }
+
+      const nextPinned = validatedDraft.pinned ?? currentMeta.pinned;
+      const titleChanged = validatedDraft.title !== currentMeta.title;
+      const contentChanged = validatedDraft.content !== currentBody.content;
+      const pinnedChanged = nextPinned !== currentMeta.pinned;
+
+      if (!titleChanged && !contentChanged && !pinnedChanged) {
+        return {
+          status: 'success',
+          value: currentRecord,
+        };
+      }
+
+      const timestamp = new Date().toISOString();
+      const pinnedMeta = pinnedChanged
+        ? resolvePromptPinnedMeta(metas, currentMeta, nextPinned, timestamp)
+        : currentMeta;
+      const body: PromptBody = contentChanged
+        ? {
+            id,
+            content: validatedDraft.content,
+            updatedAt: timestamp,
+          }
+        : currentBody;
+      const meta: PromptMeta = {
+        ...pinnedMeta,
+        title: validatedDraft.title,
+        updatedAt: timestamp,
+        bodyUpdatedAt: contentChanged ? timestamp : currentMeta.bodyUpdatedAt,
+        charCount: contentChanged
+          ? getPromptCharCount(validatedDraft.content)
+          : currentMeta.charCount,
+      };
+
+      if (contentChanged) {
+        await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
+      }
+      await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
+
+      return {
+        status: 'success',
+        value: toPromptRecord(meta, body),
+      };
+    },
+  );
+}
+
 export async function deletePrompt(
   id: string,
   options: PromptDeleteOptions = {},
 ): Promise<PromptMutationResult<string>> {
-  await ensurePromptStorageReady();
   validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
   validateExpectedTimestamp(options.expectedBodyUpdatedAt, 'bodyUpdatedAt');
-  await ensureLegacyMigrationMarkerBeforeFinalDelete(id, options);
 
   return withPromptTransaction(
     [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
@@ -375,7 +584,6 @@ export async function movePrompt(
   id: string,
   request: PromptMoveRequest,
 ): Promise<PromptMutationResult<PromptMeta>> {
-  await ensurePromptStorageReady();
   validateExpectedTimestamp(request.expectedUpdatedAt, 'updatedAt');
 
   return withPromptTransaction([PROMPT_METAS_STORE], 'readwrite', async (transaction) => {
@@ -403,17 +611,40 @@ export async function movePrompt(
     }
 
     const group = request.group ?? (currentMeta.pinned ? 'pinned' : 'normal');
-    const nextMetas = await applyMove(
-      transaction,
+    const boundaryValidation = validatePromptMoveBoundaries(
       metas,
       currentMeta,
       group,
       request,
     );
+
+    if (!boundaryValidation.ok) {
+      return {
+        status: 'conflict',
+        id,
+        currentMeta,
+      };
+    }
+
+    const nextMetas = movePromptMetaInOrder(
+      metas,
+      currentMeta,
+      group,
+      request,
+      new Date().toISOString(),
+    );
     const nextMeta = nextMetas.find((meta) => meta.id === id);
 
     if (!nextMeta) {
       throw new Error('Moved prompt was not written.');
+    }
+
+    for (const meta of nextMetas) {
+      const original = metas.find((item) => item.id === meta.id);
+
+      if (!original || hasMetaOrderChanged(original, meta)) {
+        await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
+      }
     }
 
     return {
@@ -428,7 +659,6 @@ export async function setPromptPinned(
   pinned: boolean,
   options: PromptMutationOptions = {},
 ): Promise<PromptMutationResult<PromptMeta>> {
-  await ensurePromptStorageReady();
   validateExpectedTimestamp(options.expectedUpdatedAt, 'updatedAt');
 
   return withPromptTransaction([PROMPT_METAS_STORE], 'readwrite', async (transaction) => {
@@ -462,20 +692,12 @@ export async function setPromptPinned(
       };
     }
 
-    const timestamp = new Date().toISOString();
-    const groupMetas = sortPromptMetas(metas).filter((meta) =>
-      pinned ? meta.pinned : !meta.pinned,
-    );
-    const nextGroupOrder =
-      groupMetas.length === 0
-        ? getInitialOrder(0)
-        : getGroupOrder(groupMetas[groupMetas.length - 1]) + PROMPT_ORDER_GAP;
-    const nextMeta: PromptMeta = {
-      ...currentMeta,
+    const nextMeta = resolvePromptPinnedMeta(
+      metas,
+      currentMeta,
       pinned,
-      pinnedOrder: pinned ? nextGroupOrder : null,
-      updatedAt: timestamp,
-    };
+      new Date().toISOString(),
+    );
 
     await putRecordInTransaction(transaction, PROMPT_METAS_STORE, nextMeta);
 
@@ -484,295 +706,6 @@ export async function setPromptPinned(
       value: nextMeta,
     };
   });
-}
-
-export async function runLegacyPromptMigration(): Promise<void> {
-  const existingMetas = await getAllStoreRecords(PROMPT_METAS_STORE);
-
-  if (existingMetas.length > 0) {
-    await ensureLegacyMigrationCompleteMarkerBestEffort();
-    return;
-  }
-
-  if (!hasChromeStorageApi()) {
-    return;
-  }
-
-  if (await getLegacyMigrationMarker()) {
-    return;
-  }
-
-  const result = await chrome.storage.local.get(LEGACY_PROMPTS_STORAGE_KEY);
-  const decoded = decodeStoredPrompts(result[LEGACY_PROMPTS_STORAGE_KEY]);
-
-  if (decoded.prompts.length === 0) {
-    return;
-  }
-
-  const oversizedPrompt = decoded.prompts.find(
-    (prompt) => getUtf8ByteLength(prompt.content) > PROMPT_BODY_MAX_BYTES,
-  );
-
-  if (oversizedPrompt) {
-    throw new Error(
-      `Legacy prompt "${oversizedPrompt.title || oversizedPrompt.id}" exceeds the 500KB body limit.`,
-    );
-  }
-
-  const sortedPrompts = decoded.prompts;
-
-  await withPromptTransaction(
-    [PROMPT_METAS_STORE, PROMPT_BODIES_STORE],
-    'readwrite',
-    async (transaction) => {
-      for (const [index, prompt] of sortedPrompts.entries()) {
-        const meta: PromptMeta = {
-          id: prompt.id,
-          title: prompt.title,
-          pinned: false,
-          normalOrder: getInitialOrder(index),
-          pinnedOrder: null,
-          createdAt: prompt.createdAt,
-          updatedAt: prompt.updatedAt,
-          bodyUpdatedAt: prompt.updatedAt,
-          charCount: getPromptCharCount(prompt.content),
-        };
-        const body: PromptBody = {
-          id: prompt.id,
-          content: prompt.content,
-          updatedAt: prompt.updatedAt,
-        };
-
-        await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
-        await putRecordInTransaction(transaction, PROMPT_BODIES_STORE, body);
-      }
-    },
-  );
-
-  await ensureLegacyMigrationCompleteMarkerBestEffort();
-  await publishPromptRevisionBestEffort();
-}
-
-export async function publishPromptRevision(): Promise<void> {
-  if (!hasChromeStorageApi()) {
-    return;
-  }
-
-  const updatedAt = new Date().toISOString();
-
-  await chrome.storage.local.set({
-    [PROMPT_REVISION_STORAGE_KEY]: {
-      updatedAt,
-      revision: `${updatedAt}:${crypto.getRandomValues(new Uint32Array(1))[0]}`,
-    },
-  });
-}
-
-export async function ensureLegacyMigrationCompleteMarkerBestEffort(): Promise<void> {
-  if (!hasChromeStorageApi()) {
-    return;
-  }
-
-  try {
-    await writeLegacyMigrationCompleteMarker();
-  } catch (error) {
-    console.error(
-      '[promptit] Failed to write prompt IndexedDB migration marker.',
-      error,
-    );
-  }
-}
-
-async function ensureLegacyMigrationMarkerBeforeFinalDelete(
-  id: string,
-  options: PromptDeleteOptions,
-): Promise<void> {
-  if (!hasChromeStorageApi()) {
-    return;
-  }
-
-  const metas = (await getAllStoreRecords(PROMPT_METAS_STORE)).map(assertPromptMeta);
-
-  if (metas.length !== 1) {
-    return;
-  }
-
-  const [currentMeta] = metas;
-
-  if (
-    currentMeta.id !== id ||
-    (options.expectedUpdatedAt &&
-      currentMeta.updatedAt !== options.expectedUpdatedAt) ||
-    (options.expectedBodyUpdatedAt &&
-      currentMeta.bodyUpdatedAt !== options.expectedBodyUpdatedAt)
-  ) {
-    return;
-  }
-
-  if (await getLegacyMigrationMarker()) {
-    return;
-  }
-
-  if (!(await hasLegacyPromptStorageValue())) {
-    return;
-  }
-
-  await writeLegacyMigrationCompleteMarker();
-}
-
-async function writeLegacyMigrationCompleteMarker(): Promise<void> {
-  await chrome.storage.local.set({
-    [PROMPT_IDB_MIGRATION_STORAGE_KEY]: {
-      status: 'complete',
-      completedAt: new Date().toISOString(),
-    },
-  });
-}
-
-async function hasLegacyPromptStorageValue(): Promise<boolean> {
-  const result = await chrome.storage.local.get(LEGACY_PROMPTS_STORAGE_KEY);
-  return typeof result[LEGACY_PROMPTS_STORAGE_KEY] !== 'undefined';
-}
-
-async function getLegacyMigrationMarker(): Promise<LegacyMigrationMarker | null> {
-  const result = await chrome.storage.local.get(PROMPT_IDB_MIGRATION_STORAGE_KEY);
-  return parseLegacyMigrationMarker(result[PROMPT_IDB_MIGRATION_STORAGE_KEY]);
-}
-
-function parseLegacyMigrationMarker(value: unknown): LegacyMigrationMarker | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const marker = value as Record<string, unknown>;
-
-  if (marker.status !== 'complete') {
-    return null;
-  }
-
-  if (
-    marker.completedAt !== undefined &&
-    (typeof marker.completedAt !== 'string' ||
-      !isValidPromptTimestamp(marker.completedAt))
-  ) {
-    return null;
-  }
-
-  return {
-    status: 'complete',
-    completedAt:
-      typeof marker.completedAt === 'string' ? marker.completedAt : undefined,
-  };
-}
-
-async function publishPromptRevisionBestEffort(): Promise<void> {
-  try {
-    await publishPromptRevision();
-  } catch (error) {
-    console.error(
-      '[promptit] Failed to publish prompt revision after migration.',
-      error,
-    );
-  }
-}
-
-async function applyMove(
-  transaction: IDBTransaction,
-  metas: PromptMeta[],
-  currentMeta: PromptMeta,
-  group: PromptOrderGroup,
-  request: PromptMoveRequest,
-): Promise<PromptMeta[]> {
-  const timestamp = new Date().toISOString();
-  const movedMeta: PromptMeta = {
-    ...currentMeta,
-    pinned: group === 'pinned',
-    pinnedOrder: group === 'pinned' ? currentMeta.pinnedOrder : null,
-    updatedAt: timestamp,
-  };
-  const withoutCurrent = metas.filter((meta) => meta.id !== currentMeta.id);
-  let nextMetas = [...withoutCurrent, movedMeta];
-  let groupMetas = sortPromptMetas(nextMetas).filter((meta) =>
-    group === 'pinned' ? meta.pinned : !meta.pinned,
-  );
-  const previousOrder = getBoundaryOrder(groupMetas, request.previousId);
-  const nextOrder = getBoundaryOrder(groupMetas, request.nextId);
-  let order = getOrderBetween(previousOrder, nextOrder);
-
-  if (order === null) {
-    nextMetas = renumberPromptMetasForGroup(nextMetas, group);
-    groupMetas = sortPromptMetas(nextMetas).filter((meta) =>
-      group === 'pinned' ? meta.pinned : !meta.pinned,
-    );
-    order = getOrderBetween(
-      getBoundaryOrder(groupMetas, request.previousId),
-      getBoundaryOrder(groupMetas, request.nextId),
-    );
-  }
-
-  if (order === null) {
-    throw new Error('Could not allocate prompt order.');
-  }
-
-  const finalMetas = nextMetas.map((meta) => {
-    if (meta.id !== currentMeta.id) {
-      return meta;
-    }
-
-    return group === 'pinned'
-      ? {
-          ...meta,
-          pinned: true,
-          pinnedOrder: order,
-        }
-      : {
-          ...meta,
-          pinned: false,
-          normalOrder: order,
-          pinnedOrder: null,
-        };
-  });
-
-  for (const meta of finalMetas) {
-    const original = metas.find((item) => item.id === meta.id);
-
-    if (!original || hasMetaOrderChanged(original, meta)) {
-      await putRecordInTransaction(transaction, PROMPT_METAS_STORE, meta);
-    }
-  }
-
-  return finalMetas;
-}
-
-function getBoundaryOrder(
-  metas: PromptMeta[],
-  id: string | null | undefined,
-): number | null {
-  if (!id) {
-    return null;
-  }
-
-  const meta = metas.find((item) => item.id === id);
-  return meta ? getGroupOrder(meta) : null;
-}
-
-function getGroupOrder(meta: PromptMeta): number {
-  return meta.pinned ? (meta.pinnedOrder ?? meta.normalOrder) : meta.normalOrder;
-}
-
-function getNextGroupOrder(metas: PromptMeta[]): number {
-  return metas.length === 0
-    ? getInitialOrder(0)
-    : getGroupOrder(metas[metas.length - 1]) + PROMPT_ORDER_GAP;
-}
-
-function hasMetaOrderChanged(left: PromptMeta, right: PromptMeta): boolean {
-  return (
-    left.pinned !== right.pinned ||
-    left.normalOrder !== right.normalOrder ||
-    left.pinnedOrder !== right.pinnedOrder ||
-    left.updatedAt !== right.updatedAt
-  );
 }
 
 function getValidatedPromptDraft(draft: PromptDraft): PromptDraft {
@@ -788,6 +721,33 @@ function getValidatedPromptDraft(draft: PromptDraft): PromptDraft {
   }
 
   return normalizedDraft;
+}
+
+function getValidatedPromptRecord(record: PromptRecord): PromptRecord {
+  const parsed = parsePromptRecord({
+    ...record,
+    charCount: getPromptCharCount(record.content),
+  });
+
+  if (!parsed) {
+    throw new Error('Prompt record is malformed.');
+  }
+
+  return parsed;
+}
+
+function sortPromptRecords(records: PromptRecord[]): PromptRecord[] {
+  const recordsById = new Map(records.map((record) => [record.id, record]));
+
+  return sortPromptMetas(records).map((meta) => {
+    const record = recordsById.get(meta.id);
+
+    if (!record) {
+      throw new Error('Prompt record was not found after sorting.');
+    }
+
+    return record;
+  });
 }
 
 function validatePromptTitle(title: string): string {
@@ -849,12 +809,19 @@ function assertPromptBody(value: PromptBody): PromptBody {
   return parsed;
 }
 
-function hasChromeStorageApi(): boolean {
-  return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local);
-}
-
 function createPromptId(): string {
   return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
+}
+
+function createUniquePromptId(existingIds: Set<string>): string {
+  let id = createPromptId();
+
+  while (existingIds.has(id)) {
+    id = createPromptId();
+  }
+
+  existingIds.add(id);
+  return id;
 }

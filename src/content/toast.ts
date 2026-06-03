@@ -1,20 +1,27 @@
 import { getPromptitFontStyles } from './fonts';
+import { IS_TEST_MODE } from './testControls';
+import { type ResolvedTheme } from '../shared/theme';
+import themeStyles from '../shared/theme.css?inline';
 
 let host: HTMLDivElement | null = null;
+let toastShadowRoot: ShadowRoot | null = null;
 let hideTimer: number | null = null;
+let currentTheme: ResolvedTheme = 'light';
 
 function ensureToastHost(): {
   content: HTMLDivElement;
 } {
-  if (host?.isConnected && host.shadowRoot) {
-    const content = host.shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
+  if (host?.isConnected && toastShadowRoot) {
+    const content = toastShadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
 
     if (content) {
+      applyToastTheme(content);
       return { content };
     }
   }
 
   host?.remove();
+  toastShadowRoot = null;
   host = document.createElement('div');
   host.setAttribute('data-promptit-toast-host', 'true');
   host.style.position = 'fixed';
@@ -24,43 +31,74 @@ function ensureToastHost(): {
   host.style.transform = 'translateX(-50%)';
   host.style.pointerEvents = 'none';
 
-  const shadowRoot = host.attachShadow({ mode: 'open' });
-  shadowRoot.innerHTML = `
+  toastShadowRoot = host.attachShadow({
+    mode: IS_TEST_MODE ? 'open' : 'closed',
+  });
+  toastShadowRoot.innerHTML = `
     <style>
       :host {
         all: initial;
       }
 
+      ${themeStyles}
       ${getPromptitFontStyles()}
 
       .promptit-toast {
         display: inline-flex;
         align-items: center;
-        min-width: 220px;
-        max-width: min(360px, calc(100vw - 32px));
-        padding: 12px 16px;
-        border-radius: 18px;
-        background: rgba(24, 24, 27, 0.92);
-        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
-        color: white;
+        justify-content: center;
+        min-width: 0;
+        max-width: min(340px, calc(100vw - 32px));
+        min-height: 34px;
+        padding: 6px 16px;
+        border: 1px solid var(--promptit-toast-success-border);
+        border-radius: 999px;
+        background: var(--promptit-toast-success-background);
+        box-shadow: var(--promptit-toast-shadow);
+        color: var(--promptit-toast-success-text);
         font-family: var(--promptit-font-family);
-        font-size: 13px;
-        line-height: 1.35;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        backdrop-filter: blur(32px) saturate(170%);
+        -webkit-backdrop-filter: blur(32px) saturate(170%);
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(6px);
         transition:
           opacity 140ms ease,
           transform 140ms ease,
-          background-color 140ms ease;
+          color 140ms ease,
+          background-color 140ms ease,
+          border-color 140ms ease;
       }
 
       .promptit-toast[data-variant="error"] {
-        background: rgba(127, 29, 29, 0.94);
+        border-color: var(--promptit-toast-error-border);
+        background: var(--promptit-toast-error-background);
+        color: var(--promptit-toast-error-text);
       }
 
       .promptit-toast.is-visible {
         opacity: 1;
         transform: translateY(0);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .promptit-toast {
+          transform: none;
+          transition:
+            opacity 140ms ease,
+            color 140ms ease,
+            background-color 140ms ease,
+            border-color 140ms ease;
+        }
+
+        .promptit-toast.is-visible {
+          transform: none;
+        }
       }
     </style>
     <div class="promptit-toast" data-role="toast-content"></div>
@@ -68,13 +106,19 @@ function ensureToastHost(): {
 
   document.documentElement.append(host);
   const content =
-    shadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
+    toastShadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
 
   if (!content) {
-    throw new Error('Promptit toast content element could not be created.');
+    throw new Error('promptit toast content element could not be created.');
   }
 
+  applyToastTheme(content);
   return { content };
+}
+
+function applyToastTheme(content: HTMLDivElement): void {
+  content.dataset.promptitTheme = currentTheme;
+  content.style.colorScheme = currentTheme;
 }
 
 function applyToastAccessibility(
@@ -98,6 +142,7 @@ export function showToast(
   variant: 'success' | 'error' = 'success',
 ): void {
   const { content } = ensureToastHost();
+  applyToastTheme(content);
   applyToastAccessibility(content, variant);
   content.dataset.variant = variant;
   content.textContent = message;
@@ -116,6 +161,16 @@ export function showToast(
   }, 1800);
 }
 
-export function showCopyToast(message: string, variant: 'success' | 'error' = 'success'): void {
-  showToast(message, variant);
+export function setToastTheme(theme: ResolvedTheme): void {
+  currentTheme = theme;
+
+  if (!host?.isConnected || !toastShadowRoot) {
+    return;
+  }
+
+  const content = toastShadowRoot.querySelector<HTMLDivElement>('[data-role="toast-content"]');
+
+  if (content) {
+    applyToastTheme(content);
+  }
 }

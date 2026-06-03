@@ -6,7 +6,8 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Promptit Gemini Contenteditable Fixture</title>
+    <link rel="icon" href="data:," />
+    <title>promptit Gemini Contenteditable Fixture</title>
     <style>
       :root {
         color-scheme: light;
@@ -145,7 +146,7 @@
       data-testid="outside-target"
     >
       <div>
-        <h1>Promptit Gemini Fixture</h1>
+        <h1>promptit Gemini Fixture</h1>
         <p>Gemini-like Quill composer with clipboard and wrapper anchors.</p>
       </div>
       <button type="button">Outside Click Target</button>
@@ -154,9 +155,9 @@
     <main class="page-shell">
       <section class="conversation">
         <p>
-          This fixture only models the Gemini composer boundary Promptit uses:
+          This fixture only models the Gemini composer boundary promptit uses:
           a text input wrapper, a rich-textarea host, a ql-editor textbox, and
-          a hidden Quill clipboard node that must not open Promptit.
+          a hidden Quill clipboard node that must not open promptit.
         </p>
       </section>
 
@@ -184,6 +185,30 @@
                 aria-hidden="true"
               ></div>
             </rich-textarea>
+            <script>
+              (() => {
+                const variant = new URLSearchParams(window.location.search)
+                  .get('variant');
+                const wrapper = document.querySelector(
+                  '.text-input-field_textarea-wrapper',
+                );
+                const richTextarea = document.querySelector('rich-textarea');
+
+                if (
+                  variant !== 'standalone-ql-editor' ||
+                  !(wrapper instanceof HTMLElement) ||
+                  !(richTextarea instanceof HTMLElement)
+                ) {
+                  return;
+                }
+
+                while (richTextarea.firstChild) {
+                  wrapper.insertBefore(richTextarea.firstChild, richTextarea);
+                }
+
+                richTextarea.remove();
+              })();
+            </script>
           </div>
           <div class="composer-actions">
             <button

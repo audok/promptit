@@ -6,7 +6,8 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Promptit ChatGPT Textarea Fixture</title>
+    <link rel="icon" href="data:," />
+    <title>promptit ChatGPT Textarea Fixture</title>
     <style>
       :root {
         color-scheme: light;
@@ -91,7 +92,7 @@
         class="outside-target"
         data-testid="outside-target"
       >
-        Textarea fallback fixture for Promptit.
+        Textarea fallback fixture for promptit.
       </section>
 
       <form class="composer-form">
@@ -102,6 +103,26 @@
             aria-label="Message ChatGPT"
             placeholder="Message ChatGPT"
           ></textarea>
+          <script>
+            (() => {
+              const variant = new URLSearchParams(window.location.search)
+                .get('variant');
+              const composer = document.querySelector('#prompt-textarea');
+
+              if (!(composer instanceof HTMLTextAreaElement)) {
+                return;
+              }
+
+              if (variant === 'id-selector') {
+                composer.removeAttribute('data-testid');
+                return;
+              }
+
+              if (variant === 'testid-selector') {
+                composer.removeAttribute('id');
+              }
+            })();
+          </script>
         </section>
         <button
           class="send-button"

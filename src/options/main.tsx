@@ -7,7 +7,7 @@ import './styles.css';
 const container = document.getElementById('root');
 
 if (!container) {
-  throw new Error('Promptit options root element was not found.');
+  throw new Error('promptit options root element was not found.');
 }
 
 createRoot(container).render(
